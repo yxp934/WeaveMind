@@ -63,7 +63,7 @@ export default async function OrganizationDetailPage({
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">Classes</h3>
-            <Link href={`/teacher/organizations/${id}/classes/new`}>
+            <Link href={`/teacher/organizations/${id}/create-class`}>
               <Button>Create Class</Button>
             </Link>
           </div>
@@ -87,7 +87,7 @@ export default async function OrganizationDetailPage({
           ) : (
             <div className="text-center py-12">
               <p className="text-gray-500 mb-4">No classes yet</p>
-              <Link href={`/teacher/organizations/${id}/classes/new`}>
+              <Link href={`/teacher/organizations/${id}/create-class`}>
                 <Button>Create Your First Class</Button>
               </Link>
             </div>
