@@ -129,7 +129,7 @@ export default function StudentAssignmentPage({ params }: { params: Promise<{ id
   }
 
   const isOverdue = assignment.due_date && new Date(assignment.due_date) < new Date()
-  const isGraded = submission && submission.score !== null
+  const isGraded = submission && submission.grade !== null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -165,7 +165,7 @@ export default function StudentAssignmentPage({ params }: { params: Promise<{ id
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <p className="text-sm text-green-700 font-semibold">Graded</p>
                 <p className="text-2xl font-bold text-green-800">
-                  {submission.score}/{assignment.max_score}
+                  {submission.grade}/{assignment.max_score}
                 </p>
               </div>
             )}
