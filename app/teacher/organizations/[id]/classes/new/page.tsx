@@ -29,8 +29,8 @@ export default function NewClassPage({
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error("Not authenticated")
 
-      // Create class
-      const { data: cls, error: classError } = await supabase
+      // Create class (trigger will automatically add creator to class_members)
+      const { error: classError } = await supabase
         .from("classes")
         .insert({
           organization_id: orgId,
@@ -38,21 +38,8 @@ export default function NewClassPage({
           description,
           created_by: user.id
         })
-        .select()
-        .single()
 
       if (classError) throw classError
-
-      // Add creator as teacher
-      const { error: memberError } = await supabase
-        .from("class_members")
-        .insert({
-          class_id: cls.id,
-          user_id: user.id,
-          role: "teacher"
-        })
-
-      if (memberError) throw memberError
 
       router.push(`/teacher/organizations/${orgId}`)
       router.refresh()
