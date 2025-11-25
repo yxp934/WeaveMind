@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+// New class creation page - bypasses Vercel cache issue
 export default function CreateClassPage({
   params,
 }: {
