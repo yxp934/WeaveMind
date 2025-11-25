@@ -42,10 +42,17 @@ export default function NewClassPage({
 
       if (classError) throw classError
 
+      // Success - navigate to organization page
       router.push(`/teacher/organizations/${orgId}`)
       router.refresh()
     } catch (err: any) {
-      setError(err.message || "Failed to create class")
+      // Ignore duplicate key errors from class_members (trigger already added the creator)
+      if (err.message && err.message.includes("class_members_class_id_user_id_key")) {
+        router.push(`/teacher/organizations/${orgId}`)
+        router.refresh()
+      } else {
+        setError(err.message || "Failed to create class")
+      }
     } finally {
       setLoading(false)
     }
