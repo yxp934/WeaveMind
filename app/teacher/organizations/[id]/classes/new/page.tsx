@@ -29,7 +29,8 @@ export default function NewClassPage({
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error("Not authenticated")
 
-      // Create class (trigger will automatically add creator to class_members)
+      // Create class
+      // Note: Database trigger auto_add_class_creator will automatically add creator to class_members
       const { error: classError } = await supabase
         .from("classes")
         .insert({
