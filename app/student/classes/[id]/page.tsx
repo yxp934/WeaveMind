@@ -156,7 +156,7 @@ export default async function StudentClassPage({
                         </p>
                       </div>
                       <Link href={`/student/assignments/${assignment.id}`}>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline">
                           {submission ? "View" : "Submit"}
                         </Button>
                       </Link>
