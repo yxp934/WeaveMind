@@ -64,7 +64,6 @@ Please apply the requested changes and return the updated outline as a JSON arra
       system: OUTLINE_EDITING_SYSTEM_PROMPT,
       prompt,
       temperature: 0.7,
-      maxTokens: 3000,
     })
 
     // Parse the AI response

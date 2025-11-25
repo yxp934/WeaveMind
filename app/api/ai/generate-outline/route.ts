@@ -35,7 +35,6 @@ export async function POST(req: Request) {
       system: OUTLINE_GENERATION_SYSTEM_PROMPT,
       prompt: buildOutlinePrompt(requirements),
       temperature: 0.7,
-      maxTokens: 2000,
     })
 
     // Parse the JSON response

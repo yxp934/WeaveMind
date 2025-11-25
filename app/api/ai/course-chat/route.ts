@@ -26,7 +26,6 @@ export async function POST(req: Request) {
       system: COURSE_REQUIREMENT_SYSTEM_PROMPT,
       messages,
       temperature: 0.7,
-      maxTokens: 1000,
     })
 
     // Return the stream as a text stream response
