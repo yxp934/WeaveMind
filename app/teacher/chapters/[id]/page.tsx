@@ -121,7 +121,7 @@ export default async function ChapterDetailPage({
                       </div>
                       <div className="flex gap-2">
                         <Link href={`/teacher/components/${component.id}/edit`}>
-                          <Button variant="outline" size="sm">Edit</Button>
+                          <Button variant="outline">Edit</Button>
                         </Link>
                       </div>
                     </div>

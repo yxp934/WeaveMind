@@ -140,7 +140,7 @@ export default async function AssignmentDetailPage({
                       )}
                     </div>
                     <Link href={`/teacher/submissions/${submission.id}`}>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline">
                         {submission.score !== null ? "Review" : "Grade"}
                       </Button>
                     </Link>
