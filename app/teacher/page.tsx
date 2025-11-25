@@ -90,7 +90,7 @@ export default async function TeacherDashboard() {
             </div>
           ) : (
             <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">You haven't created any organizations yet</p>
+              <p className="text-gray-500 mb-4">You haven&apos;t created any organizations yet</p>
               <Link href="/teacher/organizations/new">
                 <Button>Create Your First Organization</Button>
               </Link>

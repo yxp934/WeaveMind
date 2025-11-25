@@ -1,0 +1,8 @@
+{
+  "name": "weavemind",
+  "buildCommand": "next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "framework": "nextjs"
+}
+

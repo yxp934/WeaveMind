@@ -93,7 +93,7 @@ export default async function StudentDashboard() {
             </div>
           ) : (
             <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">You haven't joined any classes yet</p>
+              <p className="text-gray-500 mb-4">You haven&apos;t joined any classes yet</p>
               <p className="text-sm text-gray-400">
                 Ask your teacher for a class invitation code
               </p>
