@@ -146,10 +146,10 @@ export function OutlineEditor({ initialChapters, onSave, onCancel }: OutlineEdit
       </Card>
 
       <div className="flex space-x-4">
-        <Button onClick={() => onSave(chapters)} className="flex-1" size="lg">
+        <Button onClick={() => onSave(chapters)} className="flex-1 text-lg py-6">
           保存大纲 / Save Outline
         </Button>
-        <Button onClick={onCancel} variant="outline" className="flex-1" size="lg">
+        <Button onClick={onCancel} variant="outline" className="flex-1 text-lg py-6">
           取消 / Cancel
         </Button>
       </div>
