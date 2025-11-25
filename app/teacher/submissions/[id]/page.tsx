@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 
-export default function SubmissionGradingPage({ params }: { params: { id: string } }) {
+export default function SubmissionGradingPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
@@ -27,7 +28,7 @@ export default function SubmissionGradingPage({ params }: { params: { id: string
         const { data: submissionData, error: submissionError } = await supabase
           .from("submissions")
           .select("*")
-          .eq("id", params.id)
+          .eq("id", id)
           .single()
 
         if (submissionError) throw submissionError
@@ -54,7 +55,7 @@ export default function SubmissionGradingPage({ params }: { params: { id: string
     }
 
     fetchData()
-  }, [params.id])
+  }, [id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,7 +70,7 @@ export default function SubmissionGradingPage({ params }: { params: { id: string
           feedback,
           graded_at: new Date().toISOString(),
         })
-        .eq("id", params.id)
+        .eq("id", id)
 
       if (updateError) throw updateError
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 
-export default function NewChapterPage({ params }: { params: { id: string } }) {
+export default function NewChapterPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
@@ -27,7 +28,7 @@ export default function NewChapterPage({ params }: { params: { id: string } }) {
       const { data: chapters } = await supabase
         .from("chapters")
         .select("order_index")
-        .eq("course_id", params.id)
+        .eq("course_id", id)
         .order("order_index", { ascending: false })
         .limit(1)
 
@@ -37,7 +38,7 @@ export default function NewChapterPage({ params }: { params: { id: string } }) {
     }
 
     fetchNextOrder()
-  }, [params.id])
+  }, [id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,7 +57,7 @@ export default function NewChapterPage({ params }: { params: { id: string } }) {
       const { data: chapter, error: chapterError } = await supabase
         .from("chapters")
         .insert({
-          course_id: params.id,
+          course_id: id,
           title: formData.title,
           description: formData.description,
           order_index: formData.order_index,
@@ -81,7 +82,7 @@ export default function NewChapterPage({ params }: { params: { id: string } }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <h1 className="text-2xl font-bold text-indigo-600">WeaveMind</h1>
-            <Link href={`/teacher/courses/${params.id}`}>
+            <Link href={`/teacher/courses/${id}`}>
               <Button variant="ghost">Back</Button>
             </Link>
           </div>
@@ -142,7 +143,7 @@ export default function NewChapterPage({ params }: { params: { id: string } }) {
               <Button type="submit" disabled={loading}>
                 {loading ? "Creating..." : "Create Chapter"}
               </Button>
-              <Link href={`/teacher/courses/${params.id}`}>
+              <Link href={`/teacher/courses/${id}`}>
                 <Button type="button" variant="outline">Cancel</Button>
               </Link>
             </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, use } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 
-export default function NewAssignmentPage({ params }: { params: { id: string } }) {
+export default function NewAssignmentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
@@ -40,7 +41,7 @@ export default function NewAssignmentPage({ params }: { params: { id: string } }
       const { data: assignment, error: assignmentError } = await supabase
         .from("assignments")
         .insert({
-          class_id: params.id,
+          class_id: id,
           title: formData.title,
           description: formData.description,
           instructions: formData.instructions,
@@ -69,7 +70,7 @@ export default function NewAssignmentPage({ params }: { params: { id: string } }
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <h1 className="text-2xl font-bold text-indigo-600">WeaveMind</h1>
-            <Link href={`/teacher/classes/${params.id}`}>
+            <Link href={`/teacher/classes/${id}`}>
               <Button variant="ghost">Back</Button>
             </Link>
           </div>
@@ -164,7 +165,7 @@ export default function NewAssignmentPage({ params }: { params: { id: string } }
               <Button type="submit" disabled={loading}>
                 {loading ? "Creating..." : "Create Assignment"}
               </Button>
-              <Link href={`/teacher/classes/${params.id}`}>
+              <Link href={`/teacher/classes/${id}`}>
                 <Button type="button" variant="outline">Cancel</Button>
               </Link>
             </div>

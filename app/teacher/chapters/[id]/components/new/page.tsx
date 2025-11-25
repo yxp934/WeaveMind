@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,8 @@ import Link from "next/link"
 
 type ComponentType = "text" | "image" | "video" | "question" | "interactive"
 
-export default function NewComponentPage({ params }: { params: { id: string } }) {
+export default function NewComponentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
@@ -34,7 +35,7 @@ export default function NewComponentPage({ params }: { params: { id: string } })
       const { data: components } = await supabase
         .from("components")
         .select("order_index")
-        .eq("chapter_id", params.id)
+        .eq("chapter_id", id)
         .order("order_index", { ascending: false })
         .limit(1)
 
@@ -43,7 +44,7 @@ export default function NewComponentPage({ params }: { params: { id: string } })
     }
 
     fetchNextOrder()
-  }, [params.id])
+  }, [id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -88,7 +89,7 @@ export default function NewComponentPage({ params }: { params: { id: string } })
       const { error: componentError } = await supabase
         .from("components")
         .insert({
-          chapter_id: params.id,
+          chapter_id: id,
           type: componentType,
           content,
           order_index: nextOrderIndex,
@@ -96,7 +97,7 @@ export default function NewComponentPage({ params }: { params: { id: string } })
 
       if (componentError) throw componentError
 
-      router.push(`/teacher/chapters/${params.id}`)
+      router.push(`/teacher/chapters/${id}`)
     } catch (err: any) {
       console.error("Error creating component:", err)
       setError(err.message || "Failed to create component")
@@ -110,7 +111,7 @@ export default function NewComponentPage({ params }: { params: { id: string } })
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <h1 className="text-2xl font-bold text-indigo-600">WeaveMind</h1>
-            <Link href={`/teacher/chapters/${params.id}`}>
+            <Link href={`/teacher/chapters/${id}`}>
               <Button variant="ghost">Back</Button>
             </Link>
           </div>
@@ -297,7 +298,7 @@ export default function NewComponentPage({ params }: { params: { id: string } })
               <Button type="submit" disabled={loading}>
                 {loading ? "Creating..." : "Add Component"}
               </Button>
-              <Link href={`/teacher/chapters/${params.id}`}>
+              <Link href={`/teacher/chapters/${id}`}>
                 <Button type="button" variant="outline">Cancel</Button>
               </Link>
             </div>
