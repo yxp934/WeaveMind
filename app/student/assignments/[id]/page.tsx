@@ -1,19 +1,20 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 
-export default function StudentAssignmentPage({ params }: { params: { id: string } }) {
+export default function StudentAssignmentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  
+
   const [assignment, setAssignment] = useState<any>(null)
   const [submission, setSubmission] = useState<any>(null)
   const [submissionText, setSubmissionText] = useState("")
@@ -33,7 +34,7 @@ export default function StudentAssignmentPage({ params }: { params: { id: string
         const { data: assignmentData, error: assignmentError } = await supabase
           .from("assignments")
           .select("*, class:classes(name, id)")
-          .eq("id", params.id)
+          .eq("id", id)
           .single()
 
         if (assignmentError) throw assignmentError
@@ -43,7 +44,7 @@ export default function StudentAssignmentPage({ params }: { params: { id: string
         const { data: submissionData } = await supabase
           .from("submissions")
           .select("*")
-          .eq("assignment_id", params.id)
+          .eq("assignment_id", id)
           .eq("student_id", currentUser.id)
           .single()
 
@@ -61,7 +62,7 @@ export default function StudentAssignmentPage({ params }: { params: { id: string
     }
 
     fetchData()
-  }, [params.id])
+  }, [id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,7 +86,7 @@ export default function StudentAssignmentPage({ params }: { params: { id: string
         const { error: insertError } = await supabase
           .from("submissions")
           .insert({
-            assignment_id: params.id,
+            assignment_id: id,
             student_id: user.id,
             content: { text: submissionText },
             submitted_at: new Date().toISOString(),
