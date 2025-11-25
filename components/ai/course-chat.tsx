@@ -179,8 +179,7 @@ export function CourseChat({ onRequirementsComplete }: CourseChatProps) {
         {canGenerateOutline && (
           <Button
             onClick={handleGenerateOutline}
-            className="w-full bg-green-600 hover:bg-green-700"
-            size="lg"
+            className="w-full bg-green-600 hover:bg-green-700 text-lg py-6"
           >
             ✨ 生成课程大纲 / Generate Course Outline
           </Button>
