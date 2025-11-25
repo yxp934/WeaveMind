@@ -49,6 +49,15 @@ export default function StudentAssignmentPage({ params }: { params: Promise<{ id
           .single()
 
         if (submissionData) {
+          // Parse content if it's a JSON string
+          if (submissionData.content && typeof submissionData.content === 'string') {
+            try {
+              submissionData.content = JSON.parse(submissionData.content)
+            } catch (e) {
+              // If parsing fails, keep as is
+            }
+          }
+
           setSubmission(submissionData)
           setSubmissionText(submissionData.content?.text || "")
         }
