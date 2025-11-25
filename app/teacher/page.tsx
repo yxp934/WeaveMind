@@ -64,6 +64,24 @@ export default async function TeacherDashboard() {
           </div>
         </div>
 
+        {/* AI Course Creator Quick Access */}
+        <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 mb-8 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-2xl font-bold mb-2">🤖 AI 课程助手 / AI Course Assistant</h3>
+              <p className="text-indigo-100 mb-4">
+                通过AI对话快速创建课程大纲 / Create course outlines through AI conversation
+              </p>
+              <Link href="/teacher/courses/new-ai">
+                <Button className="bg-white text-indigo-600 hover:bg-indigo-50">
+                  开始创建 / Start Creating
+                </Button>
+              </Link>
+            </div>
+            <div className="text-6xl">✨</div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-bold">My Organizations</h3>
