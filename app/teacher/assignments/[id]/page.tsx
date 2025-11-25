@@ -122,9 +122,9 @@ export default async function AssignmentDetailPage({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="font-semibold">Student ID: {submission.student_id.substring(0, 8)}...</h4>
-                        {submission.score !== null ? (
+                        {submission.grade !== null ? (
                           <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                            Graded: {submission.score}/{assignment.max_score}
+                            Graded: {submission.grade}/{assignment.max_score}
                           </span>
                         ) : (
                           <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">

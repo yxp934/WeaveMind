@@ -32,8 +32,18 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
           .single()
 
         if (submissionError) throw submissionError
+
+        // Parse content if it's a JSON string
+        if (submissionData.content && typeof submissionData.content === 'string') {
+          try {
+            submissionData.content = JSON.parse(submissionData.content)
+          } catch (e) {
+            // If parsing fails, keep as is
+          }
+        }
+
         setSubmission(submissionData)
-        setScore(submissionData.score || 0)
+        setScore(submissionData.grade || 0)
         setFeedback(submissionData.feedback || "")
 
         // Get assignment details
@@ -66,7 +76,7 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
       const { error: updateError } = await supabase
         .from("submissions")
         .update({
-          score,
+          grade: score,
           feedback,
           graded_at: new Date().toISOString(),
         })
