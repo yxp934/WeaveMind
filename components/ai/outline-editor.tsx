@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface Lesson {
   title: string
-  duration: string
-  topics: string[]
+  description?: string
+  duration?: string
+  topics?: string[]
 }
 
 interface Chapter {
