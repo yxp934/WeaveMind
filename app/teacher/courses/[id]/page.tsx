@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { AIGenerationPanel } from "@/components/ai/ai-generation-panel"
 
 export default async function CourseDetailPage({
   params,
@@ -17,38 +18,53 @@ export default async function CourseDetailPage({
     redirect("/auth/login")
   }
 
-  // Get course details
-  const { data: course } = await supabase
-    .from("courses")
-    .select("*, class:classes(name, id)")
-    .eq("id", id)
-    .single()
+	// Get course details
+	const { data: course } = await supabase
+	  .from("courses")
+	  .select("*, class:classes(name, id)")
+	  .eq("id", id)
+	  .single()
 
   if (!course) {
     redirect("/teacher")
   }
 
-  // Get chapters with component counts
-  const { data: chapters } = await supabase
-    .from("chapters")
-    .select("*, components(count)")
-    .eq("course_id", id)
-    .order("order_index", { ascending: true })
+	// Get chapters with component counts
+	const { data: chapters } = await supabase
+	  .from("chapters")
+	  .select("*, components(count)")
+	  .eq("course_id", id)
+	  .order("order_index", { ascending: true })
+
+	// Check if this course has an AI-generated outline (required for Phase 4 generation)
+	const { data: outlines } = await supabase
+	  .from("course_outlines")
+	  .select("id")
+	  .eq("course_id", id)
+	  .limit(1)
+
+	const hasOutline = !!(outlines && outlines.length > 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center space-x-4">
-              <Link href={`/teacher/classes/${course.class_id}`}>
-                <Button variant="ghost">← Back to Class</Button>
-              </Link>
-              <h1 className="text-2xl font-bold text-indigo-600">{course.title}</h1>
-            </div>
-            <span className="text-sm text-gray-700">{user.email}</span>
-          </div>
-        </div>
+	      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+	        <div className="flex justify-between h-16 items-center">
+	          <div className="flex items-center space-x-4">
+	            {course.class_id ? (
+	              <Link href={`/teacher/classes/${course.class_id}`}>
+	                <Button variant="ghost">← Back to Class</Button>
+	              </Link>
+	            ) : (
+	              <Link href="/teacher">
+	                <Button variant="ghost">← Back to Courses</Button>
+	              </Link>
+	            )}
+	            <h1 className="text-2xl font-bold text-indigo-600">{course.title}</h1>
+	          </div>
+	          <span className="text-sm text-gray-700">{user.email}</span>
+	        </div>
+	      </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -57,16 +73,16 @@ export default async function CourseDetailPage({
             <div>
               <h2 className="text-3xl font-bold text-gray-900 mb-2">{course.title}</h2>
               <p className="text-gray-600 mb-2">{course.description || "No description"}</p>
-              <div className="flex items-center gap-2">
-                {course.published ? (
-                  <span className="px-3 py-1 text-sm bg-green-100 text-green-800 rounded-full">Published</span>
-                ) : (
-                  <span className="px-3 py-1 text-sm bg-gray-100 text-gray-800 rounded-full">Draft</span>
-                )}
-                <span className="text-sm text-gray-500">
-                  Class: {course.class?.name || "Unknown"}
-                </span>
-              </div>
+	              <div className="flex items-center gap-2">
+	                {course.published ? (
+	                  <span className="px-3 py-1 text-sm bg-green-100 text-green-800 rounded-full">Published</span>
+	                ) : (
+	                  <span className="px-3 py-1 text-sm bg-gray-100 text-gray-800 rounded-full">Draft</span>
+	                )}
+	                <span className="text-sm text-gray-500">
+	                  {course.class?.name ? `Class: ${course.class.name}` : "AI Draft (no class yet)"}
+	                </span>
+	              </div>
             </div>
             <Link href={`/teacher/courses/${id}/edit`}>
               <Button variant="outline">Edit Course</Button>
@@ -118,8 +134,8 @@ export default async function CourseDetailPage({
           )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+	        {/* Quick Actions */}
+	        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
             <h4 className="font-semibold mb-2">Course Content</h4>
             <p className="text-sm text-gray-600 mb-4">
@@ -150,8 +166,11 @@ export default async function CourseDetailPage({
             <Link href={`/student/courses/${id}`}>
               <Button variant="outline" className="w-full">Preview as Student</Button>
             </Link>
-          </div>
-        </div>
+	          </div>
+	        </div>
+
+	        {/* Phase 4: AI chapter content generation */}
+	        <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
       </main>
     </div>
   )
