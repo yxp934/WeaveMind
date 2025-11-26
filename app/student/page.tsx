@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { JoinClassForm } from "@/components/student/join-class-form"
 
 export default async function StudentDashboard() {
   const supabase = await createClient()
@@ -95,10 +96,12 @@ export default async function StudentDashboard() {
             <div className="text-center py-12">
               <p className="text-gray-500 mb-4">You haven&apos;t joined any classes yet</p>
               <p className="text-sm text-gray-400">
-                Ask your teacher for a class invitation code
+                Ask your teacher for a class invitation code, then enter it below.
               </p>
             </div>
           )}
+
+          <JoinClassForm />
         </div>
       </main>
     </div>

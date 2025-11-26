@@ -75,7 +75,7 @@ export default async function ClassDetailPage({
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-2">Students</h3>
             <p className="text-3xl font-bold text-indigo-600">{studentCount || 0}</p>
@@ -87,6 +87,15 @@ export default async function ClassDetailPage({
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-2">Assignments</h3>
             <p className="text-3xl font-bold text-indigo-600">{assignments?.length || 0}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">Class Join Code</h3>
+            <p className="font-mono text-xl text-indigo-600 break-all">
+              {classData.join_code}
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              Share this code with students so they can join this class from their student dashboard.
+            </p>
           </div>
         </div>
 

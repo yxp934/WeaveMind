@@ -35,14 +35,49 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protected routes
+  const pathname = request.nextUrl.pathname
+
+  // Protected routes: require authentication for teacher and student areas
   if (!user && (
-    request.nextUrl.pathname.startsWith('/teacher') ||
-    request.nextUrl.pathname.startsWith('/student')
+    pathname.startsWith('/teacher') ||
+    pathname.startsWith('/student')
   )) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     return NextResponse.redirect(url)
+  }
+
+  // Enforce single-role accounts (teacher vs student)
+  if (user && (
+    pathname.startsWith('/teacher') ||
+    pathname.startsWith('/student') ||
+    pathname === '/role-select'
+  )) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    const url = request.nextUrl.clone()
+
+    // If no role yet, force the user through /role-select
+    if (!profile || !profile.role) {
+      if (pathname !== '/role-select' && !pathname.startsWith('/auth')) {
+        url.pathname = '/role-select'
+        return NextResponse.redirect(url)
+      }
+    } else {
+      // Role is fixed; prevent crossing between teacher and student areas
+      if (pathname.startsWith('/teacher') && profile.role !== 'teacher') {
+        url.pathname = '/student'
+        return NextResponse.redirect(url)
+      }
+      if (pathname.startsWith('/student') && profile.role !== 'student') {
+        url.pathname = '/teacher'
+        return NextResponse.redirect(url)
+      }
+    }
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
