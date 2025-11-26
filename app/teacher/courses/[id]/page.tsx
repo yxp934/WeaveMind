@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { AIGenerationPanel } from "@/components/ai/ai-generation-panel"
+import { CourseAIAssistantWrapper } from "@/components/ai/course-ai-assistant-wrapper"
 
 export default async function CourseDetailPage({
   params,
@@ -169,8 +170,12 @@ export default async function CourseDetailPage({
 	          </div>
 	        </div>
 
-	        {/* Phase 4: AI chapter content generation */}
-	        <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
+	        {/* AI Course Assistant or AI Chapter Content Generation */}
+	        {hasOutline ? (
+	          <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
+	        ) : (
+	          <CourseAIAssistantWrapper courseId={id} />
+	        )}
       </main>
     </div>
   )
