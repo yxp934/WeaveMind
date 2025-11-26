@@ -4,6 +4,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { AIGenerationPanel } from "@/components/ai/ai-generation-panel"
 import { CourseAIAssistantWrapper } from "@/components/ai/course-ai-assistant-wrapper"
+import { CourseEditorAssistantWrapper } from "@/components/ai/course-editor-assistant-wrapper"
 
 export default async function CourseDetailPage({
   params,
@@ -175,6 +176,13 @@ export default async function CourseDetailPage({
 	          <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
 	        ) : (
 	          <CourseAIAssistantWrapper courseId={id} />
+	        )}
+
+	        {/* Phase 5: AI Course Editor - Only show if course has chapters */}
+	        {chapters && chapters.length > 0 && (
+	          <div className="mt-8">
+	            <CourseEditorAssistantWrapper courseId={id} />
+	          </div>
 	        )}
       </main>
     </div>
