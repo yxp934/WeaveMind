@@ -17,6 +17,15 @@ export default async function StudentCoursePage({
     redirect("/auth/login")
   }
 
+  // Get user's role
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  const isTeacher = profile?.role === "teacher"
+
   // Get course details
   const { data: course } = await supabase
     .from("courses")
@@ -24,7 +33,12 @@ export default async function StudentCoursePage({
     .eq("id", id)
     .single()
 
-  if (!course || !course.published) {
+  if (!course) {
+    redirect("/student")
+  }
+
+  // Allow teachers to preview unpublished courses, but students can only see published courses
+  if (!course.published && !isTeacher) {
     redirect("/student")
   }
 
@@ -55,6 +69,18 @@ export default async function StudentCoursePage({
       </nav>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Teacher Preview Banner */}
+        {isTeacher && !course.published && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <span className="text-yellow-800 font-semibold">👁️ Teacher Preview Mode</span>
+              <span className="ml-2 text-yellow-700 text-sm">
+                This course is unpublished. Students cannot see this content yet.
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">{course.title}</h2>
           <p className="text-gray-600 mb-2">{course.description || "No description"}</p>
