@@ -8,6 +8,7 @@ ALTER TABLE courses
 -- preserving class-based creation rules for normal courses.
 DO $$
 BEGIN
+  -- Drop old policy if present
   IF EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
@@ -16,20 +17,30 @@ BEGIN
   ) THEN
     EXECUTE 'DROP POLICY "Teachers can create courses" ON courses;';
   END IF;
-END$$;
 
-CREATE POLICY IF NOT EXISTS "Teachers can create courses or AI drafts"
-  ON courses FOR INSERT
-  WITH CHECK (
-    -- AI-generated draft courses without a class
-    (class_id IS NULL AND created_by = auth.uid())
-    OR
-    -- Normal courses tied to a class where the user is a teacher
-    (class_id IN (
-      SELECT class_id FROM class_members
-      WHERE user_id = auth.uid() AND role = ''teacher''
-    ))
-  );
+  -- Create AI-draft-aware policy if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'courses'
+      AND policyname = 'Teachers can create courses or AI drafts'
+  ) THEN
+    EXECUTE $$
+      CREATE POLICY "Teachers can create courses or AI drafts"
+        ON courses FOR INSERT
+        WITH CHECK (
+          -- AI-generated draft courses without a class
+          (class_id IS NULL AND created_by = auth.uid())
+          OR
+          -- Normal courses tied to a class where the user is a teacher
+          (class_id IN (
+            SELECT class_id FROM class_members
+            WHERE user_id = auth.uid() AND role = 'teacher'
+          ))
+        );
+    $$;
+  END IF;
+END$$;
 
 -- 2) Course outlines table to store AI-generated outlines
 CREATE TABLE IF NOT EXISTS course_outlines (
@@ -43,10 +54,22 @@ CREATE TABLE IF NOT EXISTS course_outlines (
 
 ALTER TABLE course_outlines ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Course creator can manage course_outlines"
-  ON course_outlines FOR ALL
-  USING (created_by = auth.uid())
-  WITH CHECK (created_by = auth.uid());
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'course_outlines'
+      AND policyname = 'Course creator can manage course_outlines'
+  ) THEN
+    EXECUTE $$
+      CREATE POLICY "Course creator can manage course_outlines"
+        ON course_outlines FOR ALL
+        USING (created_by = auth.uid())
+        WITH CHECK (created_by = auth.uid());
+    $$;
+  END IF;
+END$$;
 
 -- 3) AI generation run and per-chapter result tables
 CREATE TABLE IF NOT EXISTS ai_generation_runs (
@@ -85,33 +108,85 @@ CREATE INDEX IF NOT EXISTS idx_ai_generation_chapter_results_run
 ALTER TABLE ai_generation_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_generation_chapter_results ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Course creator can view ai_generation_runs"
-  ON ai_generation_runs FOR SELECT
-  USING (created_by = auth.uid());
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_generation_runs'
+      AND policyname = 'Course creator can view ai_generation_runs'
+  ) THEN
+    EXECUTE $$
+      CREATE POLICY "Course creator can view ai_generation_runs"
+        ON ai_generation_runs FOR SELECT
+        USING (created_by = auth.uid());
+    $$;
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Course creator can manage ai_generation_runs"
-  ON ai_generation_runs FOR ALL
-  USING (created_by = auth.uid())
-  WITH CHECK (created_by = auth.uid());
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_generation_runs'
+      AND policyname = 'Course creator can manage ai_generation_runs'
+  ) THEN
+    EXECUTE $$
+      CREATE POLICY "Course creator can manage ai_generation_runs"
+        ON ai_generation_runs FOR ALL
+        USING (created_by = auth.uid())
+        WITH CHECK (created_by = auth.uid());
+    $$;
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Course creator can view ai_generation_chapter_results"
-  ON ai_generation_chapter_results FOR SELECT
-  USING (
-    run_id IN (
-      SELECT id FROM ai_generation_runs WHERE created_by = auth.uid()
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_generation_chapter_results'
+      AND policyname = 'Course creator can view ai_generation_chapter_results'
+  ) THEN
+    EXECUTE $$
+      CREATE POLICY "Course creator can view ai_generation_chapter_results"
+        ON ai_generation_chapter_results FOR SELECT
+        USING (
+          run_id IN (
+            SELECT id FROM ai_generation_runs WHERE created_by = auth.uid()
+          )
+        );
+    $$;
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Course creator can manage ai_generation_chapter_results"
-  ON ai_generation_chapter_results FOR ALL
-  USING (
-    run_id IN (
-      SELECT id FROM ai_generation_runs WHERE created_by = auth.uid()
-    )
-  )
-  WITH CHECK (
-    run_id IN (
-      SELECT id FROM ai_generation_runs WHERE created_by = auth.uid()
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'ai_generation_chapter_results'
+      AND policyname = 'Course creator can manage ai_generation_chapter_results'
+  ) THEN
+    EXECUTE $$
+      CREATE POLICY "Course creator can manage ai_generation_chapter_results"
+        ON ai_generation_chapter_results FOR ALL
+        USING (
+          run_id IN (
+            SELECT id FROM ai_generation_runs WHERE created_by = auth.uid()
+          )
+        )
+        WITH CHECK (
+          run_id IN (
+            SELECT id FROM ai_generation_runs WHERE created_by = auth.uid()
+          )
+        );
+    $$;
+  END IF;
+END$$;
 
+-- Ensure unique (run_id, chapter_id) for upserts from the AI orchestrator
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'ai_generation_chapter_results_run_chapter_key'
+  ) THEN
+    ALTER TABLE ai_generation_chapter_results
+      ADD CONSTRAINT ai_generation_chapter_results_run_chapter_key
+      UNIQUE (run_id, chapter_id);
+  END IF;
+END$$;
