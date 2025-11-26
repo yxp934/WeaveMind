@@ -73,7 +73,9 @@ export async function updateSession(request: NextRequest) {
         url.pathname = '/student'
         return NextResponse.redirect(url)
       }
-      if (pathname.startsWith('/student') && profile.role !== 'student') {
+      // Allow teachers to preview student course pages, but prevent students from accessing teacher pages
+      const isTeacherPreviewingCourse = pathname.startsWith('/student/courses/') && profile.role === 'teacher'
+      if (pathname.startsWith('/student') && profile.role !== 'student' && !isTeacherPreviewingCourse) {
         url.pathname = '/teacher'
         return NextResponse.redirect(url)
       }
