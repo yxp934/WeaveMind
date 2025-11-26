@@ -146,10 +146,93 @@
 - These do not affect functionality or security
 
 ### Future Enhancements
-- Add student class detail page with course/assignment views
-- Implement assignment submission workflow
-- Add teacher view of student submissions
+- Add teacher view of student submissions with grading interface
 - Enhance error messages with more context
+- Add progress tracking for course completion
+
+---
+
+### 5. Student Course Access Workflow ✅
+
+**Test Setup:**
+- Teacher: `teacher.test@weavemind.ai`
+- Student: `student-test-1732608100@weavemind.com`
+- Class: "Playwright Test Class" (join code: `a2ae9f8b`)
+- Course: "Playwright Test Course (Manual)" - Published
+- Chapter: "Introduction to Programming"
+- Assignment: "Playwright Test Assignment"
+
+#### 5.1 Teacher Course Creation
+- ✅ Teacher logged in successfully
+- ✅ Navigated to existing organization "Playwright Test Org"
+- ✅ Accessed existing class "Playwright Test Class"
+- ✅ Verified class has join code: `a2ae9f8b`
+- ✅ Course "Playwright Test Course (Manual)" already exists and is **Published**
+- ✅ Created new chapter "Introduction to Programming"
+  - Title: "Introduction to Programming"
+  - Description: "Learn the basics of programming including variables, loops, and functions."
+  - Order: 1 (first chapter)
+- ✅ Added text component to chapter
+  - Type: Text (📝)
+  - Content: Comprehensive introduction to programming concepts
+  - Successfully saved and displayed
+
+#### 5.2 Student Join and Course Access
+- ✅ Student logged in successfully
+- ✅ Entered join code `a2ae9f8b` in join form
+- ✅ Success message: **"Successfully joined class 'Playwright Test Class'"**
+- ✅ Class appeared in "My Classes" section
+- ✅ Class counter updated from "1" to "2"
+- ✅ Clicked "View Class" to access class detail page
+
+#### 5.3 Student Class Detail View
+- ✅ Class detail page loaded correctly
+- ✅ Class information displayed:
+  - Name: "Playwright Test Class"
+  - Description: "Class used for end-to-end Playwright testing."
+  - Organization: "Playwright Test Org"
+- ✅ Counters displayed correctly:
+  - **Available Courses: 1**
+  - **Assignments: 1**
+  - **Completed: 0**
+
+#### 5.4 Student Course Content Access
+- ✅ Course card displayed in "Courses" section:
+  - Title: "Playwright Test Course (Manual)"
+  - Description: "Manual course used to test class-course linking and publishing."
+- ✅ Clicked on course to access course detail page
+- ✅ Course detail page loaded successfully
+- ✅ **Course content fully accessible:**
+  - Course title and description displayed
+  - Class name shown: "Playwright Test Class"
+  - **Chapter 1: "Introduction to Programming"** displayed
+  - Chapter description visible
+  - **Component content rendered:**
+    - Full text content about programming fundamentals
+    - Variables, loops, and functions explanation
+    - Clear and readable formatting
+
+#### 5.5 Student Assignment Submission
+- ✅ Assignment card displayed in "Assignments" section:
+  - Title: "Playwright Test Assignment"
+  - Status: "Pending"
+  - Due date: "No due date"
+  - Description: "Assignment to validate end-to-end flow from teacher to student."
+- ✅ Clicked "Submit" button to access assignment page
+- ✅ Assignment detail page loaded correctly
+- ✅ Assignment information displayed:
+  - Instructions: "Write a short reflection (3-5 sentences) on what you learned in this course."
+  - Grading Criteria: "Based on completeness and clarity."
+  - Max Score: 100
+  - Class: "Playwright Test Class"
+- ✅ Submission form rendered correctly
+- ✅ Entered answer text (reflection on programming concepts)
+- ✅ Clicked "Submit Assignment" button
+- ✅ **Submission successful:**
+  - Page heading changed from "Submit Your Work" to **"Update Your Submission"**
+  - Button changed from "Submit Assignment" to **"Update Submission"**
+  - Answer text preserved in form
+  - Student can update submission if needed
 
 ---
 
@@ -163,8 +246,18 @@ All critical user workflows have been tested end-to-end on the live production s
 - ✅ Join class via invitation code
 - ✅ Role-based access control
 - ✅ Error handling and validation
+- ✅ **Teacher course creation with chapters and components**
+- ✅ **Student course access and content viewing**
+- ✅ **Student assignment submission**
 
 The single-role-per-account architecture is working correctly at all layers (database, API, middleware, UI), and the join-class feature is secure and functional.
 
-**Ready for user acceptance testing.**
+**The complete student learning workflow is operational:**
+1. Student joins class using invitation code
+2. Student views available courses in the class
+3. Student accesses course content (chapters and components)
+4. Student views and submits assignments
+5. Student can update submissions before grading
+
+**Ready for user acceptance testing and production use.**
 
