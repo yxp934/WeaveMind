@@ -1,13 +1,44 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { ComponentAIAssistant } from './component-ai-assistant'
+import { logComponentOpen, logComponentComplete } from '@/lib/analytics/learning-events'
 
 interface ComponentDisplayProps {
   component: any
   courseId: string
+  chapterId: string
 }
 
-export function ComponentDisplay({ component, courseId }: ComponentDisplayProps) {
+export function ComponentDisplay({ component, courseId, chapterId }: ComponentDisplayProps) {
+  const [startTime] = useState(Date.now())
+  const hasLoggedOpen = useRef(false)
+  const hasLoggedComplete = useRef(false)
+
+  // Log component open event when component is first viewed
+  useEffect(() => {
+    if (!hasLoggedOpen.current) {
+      logComponentOpen(component.id, courseId, chapterId)
+      hasLoggedOpen.current = true
+    }
+  }, [component.id, courseId, chapterId])
+
+  // Log component complete event when user scrolls past or spends enough time
+  useEffect(() => {
+    const handleComplete = () => {
+      if (!hasLoggedComplete.current) {
+        const durationSeconds = Math.floor((Date.now() - startTime) / 1000)
+        logComponentComplete(component.id, courseId, chapterId, durationSeconds)
+        hasLoggedComplete.current = true
+      }
+    }
+
+    // Mark as complete after 30 seconds of viewing
+    const timer = setTimeout(handleComplete, 30000)
+
+    return () => clearTimeout(timer)
+  }, [component.id, courseId, chapterId, startTime])
+
   return (
     <div className="border-l-4 border-indigo-200 pl-4">
       {/* Text Component */}

@@ -116,6 +116,7 @@ export default async function StudentCoursePage({
                           key={component.id}
                           component={component}
                           courseId={id}
+                          chapterId={chapter.id}
                         />
                       ))
                   ) : (

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { logAIQuestionAsked, logAIQuestionAnswered } from '@/lib/analytics/learning-events'
 
 interface Message {
   id: string
@@ -38,10 +39,15 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
       content: input,
     }
 
+    const questionText = input
+
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setIsLoading(true)
     setError(null)
+
+    // Log AI question asked event
+    logAIQuestionAsked(componentId, courseId, questionText)
 
     try {
       const response = await fetch('/api/student/ai-chat', {
@@ -50,7 +56,7 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
         body: JSON.stringify({
           componentId,
           courseId,
-          message: input,
+          message: questionText,
         }),
       })
 
@@ -86,6 +92,9 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
             : msg
         ))
       }
+
+      // Log AI question answered event
+      logAIQuestionAnswered(componentId, courseId, questionText, assistantMessage.length)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
