@@ -52,11 +52,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Initialize OpenAI client with Vercel AI Gateway
-    const openai = createOpenAI({
-      baseURL: GATEWAY_BASE_URL,
-      apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY || '',
-    })
+	    // Initialize OpenAI client with Vercel AI Gateway using API key (no OIDC)
+	    const gatewayKey = process.env.VERCEL_GATEWAY_KEY
+	    if (!gatewayKey) {
+	      return NextResponse.json(
+	        { error: 'AI Gateway not configured' },
+	        { status: 500 }
+	      )
+	    }
+	
+	    const openai = createOpenAI({
+	      baseURL: GATEWAY_BASE_URL,
+	      apiKey: gatewayKey,
+	    })
 
     // Build system prompt with course context
     const systemPrompt = `You are a course editing assistant. You help teachers modify their course content using the available tools.

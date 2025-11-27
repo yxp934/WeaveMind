@@ -108,7 +108,7 @@ export function CourseEditorAssistant({ courseId, onEditComplete }: CourseEditor
             <Button type="submit" disabled={loading || !instruction.trim()}>
               {loading ? '处理中... / Processing...' : '执行编辑 / Execute Edit'}
             </Button>
-            {(response || error) && (
+	            {(response || error || toolCalls.length > 0 || toolResults.length > 0) && (
               <Button type="button" variant="outline" onClick={handleClear}>
                 清除 / Clear
               </Button>
@@ -124,51 +124,61 @@ export function CourseEditorAssistant({ courseId, onEditComplete }: CourseEditor
           </div>
         )}
 
-        {response && (
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h3 className="font-semibold text-blue-900 mb-2">AI 响应 / AI Response:</h3>
-              <p className="text-sm text-blue-800 whitespace-pre-wrap">{response}</p>
-            </div>
+	        {(response || toolCalls.length > 0 || toolResults.length > 0) && (
+	          <div className="space-y-4">
+	            {response && (
+	              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+	                <h3 className="font-semibold text-blue-900 mb-2">AI 响应 / AI Response:</h3>
+	                <p className="text-sm text-blue-800 whitespace-pre-wrap">{response}</p>
+	              </div>
+	            )}
 
-            {toolCalls.length > 0 && (
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">
-                  执行的操作 / Operations Executed ({toolCalls.length}):
-                </h3>
-                <div className="space-y-2">
-                  {toolCalls.map((call, index) => (
-                    <div key={index} className="text-sm">
-                      <span className="font-medium text-gray-700">{call.toolName}</span>
-                      <pre className="mt-1 p-2 bg-white rounded text-xs overflow-x-auto">
-                        {JSON.stringify(call.args, null, 2)}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+	            {toolCalls.length > 0 && (
+	              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+	                <h3 className="font-semibold text-gray-900 mb-2">
+	                  执行的操作 / Operations Executed ({toolCalls.length}):
+	                </h3>
+	                <div className="space-y-2">
+	                  {toolCalls.map((call, index) => (
+	                    <div key={index} className="text-sm">
+	                      <span className="font-medium text-gray-700">{call.toolName}</span>
+	                      <pre className="mt-1 p-2 bg-white rounded text-xs overflow-x-auto">
+	                        {JSON.stringify(call.args, null, 2)}
+	                      </pre>
+	                    </div>
+	                  ))}
+	                </div>
+	              </div>
+	            )}
 
-            {toolResults.length > 0 && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="font-semibold text-green-900 mb-2">
-                  操作结果 / Operation Results:
-                </h3>
-                <div className="space-y-2">
-                  {toolResults.map((result, index) => (
-                    <div key={index} className="text-sm">
-                      <span className="font-medium text-green-700">{result.toolName}:</span>
-                      <p className="text-green-800 mt-1">
-                        {result.result.success ? '✓ ' : '✗ '}
-                        {result.result.message}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+	            {toolResults.length > 0 && (
+	              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+	                <h3 className="font-semibold text-green-900 mb-2">
+	                  操作结果 / Operation Results:
+	                </h3>
+	                <div className="space-y-2">
+	                  {toolResults.map((result, index) => {
+	                    const success = result.result?.success
+	                    const message =
+	                      typeof result.result?.message === 'string'
+	                        ? result.result.message
+	                        : JSON.stringify(result.result ?? {}, null, 2)
+
+	                    return (
+	                      <div key={index} className="text-sm">
+	                        <span className="font-medium text-green-700">{result.toolName}:</span>
+	                        <p className="text-green-800 mt-1">
+	                          {success === undefined ? '' : success ? '✓ ' : '✗ '}
+	                          {message}
+	                        </p>
+	                      </div>
+	                    )
+	                  })}
+	                </div>
+	              </div>
+	            )}
+	          </div>
+	        )}
       </CardContent>
     </Card>
   )
