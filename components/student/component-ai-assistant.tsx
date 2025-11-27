@@ -3,7 +3,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { useChat } from 'ai/react'
+
+interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
 
 interface ComponentAIAssistantProps {
   componentId: string
@@ -12,20 +17,91 @@ interface ComponentAIAssistantProps {
 
 export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssistantProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
-    api: '/api/student/ai-chat',
-    body: {
-      componentId,
-      courseId,
-    },
-  })
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() || isLoading) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+    }
+
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/student/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          componentId,
+          courseId,
+          message: input,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to get response')
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantMessage = ''
+
+      const assistantMessageId = (Date.now() + 1).toString()
+      setMessages(prev => [...prev, {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+      }])
+
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('0:')) {
+            try {
+              const text = JSON.parse(line.slice(2))
+              assistantMessage += text
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: assistantMessage }
+                  : msg
+              ))
+            } catch (e) {
+              // Ignore parse errors for incomplete chunks
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   if (!isOpen) {
     return (
@@ -62,7 +138,7 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
       <div className="h-96 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-gray-500 py-8">
-            <p className="mb-2">👋 Hi! I'm your AI learning assistant.</p>
+            <p className="mb-2">👋 Hi! I&apos;m your AI learning assistant.</p>
             <p className="text-sm">Ask me anything about this content!</p>
           </div>
         )}
@@ -98,7 +174,7 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700">
-            <p className="text-sm">Error: {error.message}</p>
+            <p className="text-sm">Error: {error}</p>
           </div>
         )}
 
@@ -110,7 +186,7 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
         <div className="flex gap-2">
           <Textarea
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about this content..."
             className="flex-1 min-h-[60px] max-h-[120px] resize-none"
             onKeyDown={(e) => {

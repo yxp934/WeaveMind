@@ -150,7 +150,6 @@ Keep responses focused and educational.`,
       model: openai('meituan/longcat-flash-chat'),
       messages: conversationMessages,
       temperature: 0.7,
-      maxTokens: 1000,
       async onFinish({ text }) {
         // Save assistant response after streaming completes
         await supabase.from('student_ai_messages').insert({
@@ -162,7 +161,7 @@ Keep responses focused and educational.`,
     })
 
     // Return streaming response
-    return result.toDataStreamResponse()
+    return result.toTextStreamResponse()
   } catch (error: any) {
     console.error('AI chat error:', error)
     return NextResponse.json(
