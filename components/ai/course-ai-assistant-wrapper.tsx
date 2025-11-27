@@ -11,8 +11,9 @@ export function CourseAIAssistantWrapper({ courseId }: CourseAIAssistantWrapperP
   const router = useRouter()
 
   const handleOutlineSaved = () => {
-    // Refresh the page to show the AI Generation Panel
-    router.refresh()
+    // Force a full page reload by navigating to the same URL
+    // This ensures the AI Generation Panel appears after outline is saved
+    window.location.href = `/teacher/courses/${courseId}`
   }
 
   return <CourseAIAssistant courseId={courseId} onOutlineSaved={handleOutlineSaved} />
