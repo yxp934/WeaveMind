@@ -57,8 +57,13 @@ function parseRequirementsFromConversation(conversationText: string): {
     startDate = date.toISOString().split('T')[0]
   }
 
-  // Parse time
-  const timeMatch = conversationText.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?/i)
+  // Parse time - look for patterns like "2:00 PM", "14:00", "at 2 PM"
+  // First try to match time with AM/PM
+  const timeWithPeriodMatch = conversationText.match(/(?:at\s+)?(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)/i)
+  // Then try 24-hour format like "14:00"
+  const time24Match = conversationText.match(/(?:at\s+)?(\d{1,2}):(\d{2})(?!\s*(?:AM|PM|classes|sessions|weeks))/i)
+
+  const timeMatch = timeWithPeriodMatch || time24Match
   if (timeMatch) {
     let hour = parseInt(timeMatch[1])
     const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0
