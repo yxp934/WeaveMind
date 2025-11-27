@@ -1,0 +1,139 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { useChat } from 'ai/react'
+
+interface ComponentAIAssistantProps {
+  componentId: string
+  courseId: string
+}
+
+export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssistantProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
+    api: '/api/student/ai-chat',
+    body: {
+      componentId,
+      courseId,
+    },
+  })
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  if (!isOpen) {
+    return (
+      <div className="mt-4">
+        <Button
+          onClick={() => setIsOpen(true)}
+          variant="outline"
+          className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+        >
+          💬 Ask AI Assistant
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 border-2 border-indigo-200 rounded-lg bg-white shadow-sm">
+      {/* Header */}
+      <div className="bg-indigo-50 px-4 py-3 border-b border-indigo-200 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🤖</span>
+          <h4 className="font-semibold text-indigo-900">AI Learning Assistant</h4>
+        </div>
+        <button
+          onClick={() => setIsOpen(false)}
+          className="text-gray-500 hover:text-gray-700 text-xl leading-none"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="h-96 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="text-center text-gray-500 py-8">
+            <p className="mb-2">👋 Hi! I'm your AI learning assistant.</p>
+            <p className="text-sm">Ask me anything about this content!</p>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            <div
+              className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                message.role === 'user'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-900'
+              }`}
+            >
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            </div>
+          </div>
+        ))}
+
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-100 rounded-lg px-4 py-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700">
+            <p className="text-sm">Error: {error.message}</p>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <form onSubmit={handleSubmit} className="border-t border-indigo-200 p-4">
+        <div className="flex gap-2">
+          <Textarea
+            value={input}
+            onChange={handleInputChange}
+            placeholder="Ask a question about this content..."
+            className="flex-1 min-h-[60px] max-h-[120px] resize-none"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleSubmit(e as any)
+              }
+            }}
+            disabled={isLoading}
+          />
+          <Button
+            type="submit"
+            disabled={isLoading || !input.trim()}
+            className="self-end"
+          >
+            {isLoading ? 'Sending...' : 'Send'}
+          </Button>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Press Enter to send, Shift+Enter for new line
+        </p>
+      </form>
+    </div>
+  )
+}
+
