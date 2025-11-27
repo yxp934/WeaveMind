@@ -1,18 +1,155 @@
-import { createOpenAI } from '@ai-sdk/openai'
-import { generateText } from 'ai'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { 
-  SCHEDULE_GENERATION_SYSTEM_PROMPT, 
-  buildSchedulePrompt, 
-  ScheduleRequirements 
-} from '@/lib/ai/prompts'
+
+// Parse schedule requirements from conversation text
+function parseRequirementsFromConversation(conversationText: string): {
+  totalClasses: number
+  frequency: string
+  startDate: string
+  startTime: string
+  durationMinutes: number
+  courseTopic: string
+  objectives: string[]
+} {
+  // Default values
+  let totalClasses = 8
+  let frequency = 'twice a week'
+  let startDate = new Date().toISOString().split('T')[0]
+  let startTime = '14:00'
+  let durationMinutes = 90
+  let courseTopic = 'Course'
+  let objectives: string[] = []
+
+  // Parse total classes
+  const classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课)/i)
+  if (classMatch) totalClasses = parseInt(classMatch[1])
+
+  // Parse frequency
+  if (conversationText.match(/twice\s*a?\s*week|每周两次|2次\/周/i)) {
+    frequency = 'twice a week'
+  } else if (conversationText.match(/once\s*a?\s*week|每周一次|1次\/周/i)) {
+    frequency = 'once a week'
+  } else if (conversationText.match(/three\s*times?\s*a?\s*week|每周三次|3次\/周/i)) {
+    frequency = 'three times a week'
+  }
+
+  // Parse start date
+  const dateMatch = conversationText.match(/(?:starting?\s*(?:from|on)?|从)\s*(\w+\s+\d+(?:st|nd|rd|th)?,?\s*\d{4}|\d{4}[-/]\d{1,2}[-/]\d{1,2})/i)
+  if (dateMatch) {
+    try {
+      const parsedDate = new Date(dateMatch[1])
+      if (!isNaN(parsedDate.getTime())) {
+        startDate = parsedDate.toISOString().split('T')[0]
+      }
+    } catch {}
+  }
+  // Also try "December 1st, 2025" format
+  const monthDateMatch = conversationText.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d+)(?:st|nd|rd|th)?,?\s*(\d{4})/i)
+  if (monthDateMatch) {
+    const months: Record<string, number> = {
+      january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+      july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+    }
+    const month = months[monthDateMatch[1].toLowerCase()]
+    const day = parseInt(monthDateMatch[2])
+    const year = parseInt(monthDateMatch[3])
+    const date = new Date(year, month, day)
+    startDate = date.toISOString().split('T')[0]
+  }
+
+  // Parse time
+  const timeMatch = conversationText.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?/i)
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1])
+    const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0
+    const period = timeMatch[3]?.toUpperCase()
+    if (period === 'PM' && hour < 12) hour += 12
+    if (period === 'AM' && hour === 12) hour = 0
+    startTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+  }
+
+  // Parse duration
+  const durationMatch = conversationText.match(/(\d+)\s*(minutes?|mins?|分钟)/i)
+  if (durationMatch) durationMinutes = parseInt(durationMatch[1])
+
+  // Parse course topic
+  const topicMatch = conversationText.match(/(?:course|课程)(?:\s+(?:is|about|on|:))?\s*([^.!?\n]+)/i)
+  if (topicMatch) courseTopic = topicMatch[1].trim()
+
+  // Parse objectives
+  const objectiveMatches = conversationText.match(/(?:objectives?|goals?|目标)[:\s]*([^.!?\n]+)/gi)
+  if (objectiveMatches) {
+    objectives = objectiveMatches.map(m => m.replace(/(?:objectives?|goals?|目标)[:\s]*/i, '').trim())
+  }
+
+  return { totalClasses, frequency, startDate, startTime, durationMinutes, courseTopic, objectives }
+}
+
+// Generate sessions based on requirements (no AI call - deterministic)
+function generateSessions(requirements: ReturnType<typeof parseRequirementsFromConversation>) {
+  const sessions = []
+  const startDate = new Date(requirements.startDate)
+  let currentDate = new Date(startDate)
+
+  // Determine days of week based on frequency
+  let daysOfWeek: number[] = []
+  if (requirements.frequency === 'twice a week') {
+    daysOfWeek = [1, 3] // Monday, Wednesday
+  } else if (requirements.frequency === 'three times a week') {
+    daysOfWeek = [1, 3, 5] // Monday, Wednesday, Friday
+  } else {
+    daysOfWeek = [1] // Monday only
+  }
+
+  // Generate session titles based on course topic
+  const sessionTitles = [
+    'Introduction and Setup',
+    'Core Concepts Part 1',
+    'Core Concepts Part 2',
+    'Practical Application 1',
+    'Intermediate Topics',
+    'Practical Application 2',
+    'Advanced Topics',
+    'Review and Assessment',
+    'Project Work 1',
+    'Project Work 2',
+    'Final Review',
+    'Course Conclusion'
+  ]
+
+  let sessionCount = 0
+  while (sessionCount < requirements.totalClasses) {
+    // Find next valid day
+    while (!daysOfWeek.includes(currentDate.getDay())) {
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    const [hours, minutes] = requirements.startTime.split(':').map(Number)
+    const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
+    const endMinutes = (minutes + requirements.durationMinutes) % 60
+
+    sessions.push({
+      session_number: sessionCount + 1,
+      title: `Session ${sessionCount + 1}: ${sessionTitles[sessionCount % sessionTitles.length]}`,
+      description: `${requirements.courseTopic} - ${sessionTitles[sessionCount % sessionTitles.length]}`,
+      date: currentDate.toISOString().split('T')[0],
+      start_time: requirements.startTime,
+      end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
+      duration_minutes: requirements.durationMinutes
+    })
+
+    sessionCount++
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  return sessions
+}
 
 export async function POST(req: Request) {
   try {
-    const { requirements, courseId } = await req.json() as { 
-      requirements: ScheduleRequirements
-      courseId: string 
+    const { requirements, courseId } = await req.json() as {
+      requirements: { courseOverview: string }
+      courseId: string
     }
 
     if (!courseId) {
@@ -22,7 +159,7 @@ export async function POST(req: Request) {
     // Verify user is authenticated and owns the course
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -30,7 +167,7 @@ export async function POST(req: Request) {
     // Verify course ownership
     const { data: course, error: courseError } = await supabase
       .from('courses')
-      .select('id, created_by')
+      .select('id, created_by, title')
       .eq('id', courseId)
       .single()
 
@@ -38,50 +175,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Course not found or access denied' }, { status: 403 })
     }
 
-    // Verify Vercel Gateway key
-    const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-    if (!gatewayKey) {
-      return NextResponse.json({ error: 'AI Gateway not configured' }, { status: 500 })
+    // Parse requirements from conversation
+    const parsedRequirements = parseRequirementsFromConversation(requirements.courseOverview)
+
+    // Use course title as topic if not parsed
+    if (parsedRequirements.courseTopic === 'Course') {
+      parsedRequirements.courseTopic = course.title || 'Course'
     }
 
-    // Create OpenAI client with Vercel AI Gateway
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    // Generate schedule
-    const prompt = buildSchedulePrompt(requirements)
-    const result = await generateText({
-      model: openai.chat('meituan/longcat-flash-chat'),
-      system: SCHEDULE_GENERATION_SYSTEM_PROMPT,
-      prompt,
-      temperature: 0.5,
-    })
-
-    // Parse the generated schedule
-    const responseText = result.text
-    const jsonMatch = responseText.match(/\{[\s\S]*"sessions"[\s\S]*\}/)
-    
-    if (!jsonMatch) {
-      console.error('Failed to parse schedule response:', responseText)
-      return NextResponse.json({ error: 'Failed to parse generated schedule' }, { status: 500 })
-    }
-
-    const scheduleData = JSON.parse(jsonMatch[0])
-    const sessions = scheduleData.sessions
-
-    if (!Array.isArray(sessions) || sessions.length === 0) {
-      return NextResponse.json({ error: 'Invalid schedule format' }, { status: 500 })
-    }
+    // Generate sessions deterministically (no AI call)
+    const sessions = generateSessions(parsedRequirements)
 
     // Store schedule requirements in course_outlines
     const { error: outlineError } = await supabase
       .from('course_outlines')
       .upsert({
         course_id: courseId,
-        requirements: requirements,
-        schedule_requirements: requirements,
+        requirements: parsedRequirements,
+        schedule_requirements: parsedRequirements,
         schedule_generated: true,
         chapters: [],
         created_by: user.id,
@@ -95,7 +206,7 @@ export async function POST(req: Request) {
     }
 
     // Insert sessions into database
-    const sessionsToInsert = sessions.map((session: any) => ({
+    const sessionsToInsert = sessions.map((session) => ({
       course_id: courseId,
       session_number: session.session_number,
       title: session.title,
@@ -123,8 +234,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to save sessions' }, { status: 500 })
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       sessions: sessions,
       message: 'Schedule generated and saved successfully'
     })
