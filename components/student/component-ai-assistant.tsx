@@ -77,24 +77,14 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
+        const chunk = decoder.decode(value, { stream: true })
+        assistantMessage += chunk
 
-        for (const line of lines) {
-          if (line.startsWith('0:')) {
-            try {
-              const text = JSON.parse(line.slice(2))
-              assistantMessage += text
-              setMessages(prev => prev.map(msg =>
-                msg.id === assistantMessageId
-                  ? { ...msg, content: assistantMessage }
-                  : msg
-              ))
-            } catch (e) {
-              // Ignore parse errors for incomplete chunks
-            }
-          }
-        }
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: assistantMessage }
+            : msg
+        ))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
