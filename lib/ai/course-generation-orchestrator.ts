@@ -257,7 +257,9 @@ export async function runCourseGeneration(runId: string) {
     throw new Error('No chapters found for course, cannot generate content')
   }
 
-  const iterationsLimit = (run as RunRow).max_iterations_per_chapter || MAX_ITERATIONS_PER_CHAPTER
+  // Ensure we use at least MIN_ITERATIONS_PER_CHAPTER
+  const requestedIterations = (run as RunRow).max_iterations_per_chapter || MAX_ITERATIONS_PER_CHAPTER
+  const iterationsLimit = Math.max(requestedIterations, MIN_ITERATIONS_PER_CHAPTER)
   const openai = ensureGatewayClient()
 
   let completed = 0
