@@ -55,47 +55,23 @@ export function AtRiskStudents({
 
   async function loadAtRiskStudents() {
     setLoading(true)
-    const supabase = createClient()
 
-    // Get at-risk students for courses in this class
-    const { data: courses } = await supabase
-      .from('courses')
-      .select('id')
-      .eq('class_id', classId)
+    try {
+      const response = await fetch(
+        `/api/teacher/at-risk-students?classId=${classId}`
+      )
 
-    if (!courses || courses.length === 0) {
-      setAtRiskStudents([])
+      if (!response.ok) {
+        throw new Error('Failed to load at-risk students')
+      }
+
+      const data = await response.json()
+      setAtRiskStudents(data)
+    } catch (err) {
+      console.error('Error loading at-risk students:', err)
+    } finally {
       setLoading(false)
-      return
     }
-
-    const courseIds = courses.map((c) => c.id)
-
-    const { data, error } = await supabase
-      .from('at_risk_students')
-      .select('*')
-      .in('course_id', courseIds)
-      .order('risk_level', { ascending: false })
-
-    if (error) {
-      console.error('Error loading at-risk students:', error)
-      setLoading(false)
-      return
-    }
-
-    // Get student emails
-    const studentIds = [...new Set(data?.map((d) => d.student_id) || [])]
-    const { data: users } = await supabase.auth.admin.listUsers()
-
-    const studentsWithEmails = (data || []).map((item) => ({
-      ...item,
-      student_email:
-        users?.users.find((u) => u.id === item.student_id)?.email ||
-        'Unknown',
-    }))
-
-    setAtRiskStudents(studentsWithEmails)
-    setLoading(false)
   }
 
   if (loading) {

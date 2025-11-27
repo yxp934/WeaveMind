@@ -61,35 +61,23 @@ export function ClassProgressView({
     setLoading(true)
     setError(null)
 
-    const supabase = createClient()
+    try {
+      const response = await fetch(
+        `/api/teacher/class-progress?classId=${classId}`
+      )
 
-    // Get class progress summary
-    const { data, error: fetchError } = await supabase
-      .from('class_progress_summary')
-      .select('*')
-      .eq('class_id', classId)
-      .order('last_activity_at', { ascending: false, nullsFirst: false })
+      if (!response.ok) {
+        throw new Error('Failed to load progress data')
+      }
 
-    if (fetchError) {
-      console.error('Error loading progress:', fetchError)
+      const data = await response.json()
+      setProgress(data)
+    } catch (err) {
+      console.error('Error loading progress:', err)
       setError('Failed to load progress data')
+    } finally {
       setLoading(false)
-      return
     }
-
-    // Get student emails
-    const studentIds = [...new Set(data?.map((d) => d.student_id) || [])]
-    const { data: users } = await supabase.auth.admin.listUsers()
-
-    const progressWithEmails = (data || []).map((item) => ({
-      ...item,
-      student_email:
-        users?.users.find((u) => u.id === item.student_id)?.email ||
-        'Unknown',
-    }))
-
-    setProgress(progressWithEmails)
-    setLoading(false)
   }
 
   if (loading) {

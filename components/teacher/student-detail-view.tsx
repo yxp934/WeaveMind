@@ -69,32 +69,25 @@ export function StudentDetailView({
 
   async function loadStudentDetails() {
     setLoading(true)
-    const supabase = createClient()
 
-    // Get student email
-    const { data: userData } = await supabase.auth.admin.listUsers()
-    const user = userData?.users.find((u) => u.id === studentId)
-    setStudentEmail(user?.email || 'Unknown')
+    try {
+      const response = await fetch(
+        `/api/teacher/student-details?studentId=${studentId}`
+      )
 
-    // Get component progress
-    const { data: progressData } = await supabase
-      .from('component_progress')
-      .select('*')
-      .eq('student_id', studentId)
-      .order('last_activity_at', { ascending: false, nullsFirst: false })
+      if (!response.ok) {
+        throw new Error('Failed to load student details')
+      }
 
-    setComponentProgress(progressData || [])
-
-    // Get recent activity
-    const { data: activityData } = await supabase
-      .from('learning_events')
-      .select('*')
-      .eq('user_id', studentId)
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    setRecentActivity(activityData || [])
-    setLoading(false)
+      const data = await response.json()
+      setStudentEmail(data.studentEmail)
+      setComponentProgress(data.componentProgress)
+      setRecentActivity(data.recentActivity)
+    } catch (err) {
+      console.error('Error loading student details:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading) {
