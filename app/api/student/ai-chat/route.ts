@@ -147,7 +147,7 @@ Keep responses focused and educational.`,
 
     // Stream AI response
     const result = await streamText({
-      model: openai('meituan/longcat-flash-chat'),
+      model: openai.chat('meituan/longcat-flash-chat'),
       messages: conversationMessages,
       temperature: 0.7,
       async onFinish({ text }) {
