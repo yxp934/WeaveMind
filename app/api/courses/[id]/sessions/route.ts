@@ -3,10 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ courseId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { courseId } = await params
+    const { id: courseId } = await params
     const supabase = await createClient()
     
     const { data: { user } } = await supabase.auth.getUser()
@@ -38,10 +38,10 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ courseId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { courseId } = await params
+    const { id: courseId } = await params
     const body = await req.json()
     const supabase = await createClient()
     
