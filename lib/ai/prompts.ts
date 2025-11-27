@@ -168,3 +168,130 @@ export function extractRequirementsFromConversation(messages: Array<{ role: stri
   return requirements
 }
 
+// ============================================
+// Phase 8: Schedule Generation Prompts
+// ============================================
+
+export interface ScheduleRequirements {
+  courseOverview?: string
+  objectives?: string
+  targetAudience?: string
+  frequency?: string // e.g., "twice a week", "every Monday and Thursday"
+  duration?: string // e.g., "45 minutes per class"
+  totalClasses?: number
+  startDate?: string
+  timeSlots?: string // e.g., "10:00 AM - 11:30 AM"
+  additionalNotes?: string
+}
+
+/**
+ * System prompt for schedule requirement gathering
+ */
+export const SCHEDULE_REQUIREMENT_SYSTEM_PROMPT = `You are an expert educational planner helping teachers create effective course schedules. Your role is to gather information about the course schedule through a natural conversation.
+
+Your objectives:
+1. Understand the course overview and learning objectives
+2. Identify the target audience
+3. Determine the schedule preferences:
+   - Class frequency (how often classes occur)
+   - Duration per class session
+   - Total number of class sessions
+   - Preferred time slots
+   - Start date
+4. Any special scheduling requirements
+
+Guidelines:
+- Ask one or two questions at a time
+- Be encouraging and provide examples when helpful
+- Summarize what you've learned periodically
+- Once you have enough information (at minimum: course topic, total classes, frequency, start date, and duration), ask the teacher to confirm before generating the schedule
+
+Keep responses concise and focused. Use Chinese (中文) if the teacher communicates in Chinese, otherwise use English.
+
+When you have gathered sufficient information, end your message with the special marker: [SCHEDULE_READY]`
+
+/**
+ * Initial message for schedule generation conversation
+ */
+export const SCHEDULE_INITIAL_MESSAGE = `你好！我将帮助你为课程创建一个详细的教学日程安排。
+
+让我们开始收集一些信息：
+1. 这门课程的主题和主要学习目标是什么？
+2. 你希望安排多少节课？
+
+（你可以用中文或英文回答）
+
+---
+Hello! I'll help you create a detailed teaching schedule for your course.
+
+Let's start by gathering some information:
+1. What is the course topic and main learning objectives?
+2. How many class sessions would you like to schedule?`
+
+/**
+ * System prompt for schedule generation
+ */
+export const SCHEDULE_GENERATION_SYSTEM_PROMPT = `You are an expert curriculum designer. Based on the schedule requirements provided, generate a chronological course schedule with specific dates and high-level descriptions for each class session.
+
+Requirements for the schedule:
+1. Generate exactly the number of class sessions specified
+2. Follow the frequency pattern specified (e.g., twice a week)
+3. Each session should have:
+   - A session number
+   - A specific date (starting from the provided start date)
+   - Start and end time (based on duration)
+   - A concise, high-level title
+   - A brief vague description (1-2 sentences) of what will be covered - keep it high-level, not detailed
+4. Ensure sessions logically progress through the material
+5. Space sessions according to the specified frequency
+
+IMPORTANT: Keep session descriptions VAGUE and HIGH-LEVEL. Do NOT include detailed content - that will be generated later when the teacher clicks "Generate Content" for each session.
+
+Output format: Return a JSON array of sessions with this structure:
+{
+  "sessions": [
+    {
+      "session_number": 1,
+      "date": "2024-01-15",
+      "start_time": "10:00",
+      "end_time": "11:30",
+      "duration_minutes": 90,
+      "title": "Session title",
+      "description": "Brief high-level description"
+    }
+  ]
+}
+
+Use the same language (Chinese or English) as the schedule requirements.`
+
+/**
+ * Build schedule generation prompt
+ */
+export function buildSchedulePrompt(requirements: ScheduleRequirements): string {
+  return `Generate a course schedule based on these requirements:
+
+Course Overview: ${requirements.courseOverview || 'Not specified'}
+Learning Objectives: ${requirements.objectives || 'Not specified'}
+Target Audience: ${requirements.targetAudience || 'General learners'}
+Total Classes: ${requirements.totalClasses || 10}
+Frequency: ${requirements.frequency || 'Twice a week'}
+Duration per Class: ${requirements.duration || '60 minutes'}
+Start Date: ${requirements.startDate || 'Next Monday'}
+Time Slots: ${requirements.timeSlots || '10:00 AM'}
+${requirements.additionalNotes ? `\nAdditional Notes: ${requirements.additionalNotes}` : ''}
+
+Please create a detailed schedule with specific dates for each class session. Remember to keep session descriptions HIGH-LEVEL and VAGUE.`
+}
+
+/**
+ * Validate if schedule requirements are sufficient
+ */
+export function areScheduleRequirementsSufficient(requirements: Partial<ScheduleRequirements>): boolean {
+  return !!(
+    requirements.courseOverview &&
+    requirements.totalClasses &&
+    requirements.frequency &&
+    requirements.startDate
+  )
+}
+

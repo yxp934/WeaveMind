@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { AIGenerationPanel } from "@/components/ai/ai-generation-panel"
 import { CourseAIAssistantWrapper } from "@/components/ai/course-ai-assistant-wrapper"
 import { CourseEditorAssistantWrapper } from "@/components/ai/course-editor-assistant-wrapper"
+import { ScheduleAssistantWrapper } from "@/components/ai/schedule-assistant-wrapper"
+import { CourseSessionsWrapper } from "@/components/ai/course-sessions-wrapper"
 
 export default async function CourseDetailPage({
   params,
@@ -13,39 +15,47 @@ export default async function CourseDetailPage({
 }) {
   const { id } = await params
   const supabase = await createClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) {
     redirect("/auth/login")
   }
 
-	// Get course details
-	const { data: course } = await supabase
-	  .from("courses")
-	  .select("*, class:classes(name, id)")
-	  .eq("id", id)
-	  .single()
+  // Get course details
+  const { data: course } = await supabase
+    .from("courses")
+    .select("*, class:classes(name, id)")
+    .eq("id", id)
+    .single()
 
   if (!course) {
     redirect("/teacher")
   }
 
-	// Get chapters with component counts
-	const { data: chapters } = await supabase
-	  .from("chapters")
-	  .select("*, components(count)")
-	  .eq("course_id", id)
-	  .order("order_index", { ascending: true })
+  // Get chapters with component counts
+  const { data: chapters } = await supabase
+    .from("chapters")
+    .select("*, components(count)")
+    .eq("course_id", id)
+    .order("order_index", { ascending: true })
 
-	// Check if this course has an AI-generated outline (required for Phase 4 generation)
-	const { data: outlines } = await supabase
-	  .from("course_outlines")
-	  .select("id")
-	  .eq("course_id", id)
-	  .limit(1)
+  // Get course sessions
+  const { data: sessions } = await supabase
+    .from("course_sessions")
+    .select("*")
+    .eq("course_id", id)
+    .order("session_number", { ascending: true })
 
-	const hasOutline = !!(outlines && outlines.length > 0)
+  // Check if this course has an AI-generated outline (required for Phase 4 generation)
+  const { data: outlines } = await supabase
+    .from("course_outlines")
+    .select("id, schedule_generated")
+    .eq("course_id", id)
+    .limit(1)
+
+  const hasOutline = !!(outlines && outlines.length > 0)
+  const hasSchedule = !!(sessions && sessions.length > 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -92,59 +102,36 @@ export default async function CourseDetailPage({
           </div>
         </div>
 
-        {/* Course Structure */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold">Course Structure</h3>
-            <Link href={`/teacher/courses/${id}/chapters/new`}>
-              <Button>Add Chapter</Button>
-            </Link>
+        {/* Phase 1: Schedule Generation (if no schedule exists) */}
+        {!hasSchedule && (
+          <div className="mb-8">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <h3 className="font-semibold text-blue-800 mb-2">📅 Step 1: Generate Your Course Schedule</h3>
+              <p className="text-sm text-blue-700">
+                Start by creating a schedule for your course. Tell the AI about your course goals,
+                desired number of classes, frequency, and time preferences.
+              </p>
+            </div>
+            <ScheduleAssistantWrapper courseId={id} />
           </div>
+        )}
 
-          {chapters && chapters.length > 0 ? (
-            <div className="space-y-4">
-              {chapters.map((chapter: any, index: number) => (
-                <div key={chapter.id} className="border rounded-lg p-4 hover:bg-gray-50">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-gray-500">Chapter {index + 1}</span>
-                        <h4 className="font-semibold text-lg">{chapter.title}</h4>
-                      </div>
-                      <p className="text-sm text-gray-500 mb-2">{chapter.description || "No description"}</p>
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span>{chapter.components?.[0]?.count || 0} components</span>
-                        <span>Order: {chapter.order_index}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Link href={`/teacher/chapters/${chapter.id}`}>
-                        <Button variant="outline">Manage</Button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">No chapters yet. Start building your course content!</p>
-              <Link href={`/teacher/courses/${id}/chapters/new`}>
-                <Button>Add Your First Chapter</Button>
-              </Link>
-            </div>
-          )}
-        </div>
+        {/* Phase 2: Course Sessions List (if schedule exists) */}
+        {hasSchedule && (
+          <div className="mb-8">
+            <CourseSessionsWrapper sessions={sessions || []} courseId={id} />
+          </div>
+        )}
 
-	        {/* Quick Actions */}
-	        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Quick Actions */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
-            <h4 className="font-semibold mb-2">Course Content</h4>
+            <h4 className="font-semibold mb-2">Course Sessions</h4>
             <p className="text-sm text-gray-600 mb-4">
-              {chapters?.length || 0} chapters with learning materials
+              {sessions?.length || 0} scheduled class sessions
             </p>
-            <Link href={`/teacher/courses/${id}/chapters/new`}>
-              <Button variant="outline" className="w-full">Add Chapter</Button>
+            <Link href={`/teacher/calendar`}>
+              <Button variant="outline" className="w-full">View Calendar</Button>
             </Link>
           </div>
 
@@ -168,22 +155,22 @@ export default async function CourseDetailPage({
             <Link href={`/student/courses/${id}`}>
               <Button variant="outline" className="w-full">Preview as Student</Button>
             </Link>
-	          </div>
-	        </div>
+          </div>
+        </div>
 
-	        {/* AI Course Assistant or AI Chapter Content Generation */}
-	        {hasOutline ? (
-	          <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
-	        ) : (
-	          <CourseAIAssistantWrapper courseId={id} />
-	        )}
+        {/* Legacy AI Tools (for courses without schedule) */}
+        {!hasSchedule && hasOutline && (
+          <div className="mt-8">
+            <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
+          </div>
+        )}
 
-	        {/* Phase 5: AI Course Editor - Only show if course has chapters */}
-	        {chapters && chapters.length > 0 && (
-	          <div className="mt-8">
-	            <CourseEditorAssistantWrapper courseId={id} />
-	          </div>
-	        )}
+        {/* Phase 5: AI Course Editor - Only show if course has chapters */}
+        {chapters && chapters.length > 0 && (
+          <div className="mt-8">
+            <CourseEditorAssistantWrapper courseId={id} />
+          </div>
+        )}
       </main>
     </div>
   )
