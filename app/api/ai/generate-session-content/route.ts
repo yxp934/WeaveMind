@@ -65,6 +65,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
+    // Get the outline if it exists (for class-based sessions)
+    let outlineContext = ''
+    if (classId) {
+      const { data: outline } = await supabase
+        .from('course_outlines')
+        .select('chapters, requirements')
+        .eq('class_id', classId)
+        .single()
+
+      if (outline && outline.chapters) {
+        // Find the chapter that corresponds to this session number
+        const sessionNumber = session.session_number
+        const relevantChapter = outline.chapters[sessionNumber - 1]
+
+        if (relevantChapter) {
+          outlineContext = `\n\nCourse Outline Context:
+Course Requirements: ${JSON.stringify(outline.requirements, null, 2)}
+This Session's Chapter from Outline:
+- Title: ${relevantChapter.title}
+- Description: ${relevantChapter.description || 'N/A'}
+- Topics: ${relevantChapter.topics?.join(', ') || 'N/A'}
+
+Please generate content that aligns with this chapter from the course outline.`
+        }
+      }
+    }
+
     // Generate chapter content using AI
     const gatewayKey = process.env.VERCEL_GATEWAY_KEY
     if (!gatewayKey) {
@@ -81,7 +108,7 @@ export async function POST(req: Request) {
 ${courseId ? 'Course' : 'Class'}: ${entityTitle}
 ${courseId ? 'Course' : 'Class'} Description: ${entityDescription || 'N/A'}
 Session Title: ${sessionTitle}
-Session Description: ${sessionDescription || 'N/A'}
+Session Description: ${sessionDescription || 'N/A'}${outlineContext}
 
 Generate a structured lesson with:
 1. Learning objectives (2-3 points)
