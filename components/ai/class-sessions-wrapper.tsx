@@ -59,7 +59,7 @@ export function ClassSessionsWrapper({ sessions, classId }: ClassSessionsWrapper
           📚 Class Sessions
         </h3>
         <p className="text-sm text-gray-600">
-          {sessions.length} sessions scheduled. Click "Generate Content" to create lesson materials for each session.
+          {sessions.length} sessions scheduled. Click &quot;Generate Content&quot; to create lesson materials for each session.
         </p>
       </div>
 

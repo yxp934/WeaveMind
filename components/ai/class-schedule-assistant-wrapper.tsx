@@ -14,7 +14,7 @@ export function ClassScheduleAssistantWrapper({ classId }: ClassScheduleAssistan
           🤖 AI Schedule Assistant
         </h3>
         <p className="text-sm text-gray-600">
-          Describe your class schedule requirements and I'll generate a structured schedule for you.
+          Describe your class schedule requirements and I&apos;ll generate a structured schedule for you.
         </p>
       </div>
       <ScheduleChat 
