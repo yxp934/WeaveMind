@@ -120,8 +120,8 @@ export default async function CourseDetailPage({
           </div>
         </div>
 
-        {/* Legacy AI Tools (for courses without schedule) */}
-        {!hasSchedule && hasOutline && (
+        {/* Legacy AI Tools */}
+        {hasOutline && (
           <div className="mt-8">
             <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
           </div>

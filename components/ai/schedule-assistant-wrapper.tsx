@@ -16,8 +16,10 @@ export function ScheduleAssistantWrapper({ courseId }: ScheduleAssistantWrapperP
   }
 
   return (
-    <ScheduleChat 
-      courseId={courseId} 
+    <ScheduleChat
+      entityId={courseId}
+      entityType="course"
+      apiEndpoint="/api/ai/generate-schedule"
       onScheduleGenerated={handleScheduleGenerated}
     />
   )
