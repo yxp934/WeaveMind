@@ -19,9 +19,10 @@ export default async function StudentCoursesPage() {
 
   // Get student's enrolled classes
   const { data: enrollments } = await supabase
-    .from("class_enrollments")
+    .from("class_members")
     .select("class_id")
-    .eq("student_id", user.id)
+    .eq("user_id", user.id)
+    .eq("role", "student")
 
   const classIds = enrollments?.map(e => e.class_id) || []
 
