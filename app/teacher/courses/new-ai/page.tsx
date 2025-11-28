@@ -88,9 +88,40 @@ export default function NewAICoursePage() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
+        {/* Deprecation Notice */}
+        <div className="mb-8 bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6">
+          <h3 className="font-semibold text-yellow-800 text-xl mb-3">
+            ⚠️ 功能已迁移 / Feature Migrated
+          </h3>
+          <p className="text-yellow-700 mb-4">
+            AI课程生成功能已迁移到班级层级，提供更完整的工作流程。/
+            AI course generation has been migrated to the class level for a more complete workflow.
+          </p>
+          <div className="bg-white rounded-lg p-4 mb-4">
+            <h4 className="font-semibold text-gray-800 mb-2">新的工作流程 / New Workflow:</h4>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+              <li>在班级页面生成课程表 / Generate class schedule on class page</li>
+              <li>创建课程大纲 / Create course outline</li>
+              <li>为每个课时生成详细内容 / Generate detailed content for each session</li>
+            </ol>
+          </div>
+          <div className="flex gap-4">
+            <Link href="/teacher/classes">
+              <Button className="bg-yellow-600 hover:bg-yellow-700">
+                前往班级列表 / Go to Classes
+              </Button>
+            </Link>
+            <Link href="/teacher">
+              <Button variant="outline">
+                返回主页 / Back to Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-8 opacity-50 pointer-events-none">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            创建AI辅助课程 / Create AI-Assisted Course
+            创建AI辅助课程 / Create AI-Assisted Course (已弃用 / Deprecated)
           </h2>
           <p className="text-gray-600">
             {step === 'chat' && '通过与AI对话，快速生成课程大纲 / Generate course outline through AI conversation'}

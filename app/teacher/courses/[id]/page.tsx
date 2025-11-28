@@ -120,9 +120,36 @@ export default async function CourseDetailPage({
           </div>
         </div>
 
-        {/* Legacy AI Tools */}
+        {/* Deprecation Notice for AI Generation */}
+        {!hasOutline && course.class_id && (
+          <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+            <h3 className="font-semibold text-yellow-800 mb-2">💡 New: Class-Level Content Generation</h3>
+            <p className="text-sm text-yellow-700 mb-4">
+              We&apos;ve moved AI content generation to the class level for a more streamlined workflow.
+              Instead of generating content for individual courses, you can now:
+            </p>
+            <ol className="text-sm text-yellow-700 mb-4 list-decimal list-inside space-y-1">
+              <li>Generate a class schedule with AI</li>
+              <li>Create a course outline for all sessions</li>
+              <li>Generate detailed content for each session</li>
+            </ol>
+            <Link href={`/teacher/classes/${course.class_id}`}>
+              <Button className="bg-yellow-600 hover:bg-yellow-700">
+                Go to Class Page to Generate Content
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {/* Legacy AI Tools - Only for courses with existing outlines */}
         {hasOutline && (
           <div className="mt-8">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-700">
+                ℹ️ This course has a legacy AI-generated outline. You can continue using these tools,
+                but we recommend using the new class-level generation workflow for future courses.
+              </p>
+            </div>
             <AIGenerationPanel courseId={id} hasOutline={hasOutline} />
           </div>
         )}
