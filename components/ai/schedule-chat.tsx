@@ -14,11 +14,18 @@ interface Message {
 }
 
 interface ScheduleChatProps {
-  courseId: string
-  onScheduleGenerated: () => void
+  entityId: string
+  entityType?: 'course' | 'class'
+  apiEndpoint?: string
+  onScheduleGenerated?: () => void
 }
 
-export function ScheduleChat({ courseId, onScheduleGenerated }: ScheduleChatProps) {
+export function ScheduleChat({
+  entityId,
+  entityType = 'course',
+  apiEndpoint = '/api/ai/generate-schedule',
+  onScheduleGenerated
+}: ScheduleChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<Message[]>([
     { id: 'initial', role: 'assistant', content: SCHEDULE_INITIAL_MESSAGE }
@@ -103,14 +110,21 @@ export function ScheduleChat({ courseId, onScheduleGenerated }: ScheduleChatProp
     try {
       // Extract requirements from conversation
       const conversationText = messages.map(m => `${m.role}: ${m.content}`).join('\n')
-      
-      const response = await fetch('/api/ai/generate-schedule', {
+
+      const requestBody = entityType === 'class'
+        ? {
+            classId: entityId,
+            requirements: { courseOverview: conversationText, totalClasses: 10, frequency: 'twice a week', startDate: new Date().toISOString().split('T')[0] }
+          }
+        : {
+            courseId: entityId,
+            requirements: { courseOverview: conversationText, totalClasses: 10, frequency: 'twice a week', startDate: new Date().toISOString().split('T')[0] }
+          }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId,
-          requirements: { courseOverview: conversationText, totalClasses: 10, frequency: 'twice a week', startDate: new Date().toISOString().split('T')[0] }
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (!response.ok) {
@@ -120,7 +134,9 @@ export function ScheduleChat({ courseId, onScheduleGenerated }: ScheduleChatProp
 
       const data = await response.json()
       setGeneratedSessions(data.sessions)
-      onScheduleGenerated()
+      if (onScheduleGenerated) {
+        onScheduleGenerated()
+      }
     } catch (error: any) {
       console.error('Schedule generation error:', error)
       alert(`生成失败: ${error.message}`)

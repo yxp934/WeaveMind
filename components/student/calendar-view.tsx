@@ -17,12 +17,16 @@ interface CourseSession {
   end_time: string | null
   duration_minutes: number | null
   content_generated: boolean
-  course: {
+  class: {
+    id: string
+    name: string
+  } | null
+  course?: {
     id: string
     title: string
     class_id: string | null
     classes: { name: string } | null
-  }
+  } | null
 }
 
 interface StudentCalendarViewProps {
@@ -141,15 +145,20 @@ export function StudentCalendarView({ sessions }: StudentCalendarViewProps) {
             <div className="space-y-3">
               {selectedDateSessions.map(session => {
                 const accessible = isSessionAccessible(session)
+                const classId = session.class?.id || session.course?.class_id
+                const className = session.class?.name || session.course?.classes?.name || 'Unknown Class'
+                const courseId = session.course?.id
+                const sessionLink = courseId ? `/student/courses/${courseId}/sessions/${session.id}` : '#'
+
                 return (
                   <div key={session.id} className={`border rounded-lg p-3 transition-colors ${accessible ? 'hover:bg-gray-50 cursor-pointer' : 'opacity-60'}`}>
                     {accessible ? (
-                      <Link href={`/student/courses/${session.course.id}/sessions/${session.id}`}>
+                      <Link href={sessionLink}>
                         <div className="flex items-center gap-2 mb-1">
                           <CheckCircle className="h-4 w-4 text-green-600" />
                           <span className="font-medium text-sm">{session.title}</span>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">{session.course.title}</p>
+                        <p className="text-xs text-gray-600 mb-1">{className}</p>
                         {session.start_time && (
                           <div className="flex items-center gap-1 text-xs text-gray-500">
                             <Clock className="h-3 w-3" />
@@ -163,7 +172,7 @@ export function StudentCalendarView({ sessions }: StudentCalendarViewProps) {
                           <Lock className="h-4 w-4 text-gray-400" />
                           <span className="font-medium text-sm">{session.title}</span>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">{session.course.title}</p>
+                        <p className="text-xs text-gray-600 mb-1">{className}</p>
                         <p className="text-xs text-gray-400">Available on {format(parseISO(session.scheduled_date), 'MMM d')}</p>
                       </div>
                     )}

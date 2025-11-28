@@ -17,12 +17,16 @@ interface CourseSession {
   end_time: string | null
   duration_minutes: number | null
   content_generated: boolean
-  course: {
+  class: {
+    id: string
+    name: string
+  } | null
+  course?: {
     id: string
     title: string
     class_id: string | null
     classes: { name: string } | null
-  }
+  } | null
 }
 
 interface TeacherCalendarViewProps {
@@ -132,27 +136,33 @@ export function TeacherCalendarView({ sessions }: TeacherCalendarViewProps) {
             <p className="text-gray-500 text-sm">No sessions scheduled</p>
           ) : (
             <div className="space-y-3">
-              {selectedDateSessions.map(session => (
-                <Link key={session.id} href={`/teacher/courses/${session.course.id}`}>
-                  <div className="border rounded-lg p-3 hover:bg-gray-50 transition-colors cursor-pointer">
-                    <div className="flex items-center gap-2 mb-1">
-                      {session.content_generated ? (
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <BookOpen className="h-4 w-4 text-indigo-600" />
-                      )}
-                      <span className="font-medium text-sm">{session.title}</span>
-                    </div>
-                    <p className="text-xs text-gray-600 mb-1">{session.course.title}</p>
-                    {session.start_time && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Clock className="h-3 w-3" />
-                        {formatTime(session.start_time)} - {formatTime(session.end_time)}
+              {selectedDateSessions.map(session => {
+                const classId = session.class?.id || session.course?.class_id
+                const className = session.class?.name || session.course?.classes?.name || 'Unknown Class'
+                const linkHref = classId ? `/teacher/classes/${classId}` : '#'
+
+                return (
+                  <Link key={session.id} href={linkHref}>
+                    <div className="border rounded-lg p-3 hover:bg-gray-50 transition-colors cursor-pointer">
+                      <div className="flex items-center gap-2 mb-1">
+                        {session.content_generated ? (
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <BookOpen className="h-4 w-4 text-indigo-600" />
+                        )}
+                        <span className="font-medium text-sm">{session.title}</span>
                       </div>
-                    )}
-                  </div>
-                </Link>
-              ))}
+                      <p className="text-xs text-gray-600 mb-1">{className}</p>
+                      {session.start_time && (
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Clock className="h-3 w-3" />
+                          {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </CardContent>

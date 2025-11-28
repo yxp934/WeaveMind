@@ -5,28 +5,53 @@ import { generateText } from 'ai'
 
 export async function POST(req: Request) {
   try {
-    const { courseId, sessionId, sessionTitle, sessionDescription } = await req.json()
+    const { courseId, classId, sessionId, sessionTitle, sessionDescription } = await req.json()
 
-    if (!courseId || !sessionId) {
-      return NextResponse.json({ error: 'Course ID and Session ID are required' }, { status: 400 })
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
+    }
+
+    if (!courseId && !classId) {
+      return NextResponse.json({ error: 'Either Course ID or Class ID is required' }, { status: 400 })
     }
 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify course ownership
-    const { data: course } = await supabase
-      .from('courses')
-      .select('id, created_by, title, description')
-      .eq('id', courseId)
-      .single()
+    // Verify ownership (either course or class)
+    let entityTitle = ''
+    let entityDescription = ''
 
-    if (!course || course.created_by !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    if (courseId) {
+      const { data: course } = await supabase
+        .from('courses')
+        .select('id, created_by, title, description')
+        .eq('id', courseId)
+        .single()
+
+      if (!course || course.created_by !== user.id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+
+      entityTitle = course.title
+      entityDescription = course.description || ''
+    } else if (classId) {
+      const { data: classData } = await supabase
+        .from('classes')
+        .select('id, created_by, name, description')
+        .eq('id', classId)
+        .single()
+
+      if (!classData || classData.created_by !== user.id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+
+      entityTitle = classData.name
+      entityDescription = classData.description || ''
     }
 
     // Get the session
@@ -53,8 +78,8 @@ export async function POST(req: Request) {
 
     const prompt = `Generate detailed educational content for a class session.
 
-Course: ${course.title}
-Course Description: ${course.description || 'N/A'}
+${courseId ? 'Course' : 'Class'}: ${entityTitle}
+${courseId ? 'Course' : 'Class'} Description: ${entityDescription || 'N/A'}
 Session Title: ${sessionTitle}
 Session Description: ${sessionDescription || 'N/A'}
 
@@ -96,7 +121,8 @@ Output as JSON:
     const { data: chapter, error: chapterError } = await supabase
       .from('chapters')
       .insert({
-        course_id: courseId,
+        course_id: courseId || null,
+        class_id: classId || null,
         title: sessionTitle,
         description: sessionDescription,
         order_index: session.session_number

@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatCard } from "@/components/dashboard/stat-card"
-import { Users, BookOpen, FileText, Key, ArrowLeft, Plus } from "lucide-react"
+import { Users, BookOpen, FileText, Key, ArrowLeft, Plus, Calendar as CalendarIcon } from "lucide-react"
+import { ClassScheduleAssistantWrapper } from "@/components/ai/class-schedule-assistant-wrapper"
+import { ClassSessionsWrapper } from "@/components/ai/class-sessions-wrapper"
 
 export default async function ClassDetailPage({
   params,
@@ -52,6 +54,15 @@ export default async function ClassDetailPage({
     .select("*", { count: "exact", head: true })
     .eq("class_id", id)
     .eq("role", "student")
+
+  // Get class sessions
+  const { data: sessions } = await supabase
+    .from("course_sessions")
+    .select("*")
+    .eq("class_id", id)
+    .order("session_number", { ascending: true })
+
+  const hasSchedule = !!(sessions && sessions.length > 0)
 
   const navItems = [
     { title: "Dashboard", href: "/teacher", icon: "Home" as const },
@@ -126,6 +137,27 @@ export default async function ClassDetailPage({
               </p>
             </div>
           </div>
+
+          {/* Schedule Generation Section */}
+          {!hasSchedule && (
+            <div className="mb-8">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 className="font-semibold text-blue-800 mb-2">📅 Step 1: Generate Your Class Schedule</h3>
+                <p className="text-sm text-blue-700">
+                  Start by creating a schedule for your class. Tell the AI about your class goals,
+                  desired number of sessions, frequency, and time preferences.
+                </p>
+              </div>
+              <ClassScheduleAssistantWrapper classId={id} />
+            </div>
+          )}
+
+          {/* Class Sessions List */}
+          {hasSchedule && (
+            <div className="mb-8">
+              <ClassSessionsWrapper sessions={sessions || []} classId={id} />
+            </div>
+          )}
 
           {/* Courses Section */}
           <div className="bg-white rounded-lg shadow p-6 mb-8">

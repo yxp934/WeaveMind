@@ -5,8 +5,6 @@ import { Button } from "@/components/ui/button"
 import { AIGenerationPanel } from "@/components/ai/ai-generation-panel"
 import { CourseAIAssistantWrapper } from "@/components/ai/course-ai-assistant-wrapper"
 import { CourseEditorAssistantWrapper } from "@/components/ai/course-editor-assistant-wrapper"
-import { ScheduleAssistantWrapper } from "@/components/ai/schedule-assistant-wrapper"
-import { CourseSessionsWrapper } from "@/components/ai/course-sessions-wrapper"
 
 export default async function CourseDetailPage({
   params,
@@ -40,12 +38,7 @@ export default async function CourseDetailPage({
     .eq("course_id", id)
     .order("order_index", { ascending: true })
 
-  // Get course sessions
-  const { data: sessions } = await supabase
-    .from("course_sessions")
-    .select("*")
-    .eq("course_id", id)
-    .order("session_number", { ascending: true })
+
 
   // Check if this course has an AI-generated outline (required for Phase 4 generation)
   const { data: outlines } = await supabase
@@ -55,7 +48,6 @@ export default async function CourseDetailPage({
     .limit(1)
 
   const hasOutline = !!(outlines && outlines.length > 0)
-  const hasSchedule = !!(sessions && sessions.length > 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -102,38 +94,8 @@ export default async function CourseDetailPage({
           </div>
         </div>
 
-        {/* Phase 1: Schedule Generation (if no schedule exists) */}
-        {!hasSchedule && (
-          <div className="mb-8">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <h3 className="font-semibold text-blue-800 mb-2">📅 Step 1: Generate Your Course Schedule</h3>
-              <p className="text-sm text-blue-700">
-                Start by creating a schedule for your course. Tell the AI about your course goals,
-                desired number of classes, frequency, and time preferences.
-              </p>
-            </div>
-            <ScheduleAssistantWrapper courseId={id} />
-          </div>
-        )}
-
-        {/* Phase 2: Course Sessions List (if schedule exists) */}
-        {hasSchedule && (
-          <div className="mb-8">
-            <CourseSessionsWrapper sessions={sessions || []} courseId={id} />
-          </div>
-        )}
-
         {/* Quick Actions */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h4 className="font-semibold mb-2">Course Sessions</h4>
-            <p className="text-sm text-gray-600 mb-4">
-              {sessions?.length || 0} scheduled class sessions
-            </p>
-            <Link href={`/teacher/calendar`}>
-              <Button variant="outline" className="w-full">View Calendar</Button>
-            </Link>
-          </div>
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
 
           <div className="bg-white rounded-lg shadow p-6">
             <h4 className="font-semibold mb-2">Publishing</h4>

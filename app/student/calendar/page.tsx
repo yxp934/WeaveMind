@@ -15,34 +15,23 @@ export default async function StudentCalendarPage() {
 
   // Get student's enrolled classes
   const { data: enrollments } = await supabase
-    .from("class_enrollments")
+    .from("class_members")
     .select("class_id")
-    .eq("student_id", user.id)
+    .eq("user_id", user.id)
+    .eq("role", "student")
 
   const classIds = enrollments?.map(e => e.class_id) || []
 
-  // Get courses from enrolled classes
-  let courseIds: string[] = []
-  if (classIds.length > 0) {
-    const { data: courses } = await supabase
-      .from("courses")
-      .select("id")
-      .in("class_id", classIds)
-      .eq("published", true)
-
-    courseIds = courses?.map(c => c.id) || []
-  }
-
-  // Get all sessions for enrolled courses
+  // Get all sessions for enrolled classes
   let sessions: any[] = []
-  if (courseIds.length > 0) {
+  if (classIds.length > 0) {
     const { data: sessionData } = await supabase
       .from("course_sessions")
       .select(`
         *,
-        course:courses(id, title, class_id, classes(name))
+        class:classes(id, name)
       `)
-      .in("course_id", courseIds)
+      .in("class_id", classIds)
       .order("scheduled_date", { ascending: true })
 
     sessions = sessionData || []

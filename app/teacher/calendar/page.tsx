@@ -14,27 +14,27 @@ export default async function TeacherCalendarPage() {
     redirect("/auth/login")
   }
 
-  // Get all courses created by this teacher
-  const { data: courses } = await supabase
-    .from("courses")
-    .select("id, title, class_id, classes(name)")
+  // Get all classes created by this teacher
+  const { data: classes } = await supabase
+    .from("classes")
+    .select("id, name")
     .eq("created_by", user.id)
     .order("created_at", { ascending: false })
 
-  // Get all sessions for teacher's courses
-  const courseIds = courses?.map(c => c.id) || []
-  
+  // Get all sessions for teacher's classes
+  const classIds = classes?.map(c => c.id) || []
+
   let sessions: any[] = []
-  if (courseIds.length > 0) {
+  if (classIds.length > 0) {
     const { data: sessionData } = await supabase
       .from("course_sessions")
       .select(`
         *,
-        course:courses(id, title, class_id, classes(name))
+        class:classes(id, name)
       `)
-      .in("course_id", courseIds)
+      .in("class_id", classIds)
       .order("scheduled_date", { ascending: true })
-    
+
     sessions = sessionData || []
   }
 
