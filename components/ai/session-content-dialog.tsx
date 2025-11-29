@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,11 +35,12 @@ export function SessionContentDialog({
   className
 }: SessionContentDialogProps) {
   const router = useRouter()
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'initial',
-      role: 'assistant',
-      content: `你好！我将帮助你为 Session ${session.session_number} 生成详细的学习内容。
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [input, setInput] = useState('')
+
+  const initialMessage = `你好！我将帮助你为 Session ${session.session_number} 生成详细的学习内容。
 
 **Session 信息：**
 - 标题：${session.title}
@@ -57,13 +58,21 @@ ${session.description ? `- Description: ${session.description}` : ''}
 - Date: ${new Date(session.scheduled_date).toLocaleDateString()}
 
 Please tell me what specific content, learning objectives, and practice types you want to cover in this session.`
+
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'initial',
+      role: 'assistant',
+      content: initialMessage
     }
   ])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
 
-  const handleSend = async () => {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     if (!input.trim() || isLoading) return
 
     const userMessage: Message = {
@@ -77,14 +86,55 @@ Please tell me what specific content, learning objectives, and practice types yo
     setIsLoading(true)
 
     try {
-      // TODO: Implement AI chat for session content requirements
-      // For now, just echo back
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+      const response = await fetch('/api/ai/session-content-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, userMessage].map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          sessionId: session.id,
+          classId
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to get response')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantMessage = ''
+
+      const assistantMessageId = (Date.now() + 1).toString()
+      setMessages(prev => [...prev, {
+        id: assistantMessageId,
         role: 'assistant',
-        content: `收到！我了解你想要：${input}\n\n请继续描述更多细节，或者如果准备好了，点击"生成内容"按钮。`
+        content: ''
+      }])
+
+      if (!reader) {
+        throw new Error('No reader available')
       }
-      setMessages(prev => [...prev, assistantMessage])
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('0:')) {
+            const content = line.slice(2).replace(/^"(.*)"$/, '$1')
+            assistantMessage += content
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMessageId
+                ? { ...m, content: assistantMessage }
+                : m
+            ))
+          }
+        }
+      }
     } catch (error) {
       console.error('Chat error:', error)
     } finally {
@@ -148,22 +198,22 @@ Please tell me what specific content, learning objectives, and practice types yo
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Input */}
-          <div className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="描述你想要的学习内容... / Describe the learning content you want..."
               disabled={isLoading || isGenerating}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
               className="flex-1"
             />
-            <Button onClick={handleSend} disabled={isLoading || !input.trim() || isGenerating}>
+            <Button type="submit" disabled={isLoading || !input.trim() || isGenerating}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
-          </div>
+          </form>
 
           {/* Generate Button */}
           <div className="flex justify-end gap-2 pt-4 border-t">
