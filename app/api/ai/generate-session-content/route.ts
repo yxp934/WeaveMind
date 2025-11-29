@@ -5,7 +5,15 @@ import { generateText } from 'ai'
 
 export async function POST(req: Request) {
   try {
-    const { courseId, classId, sessionId, sessionTitle, sessionDescription } = await req.json()
+    const {
+      courseId,
+      classId,
+      sessionId,
+      sessionTitle,
+      sessionDescription,
+      className,
+      conversationContext
+    } = await req.json()
 
     if (!sessionId) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
@@ -65,30 +73,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    // Get the outline if it exists (for class-based sessions)
-    let outlineContext = ''
+    // Get previous sessions for context (for class-based sessions)
+    let previousSessionsContext = ''
     if (classId) {
-      const { data: outline } = await supabase
-        .from('course_outlines')
-        .select('chapters, requirements')
+      const { data: previousSessions } = await supabase
+        .from('course_sessions')
+        .select(`
+          session_number,
+          title,
+          description,
+          chapter:chapters(title, description)
+        `)
         .eq('class_id', classId)
-        .single()
+        .lt('session_number', session.session_number)
+        .order('session_number', { ascending: true })
 
-      if (outline && outline.chapters) {
-        // Find the chapter that corresponds to this session number
-        const sessionNumber = session.session_number
-        const relevantChapter = outline.chapters[sessionNumber - 1]
+      if (previousSessions && previousSessions.length > 0) {
+        const sessionsSummary = previousSessions.map((s: any) =>
+          `Session ${s.session_number}: ${s.title}${s.description ? ` - ${s.description}` : ''}`
+        ).join('\n')
 
-        if (relevantChapter) {
-          outlineContext = `\n\nCourse Outline Context:
-Course Requirements: ${JSON.stringify(outline.requirements, null, 2)}
-This Session's Chapter from Outline:
-- Title: ${relevantChapter.title}
-- Description: ${relevantChapter.description || 'N/A'}
-- Topics: ${relevantChapter.topics?.join(', ') || 'N/A'}
+        previousSessionsContext = `\n\nPrevious Sessions in This Class:
+${sessionsSummary}
 
-Please generate content that aligns with this chapter from the course outline.`
-        }
+Please ensure this session builds upon previous content and maintains continuity.`
       }
     }
 
@@ -103,12 +111,22 @@ Please generate content that aligns with this chapter from the course outline.`
       baseURL: 'https://ai-gateway.vercel.sh/v1',
     })
 
+    // Build conversation context
+    let conversationSummary = ''
+    if (conversationContext) {
+      conversationSummary = `\n\nTeacher's Requirements (from conversation):
+${conversationContext}
+
+Please incorporate the teacher's specific requirements into the content.`
+    }
+
     const prompt = `Generate detailed educational content for a class session.
 
 ${courseId ? 'Course' : 'Class'}: ${entityTitle}
 ${courseId ? 'Course' : 'Class'} Description: ${entityDescription || 'N/A'}
+Session Number: ${session.session_number}
 Session Title: ${sessionTitle}
-Session Description: ${sessionDescription || 'N/A'}${outlineContext}
+Session Description: ${sessionDescription || 'N/A'}${previousSessionsContext}${conversationSummary}
 
 Generate a structured lesson with:
 1. Learning objectives (2-3 points)
