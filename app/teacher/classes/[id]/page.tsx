@@ -7,8 +7,6 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { Users, BookOpen, FileText, Key, ArrowLeft, Plus, Calendar, Clock } from "lucide-react"
 import { ClassScheduleAssistantWrapper } from "@/components/ai/class-schedule-assistant-wrapper"
-import { ClassSessionsWrapper } from "@/components/ai/class-sessions-wrapper"
-import { ClassOutlineAssistantWrapper } from "@/components/ai/class-outline-assistant-wrapper"
 
 export default async function ClassDetailPage({
   params,
@@ -67,15 +65,6 @@ export default async function ClassDetailPage({
     .order("scheduled_date", { ascending: true })
 
   const hasSchedule = !!(sessions && sessions.length > 0)
-
-  // Get class outline
-  const { data: outline } = await supabase
-    .from("course_outlines")
-    .select("*")
-    .eq("class_id", id)
-    .single()
-
-  const hasOutline = !!outline
 
   const navItems = [
     { title: "Dashboard", href: "/teacher", icon: "Home" as const },
@@ -151,63 +140,19 @@ export default async function ClassDetailPage({
             </div>
           </div>
 
-          {/* Multi-Step Workflow */}
-          <div className="mb-8">
-            {/* Step 1: Schedule Generation */}
-            {!hasSchedule && (
-              <div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-blue-800 mb-2">📅 Step 1: Generate Your Class Schedule</h3>
-                  <p className="text-sm text-blue-700">
-                    Start by creating a schedule for your class. Tell the AI about your class goals,
-                    desired number of sessions, frequency, and time preferences.
-                  </p>
-                </div>
-                <ClassScheduleAssistantWrapper classId={id} />
+          {/* Schedule Generation */}
+          {!hasSchedule && (
+            <div className="mb-8">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 className="font-semibold text-blue-800 mb-2">📅 Generate Your Class Schedule</h3>
+                <p className="text-sm text-blue-700">
+                  Start by creating a schedule for your class. Tell the AI about your class goals,
+                  desired number of sessions, frequency, time preferences, and a brief topic for each session.
+                </p>
               </div>
-            )}
-
-            {/* Step 2: Outline Generation */}
-            {hasSchedule && !hasOutline && (
-              <div>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-green-800 mb-2">✅ Step 1 Complete: Schedule Created</h3>
-                  <p className="text-sm text-green-700 mb-3">
-                    Great! You have {sessions?.length || 0} sessions scheduled. Now let&apos;s create a course outline to plan what you&apos;ll teach in each session.
-                  </p>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-purple-800 mb-2">📝 Step 2: Generate Course Outline</h3>
-                    <p className="text-sm text-purple-700">
-                      Tell the AI about your course content, learning objectives, and topics you want to cover.
-                      The AI will create a structured outline that you can review and edit.
-                    </p>
-                  </div>
-                </div>
-                <ClassOutlineAssistantWrapper classId={id} />
-              </div>
-            )}
-
-            {/* Step 3: Session Content Generation */}
-            {hasSchedule && hasOutline && (
-              <div>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-green-800 mb-2">✅ Steps 1 & 2 Complete: Schedule & Outline Ready</h3>
-                  <p className="text-sm text-green-700 mb-3">
-                    Excellent! You have {sessions?.length || 0} sessions scheduled and a course outline ready.
-                    Now you can generate detailed content for each session.
-                  </p>
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-orange-800 mb-2">🎯 Step 3: Generate Session Content</h3>
-                    <p className="text-sm text-orange-700">
-                      Click &quot;Generate Content&quot; on any session below to create detailed learning materials
-                      based on your outline. The AI will create chapters, learning objectives, and practice questions.
-                    </p>
-                  </div>
-                </div>
-                <ClassSessionsWrapper sessions={sessions || []} classId={id} />
-              </div>
-            )}
-          </div>
+              <ClassScheduleAssistantWrapper classId={id} />
+            </div>
+          )}
 
           {/* Sessions Section */}
           <div className="bg-white rounded-lg shadow p-6 mb-8">
