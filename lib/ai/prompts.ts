@@ -310,3 +310,190 @@ export function areScheduleRequirementsSufficient(requirements: Partial<Schedule
   )
 }
 
+// ============================================
+// A2A (Agent-to-Agent) Content Refinement Prompts
+// ============================================
+
+export interface A2AContext {
+  className: string
+  classDescription: string
+  sessionNumber: number
+  sessionTitle: string
+  sessionDescription: string
+  scheduledDate: string
+  previousSessionsSummary?: string
+  conversationContext?: string
+}
+
+/**
+ * Teacher Agent System Prompt for A2A Content Generation
+ */
+export function buildTeacherAgentPrompt(context: A2AContext, iteration: number, studentFeedback?: string): string {
+  const basePrompt = `You are an expert educational content creator designing learning materials for a class session.
+
+**CLASS CONTEXT:**
+- Class Name: ${context.className}
+- Class Description: ${context.classDescription}
+
+**SESSION CONTEXT:**
+- Session Number: ${context.sessionNumber}
+- Session Title: ${context.sessionTitle}
+- Session Description: ${context.sessionDescription}
+- Scheduled Date: ${new Date(context.scheduledDate).toLocaleDateString()}
+
+${context.previousSessionsSummary ? `**PREVIOUS SESSIONS:**
+${context.previousSessionsSummary}
+
+IMPORTANT: Build upon topics covered in previous sessions. Reference previous concepts when introducing new material. Ensure appropriate difficulty progression.` : ''}
+
+${context.conversationContext ? `**TEACHER'S REQUIREMENTS:**
+${context.conversationContext}` : ''}
+
+**YOUR TASK:**
+Generate pedagogically sound learning content with:
+1. Clear learning objectives (2-3 specific, measurable goals)
+2. Well-structured content sections with explanations
+3. Key concepts and definitions
+4. Practical examples and applications
+5. Practice questions (2-3 multiple choice with explanations)
+6. Summary and key takeaways
+
+**CONTENT QUALITY STANDARDS:**
+- Appropriate difficulty level for the target audience
+- Clear, concise explanations
+- Logical flow and progression
+- Engaging and relevant examples
+- Questions that test understanding, not just memorization
+
+Output as JSON:
+{
+  "components": [
+    { "type": "text", "content": { "text": "..." } },
+    { "type": "question", "content": { "question": "...", "options": ["A", "B", "C", "D"], "correct_answer": 0, "explanation": "..." } }
+  ]
+}`
+
+  if (iteration === 1) {
+    return basePrompt + '\n\nThis is your FIRST iteration. Generate initial content based on the requirements above.'
+  } else if (studentFeedback) {
+    return basePrompt + `
+
+**STUDENT FEEDBACK FROM ITERATION ${iteration - 1}:**
+${studentFeedback}
+
+**YOUR TASK FOR ITERATION ${iteration}:**
+Refine the content based on the student's feedback. Address all concerns raised:
+- Clarify confusing concepts
+- Adjust difficulty if needed
+- Add missing explanations
+- Improve examples
+- Fix pacing issues
+- Enhance engagement
+
+Generate the IMPROVED content incorporating all feedback.`
+  }
+
+  return basePrompt
+}
+
+/**
+ * Student Agent System Prompt for A2A Content Review
+ */
+export function buildStudentAgentPrompt(context: A2AContext, iteration: number): string {
+  return `You are a thoughtful student reviewing learning content for Session ${context.sessionNumber}: "${context.sessionTitle}".
+
+**YOUR BACKGROUND:**
+You are a typical student in this class with:
+- Moderate prior knowledge from previous sessions
+- Genuine interest in learning but need clear explanations
+- Tendency to get confused by jargon or unexplained concepts
+- Appreciation for practical examples and real-world applications
+
+**YOUR TASK:**
+Review the generated content critically from a student's perspective. Evaluate:
+
+1. **CLARITY** (1-10):
+   - Are explanations clear and easy to understand?
+   - Is technical jargon explained?
+   - Are concepts broken down into digestible pieces?
+
+2. **DIFFICULTY APPROPRIATENESS** (1-10):
+   - Is the difficulty level appropriate for Session ${context.sessionNumber}?
+   - Does it build on previous sessions appropriately?
+   - Are there sudden jumps in complexity?
+
+3. **ENGAGEMENT** (1-10):
+   - Is the content interesting and engaging?
+   - Are examples relevant and relatable?
+   - Does it maintain attention throughout?
+
+4. **COMPLETENESS** (1-10):
+   - Are all key concepts covered?
+   - Are there gaps in explanations?
+   - Do practice questions test the right concepts?
+
+5. **LOGICAL FLOW** (1-10):
+   - Does content progress logically?
+   - Are transitions smooth?
+   - Is the pacing appropriate?
+
+**OUTPUT FORMAT:**
+Provide your review as JSON:
+{
+  "iteration": ${iteration},
+  "scores": {
+    "clarity": <1-10>,
+    "difficulty": <1-10>,
+    "engagement": <1-10>,
+    "completeness": <1-10>,
+    "logical_flow": <1-10>
+  },
+  "overall_score": <average of all scores>,
+  "strengths": ["strength 1", "strength 2", ...],
+  "concerns": [
+    {
+      "issue": "specific issue description",
+      "severity": "high|medium|low",
+      "suggestion": "specific actionable suggestion"
+    }
+  ],
+  "confusing_concepts": ["concept 1", "concept 2", ...],
+  "missing_explanations": ["what's missing 1", "what's missing 2", ...],
+  "pacing_issues": "description of pacing problems if any",
+  "overall_feedback": "comprehensive summary of your review"
+}
+
+Be specific, constructive, and actionable in your feedback. Focus on helping improve the content for better learning outcomes.`
+}
+
+/**
+ * Extract components from teacher agent response
+ */
+export function extractComponentsFromTeacherResponse(response: string): any[] {
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*"components"[\s\S]*\}/)
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0])
+      return parsed.components || []
+    }
+  } catch (e) {
+    console.error('Failed to parse teacher response:', e)
+  }
+  return []
+}
+
+/**
+ * Extract feedback from student agent response
+ */
+export function extractFeedbackFromStudentResponse(response: string): any {
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*"iteration"[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+  } catch (e) {
+    console.error('Failed to parse student response:', e)
+  }
+  return null
+}
+

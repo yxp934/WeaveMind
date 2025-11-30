@@ -1,7 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
+import {
+  buildTeacherAgentPrompt,
+  buildStudentAgentPrompt,
+  extractComponentsFromTeacherResponse,
+  extractFeedbackFromStudentResponse,
+  type A2AContext
+} from '@/lib/ai/prompts'
+
+// Helper function to create encoder for streaming
+function createEncoder() {
+  return new TextEncoder()
+}
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +24,7 @@ export async function POST(req: Request) {
       sessionTitle,
       sessionDescription,
       className,
+      classDescription,
       conversationContext
     } = await req.json()
 
@@ -154,7 +167,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
       }
     }
 
-    // Generate chapter content using AI
+    // Setup AI Gateway
     const gatewayKey = process.env.VERCEL_GATEWAY_KEY
     if (!gatewayKey) {
       return NextResponse.json({ error: 'AI Gateway not configured' }, { status: 500 })
@@ -165,108 +178,136 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
       baseURL: 'https://ai-gateway.vercel.sh/v1',
     })
 
-    // Build conversation context
-    let conversationSummary = ''
-    if (conversationContext) {
-      conversationSummary = `\n\nTeacher's Requirements (from conversation):
-${conversationContext}
-
-Please incorporate the teacher's specific requirements into the content.`
+    // Build A2A context
+    const a2aContext: A2AContext = {
+      className: className || entityTitle,
+      classDescription: classDescription || entityDescription || '',
+      sessionNumber: session.session_number,
+      sessionTitle: sessionTitle,
+      sessionDescription: sessionDescription || '',
+      scheduledDate: session.scheduled_date,
+      previousSessionsSummary: previousSessionsContext,
+      conversationContext: conversationContext
     }
 
-    const prompt = `Generate detailed educational content for a class session.
+    // Create streaming response
+    const encoder = createEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const NUM_ITERATIONS = 3
+          let currentComponents: any[] = []
+          let allIterations: any[] = []
 
-${courseId ? 'Course' : 'Class'}: ${entityTitle}
-${courseId ? 'Course' : 'Class'} Description: ${entityDescription || 'N/A'}
-Session Number: ${session.session_number}
-Session Title: ${sessionTitle}
-Session Description: ${sessionDescription || 'N/A'}${previousSessionsContext}${conversationSummary}
+          // A2A Refinement Loop
+          for (let iteration = 1; iteration <= NUM_ITERATIONS; iteration++) {
+            // Send iteration start event
+            controller.enqueue(encoder.encode(JSON.stringify({
+              type: 'iteration_start',
+              iteration,
+              total: NUM_ITERATIONS
+            }) + '\n'))
 
-Generate a structured lesson with:
-1. Learning objectives (2-3 points)
-2. Main content sections with explanations
-3. Key concepts and definitions
-4. Practice questions (2-3 multiple choice)
-5. Summary points
+            // TEACHER AGENT: Generate/Refine Content
+            controller.enqueue(encoder.encode(JSON.stringify({
+              type: 'agent_activity',
+              agent: 'teacher',
+              activity: iteration === 1 ? 'Generating initial content...' : 'Refining content based on feedback...',
+              iteration
+            }) + '\n'))
 
-Output as JSON:
-{
-  "components": [
-    { "type": "text", "content": { "text": "..." } },
-    { "type": "question", "content": { "question": "...", "options": ["A", "B", "C", "D"], "correct_answer": 0 } }
-  ]
-}`
+            const studentFeedback = iteration > 1 ? allIterations[iteration - 2]?.studentFeedback : undefined
+            const teacherPrompt = buildTeacherAgentPrompt(a2aContext, iteration, studentFeedback?.overall_feedback)
 
-    const result = await generateText({
-      model: openai.chat('meituan/longcat-flash-chat'),
-      prompt,
-      temperature: 0.7,
+            const teacherResult = await generateText({
+              model: openai.chat('meituan/longcat-flash-chat'),
+              prompt: teacherPrompt,
+              temperature: 0.7,
+            })
+
+            currentComponents = extractComponentsFromTeacherResponse(teacherResult.text)
+
+            // Send teacher content
+            controller.enqueue(encoder.encode(JSON.stringify({
+              type: 'teacher_content',
+              iteration,
+              components: currentComponents,
+              rawResponse: teacherResult.text
+            }) + '\n'))
+
+            // STUDENT AGENT: Review Content
+            if (iteration < NUM_ITERATIONS) {
+              controller.enqueue(encoder.encode(JSON.stringify({
+                type: 'agent_activity',
+                agent: 'student',
+                activity: 'Reviewing content from student perspective...',
+                iteration
+              }) + '\n'))
+
+              const studentPrompt = buildStudentAgentPrompt(a2aContext, iteration)
+              const contentToReview = JSON.stringify(currentComponents, null, 2)
+
+              const studentResult = await generateText({
+                model: openai.chat('meituan/longcat-flash-chat'),
+                prompt: `${studentPrompt}\n\n**CONTENT TO REVIEW:**\n${contentToReview}`,
+                temperature: 0.5,
+              })
+
+              const feedback = extractFeedbackFromStudentResponse(studentResult.text)
+
+              // Send student feedback
+              controller.enqueue(encoder.encode(JSON.stringify({
+                type: 'student_feedback',
+                iteration,
+                feedback,
+                rawResponse: studentResult.text
+              }) + '\n'))
+
+              allIterations.push({
+                iteration,
+                teacherContent: currentComponents,
+                studentFeedback: feedback
+              })
+            } else {
+              // Final iteration - no student review needed
+              allIterations.push({
+                iteration,
+                teacherContent: currentComponents,
+                studentFeedback: null
+              })
+            }
+
+            // Send iteration complete event
+            controller.enqueue(encoder.encode(JSON.stringify({
+              type: 'iteration_complete',
+              iteration
+            }) + '\n'))
+          }
+
+          // Send final components
+          controller.enqueue(encoder.encode(JSON.stringify({
+            type: 'a2a_complete',
+            finalComponents: currentComponents,
+            allIterations
+          }) + '\n'))
+
+          controller.close()
+        } catch (error: any) {
+          controller.enqueue(encoder.encode(JSON.stringify({
+            type: 'error',
+            error: error.message
+          }) + '\n'))
+          controller.close()
+        }
+      }
     })
 
-    // Parse the generated content
-    let components = []
-    try {
-      const jsonMatch = result.text.match(/\{[\s\S]*"components"[\s\S]*\}/)
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0])
-        components = parsed.components || []
-      }
-    } catch (e) {
-      // If parsing fails, create a simple text component
-      components = [{ type: 'text', content: { text: result.text } }]
-    }
-
-    // Create a chapter for this session
-    const { data: chapter, error: chapterError } = await supabase
-      .from('chapters')
-      .insert({
-        course_id: courseId || null,
-        class_id: classId || null,
-        title: sessionTitle,
-        description: sessionDescription,
-        order_index: session.session_number
-      })
-      .select()
-      .single()
-
-    if (chapterError) {
-      console.error('Chapter creation error:', chapterError)
-      return NextResponse.json({ error: 'Failed to create chapter' }, { status: 500 })
-    }
-
-    // Insert components
-    if (components.length > 0) {
-      const componentsToInsert = components.map((comp: any, idx: number) => ({
-        chapter_id: chapter.id,
-        type: comp.type || 'text',
-        content: comp.content || {},
-        order_index: idx
-      }))
-
-      const { error: componentsError } = await supabase.from('components').insert(componentsToInsert)
-
-      if (componentsError) {
-        console.error('Components insertion error:', componentsError)
-        // Delete the chapter if components failed to insert
-        await supabase.from('chapters').delete().eq('id', chapter.id)
-        return NextResponse.json({ error: 'Failed to insert learning components' }, { status: 500 })
-      }
-    }
-
-    // Update session to mark content as generated
-    await supabase
-      .from('course_sessions')
-      .update({ 
-        content_generated: true,
-        chapter_id: chapter.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', sessionId)
-
-    return NextResponse.json({ 
-      success: true, 
-      chapter_id: chapter.id,
-      components_count: components.length
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
 
   } catch (error: any) {
