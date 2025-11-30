@@ -121,19 +121,12 @@ Please tell me what specific content, learning objectives, and practice types yo
         if (done) break
 
         const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('0:')) {
-            const content = line.slice(2).replace(/^"(.*)"$/, '$1')
-            assistantMessage += content
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMessageId
-                ? { ...m, content: assistantMessage }
-                : m
-            ))
-          }
-        }
+        assistantMessage += chunk
+        setMessages(prev => prev.map(m =>
+          m.id === assistantMessageId
+            ? { ...m, content: assistantMessage }
+            : m
+        ))
       }
     } catch (error) {
       console.error('Chat error:', error)

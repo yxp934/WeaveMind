@@ -189,7 +189,14 @@ Output as JSON:
         order_index: idx
       }))
 
-      await supabase.from('components').insert(componentsToInsert)
+      const { error: componentsError } = await supabase.from('components').insert(componentsToInsert)
+
+      if (componentsError) {
+        console.error('Components insertion error:', componentsError)
+        // Delete the chapter if components failed to insert
+        await supabase.from('chapters').delete().eq('id', chapter.id)
+        return NextResponse.json({ error: 'Failed to insert learning components' }, { status: 500 })
+      }
     }
 
     // Update session to mark content as generated
