@@ -175,15 +175,31 @@ export function ScheduleChat({
           </Button>
         </div>
 
-        {canGenerate && (
+        {canGenerate && !isGenerating && (
           <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
               <span className="font-medium text-green-800">信息收集完成！Ready to generate!</span>
             </div>
             <Button onClick={handleGenerateSchedule} disabled={isGenerating} className="w-full bg-green-600 hover:bg-green-700">
-              {isGenerating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />生成中...</> : '生成课程日程 / Generate Schedule'}
+              生成课程日程 / Generate Schedule
             </Button>
+          </div>
+        )}
+
+        {isGenerating && (
+          <div className="mt-4 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+              <div className="text-center">
+                <p className="font-semibold text-blue-900 mb-1">
+                  正在生成课程日程... / Generating Schedule...
+                </p>
+                <p className="text-sm text-blue-700">
+                  正在创建课时安排，请稍候 / Creating sessions, please wait...
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </CardContent>
