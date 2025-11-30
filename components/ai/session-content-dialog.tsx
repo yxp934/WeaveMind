@@ -259,11 +259,11 @@ Please tell me what specific content, learning objectives, and practice types yo
                   throw new Error('Failed to save content')
                 }
 
-                // Close dialog and refresh page
+                // Keep dialog open for 5 seconds to show final results
                 setTimeout(() => {
                   onOpenChange(false)
                   router.refresh()
-                }, 2000)
+                }, 5000)
                 break
 
               case 'error':
