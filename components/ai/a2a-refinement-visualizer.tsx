@@ -183,7 +183,7 @@ export function A2ARefinementVisualizer({
                           {Object.entries(iter.studentFeedback.scores || {}).map(([key, value]) => (
                             <div key={key} className="flex justify-between">
                               <span className="text-gray-600 capitalize">{key.replace('_', ' ')}:</span>
-                              <span className="font-medium">{value}/10</span>
+                              <span className="font-medium">{String(value)}/10</span>
                             </div>
                           ))}
                         </div>
