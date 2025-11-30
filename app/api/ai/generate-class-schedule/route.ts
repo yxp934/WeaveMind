@@ -10,6 +10,8 @@ function parseRequirementsFromConversation(conversationText: string): {
   durationMinutes: number
   classTopic: string
   objectives: string[]
+  sessionTopics: string[]
+  daysOfWeek: string[]
 } {
   // Default values
   let totalClasses = 8
@@ -19,6 +21,8 @@ function parseRequirementsFromConversation(conversationText: string): {
   let durationMinutes = 90
   let classTopic = 'Class'
   let objectives: string[] = []
+  let sessionTopics: string[] = []
+  let daysOfWeek: string[] = []
 
   // Parse total classes
   const classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课)/i)
@@ -31,6 +35,25 @@ function parseRequirementsFromConversation(conversationText: string): {
     frequency = 'three times a week'
   } else if (conversationText.match(/once\s+a?\s*week|每周一次|周一次/i)) {
     frequency = 'once a week'
+  } else if (conversationText.match(/weekly/i)) {
+    frequency = 'once a week'
+  }
+
+  // Parse days of week
+  const dayPatterns = [
+    { pattern: /monday|mon\b/i, day: 'Monday' },
+    { pattern: /tuesday|tue\b/i, day: 'Tuesday' },
+    { pattern: /wednesday|wed\b/i, day: 'Wednesday' },
+    { pattern: /thursday|thu\b/i, day: 'Thursday' },
+    { pattern: /friday|fri\b/i, day: 'Friday' },
+    { pattern: /saturday|sat\b/i, day: 'Saturday' },
+    { pattern: /sunday|sun\b/i, day: 'Sunday' }
+  ]
+
+  for (const { pattern, day } of dayPatterns) {
+    if (pattern.test(conversationText)) {
+      daysOfWeek.push(day)
+    }
   }
 
   // Parse start date
@@ -61,12 +84,52 @@ function parseRequirementsFromConversation(conversationText: string): {
   }
 
   // Parse duration
-  const durationMatch = conversationText.match(/(\d+)\s*(minutes?|mins?|分钟)/i)
-  if (durationMatch) durationMinutes = parseInt(durationMatch[1])
+  const durationMatch = conversationText.match(/(\d+)\s*(hours?|hrs?|小时)/i)
+  if (durationMatch) {
+    durationMinutes = parseInt(durationMatch[1]) * 60
+  } else {
+    const minuteMatch = conversationText.match(/(\d+)\s*(minutes?|mins?|分钟)/i)
+    if (minuteMatch) durationMinutes = parseInt(minuteMatch[1])
+  }
 
-  // Parse class topic
-  const topicMatch = conversationText.match(/(?:class|课程)(?:\s+(?:is|about|on|:))?\s*([^.!?\n]+)/i)
-  if (topicMatch) classTopic = topicMatch[1].trim()
+  // Parse class topic - look for "for X" pattern
+  const topicForMatch = conversationText.match(/(?:for|about)\s+([A-Z][^,.!?\n]+?)(?:\s+(?:development|programming|course|class))?(?:,|\.|$)/i)
+  if (topicForMatch) {
+    classTopic = topicForMatch[1].trim()
+  } else {
+    const topicMatch = conversationText.match(/(?:class|课程)(?:\s+(?:is|about|on|:))?\s*([^.!?\n]+)/i)
+    if (topicMatch) classTopic = topicMatch[1].trim()
+  }
+
+  // Parse session topics - look for patterns like "Session 1: Topic" or "1) Topic" or "Topics: 1) Topic"
+  // Pattern 1: "Session X: Topic" or "Session X - Topic"
+  const sessionPattern1 = conversationText.matchAll(/(?:session|Session)\s*(\d+)[:\-]\s*([^,\n]+?)(?=(?:\s*(?:session|Session)\s*\d+)|(?:\s*\d+\))|$)/gi)
+  for (const match of sessionPattern1) {
+    const topic = match[2].trim()
+    if (topic && topic.length > 0) {
+      sessionTopics.push(topic)
+    }
+  }
+
+  // Pattern 2: "1) Topic, 2) Topic" or "1. Topic, 2. Topic"
+  if (sessionTopics.length === 0) {
+    const sessionPattern2 = conversationText.matchAll(/(\d+)[\)\.]\s*([^,\n\d]+?)(?=(?:\s*\d+[\)\.])|$)/gi)
+    for (const match of sessionPattern2) {
+      const topic = match[2].trim()
+      if (topic && topic.length > 0 && !topic.match(/^(sessions?|classes?|hours?|minutes?)/i)) {
+        sessionTopics.push(topic)
+      }
+    }
+  }
+
+  // Pattern 3: Look in "Topics:" section
+  if (sessionTopics.length === 0) {
+    const topicsSection = conversationText.match(/(?:topics?|session topics?)[:\s]*([^\n]+)/i)
+    if (topicsSection) {
+      const topics = topicsSection[1].split(/[,;]/).map(t => t.trim()).filter(t => t.length > 0)
+      sessionTopics.push(...topics)
+    }
+  }
 
   // Parse objectives
   const objectiveMatches = conversationText.match(/(?:objectives?|goals?|目标)[:\s]*([^.!?\n]+)/gi)
@@ -74,7 +137,7 @@ function parseRequirementsFromConversation(conversationText: string): {
     objectives = objectiveMatches.map(m => m.replace(/(?:objectives?|goals?|目标)[:\s]*/i, '').trim())
   }
 
-  return { totalClasses, frequency, startDate, startTime, durationMinutes, classTopic, objectives }
+  return { totalClasses, frequency, startDate, startTime, durationMinutes, classTopic, objectives, sessionTopics, daysOfWeek }
 }
 
 // Generate sessions based on requirements (no AI call - deterministic)
@@ -83,18 +146,29 @@ function generateSessions(requirements: ReturnType<typeof parseRequirementsFromC
   const startDate = new Date(requirements.startDate)
   let currentDate = new Date(startDate)
 
-  // Determine days of week based on frequency
+  // Determine days of week based on frequency and parsed days
   let daysOfWeek: number[] = []
-  if (requirements.frequency === 'twice a week') {
-    daysOfWeek = [1, 3] // Monday, Wednesday
-  } else if (requirements.frequency === 'three times a week') {
-    daysOfWeek = [1, 3, 5] // Monday, Wednesday, Friday
+
+  // If specific days were mentioned, use those
+  if (requirements.daysOfWeek.length > 0) {
+    const dayMap: { [key: string]: number } = {
+      'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+      'Thursday': 4, 'Friday': 5, 'Saturday': 6
+    }
+    daysOfWeek = requirements.daysOfWeek.map(day => dayMap[day]).filter(d => d !== undefined)
   } else {
-    daysOfWeek = [1] // Monday only
+    // Fall back to frequency-based days
+    if (requirements.frequency === 'twice a week') {
+      daysOfWeek = [1, 3] // Monday, Wednesday
+    } else if (requirements.frequency === 'three times a week') {
+      daysOfWeek = [1, 3, 5] // Monday, Wednesday, Friday
+    } else {
+      daysOfWeek = [5] // Friday only for weekly
+    }
   }
 
-  // Generate session titles based on class topic
-  const sessionTitles = [
+  // Default session titles (fallback if no topics provided)
+  const defaultSessionTitles = [
     'Introduction and Setup',
     'Core Concepts Part 1',
     'Core Concepts Part 2',
@@ -109,6 +183,11 @@ function generateSessions(requirements: ReturnType<typeof parseRequirementsFromC
     'Course Conclusion'
   ]
 
+  // Use parsed session topics if available, otherwise use defaults
+  const sessionTitles = requirements.sessionTopics.length > 0
+    ? requirements.sessionTopics
+    : defaultSessionTitles
+
   let sessionCount = 0
   while (sessionCount < requirements.totalClasses) {
     // Find next valid day
@@ -120,10 +199,13 @@ function generateSessions(requirements: ReturnType<typeof parseRequirementsFromC
     const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
     const endMinutes = (minutes + requirements.durationMinutes) % 60
 
+    // Get the topic for this session
+    const sessionTopic = sessionTitles[sessionCount] || sessionTitles[sessionCount % sessionTitles.length]
+
     sessions.push({
       session_number: sessionCount + 1,
-      title: `Session ${sessionCount + 1}: ${sessionTitles[sessionCount % sessionTitles.length]}`,
-      description: `${requirements.classTopic} - ${sessionTitles[sessionCount % sessionTitles.length]}`,
+      title: `Session ${sessionCount + 1}: ${sessionTopic}`,
+      description: `${requirements.classTopic} - ${sessionTopic}`,
       date: currentDate.toISOString().split('T')[0],
       start_time: requirements.startTime,
       end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
