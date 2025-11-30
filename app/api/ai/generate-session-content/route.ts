@@ -82,21 +82,75 @@ export async function POST(req: Request) {
           session_number,
           title,
           description,
-          chapter:chapters(title, description)
+          chapter_id,
+          chapters!inner(
+            id,
+            title,
+            description
+          )
         `)
         .eq('class_id', classId)
         .lt('session_number', session.session_number)
+        .not('chapter_id', 'is', null)
         .order('session_number', { ascending: true })
 
       if (previousSessions && previousSessions.length > 0) {
-        const sessionsSummary = previousSessions.map((s: any) =>
-          `Session ${s.session_number}: ${s.title}${s.description ? ` - ${s.description}` : ''}`
-        ).join('\n')
+        // Fetch components for each previous session's chapter
+        const chapterIds = previousSessions
+          .map((s: any) => s.chapter_id)
+          .filter(Boolean)
 
-        previousSessionsContext = `\n\nPrevious Sessions in This Class:
+        let componentsData: any[] = []
+        if (chapterIds.length > 0) {
+          const { data: components } = await supabase
+            .from('components')
+            .select('chapter_id, type, content, order_index')
+            .in('chapter_id', chapterIds)
+            .order('chapter_id', { ascending: true })
+            .order('order_index', { ascending: true })
+
+          componentsData = components || []
+        }
+
+        // Build detailed context with content summaries
+        const sessionsSummary = previousSessions.map((s: any) => {
+          const sessionComponents = componentsData.filter(
+            (c: any) => c.chapter_id === s.chapter_id
+          )
+
+          let contentSummary = ''
+          if (sessionComponents.length > 0) {
+            // Extract key topics from text components
+            const textComponents = sessionComponents
+              .filter((c: any) => c.type === 'text')
+              .slice(0, 3) // First 3 text components for summary
+
+            if (textComponents.length > 0) {
+              const topics = textComponents.map((c: any) => {
+                const text = c.content?.text || ''
+                // Extract first 150 characters as summary
+                return text.substring(0, 150).trim() + (text.length > 150 ? '...' : '')
+              }).join(' | ')
+
+              contentSummary = `\n  Topics covered: ${topics}`
+            }
+
+            // Count questions
+            const questionCount = sessionComponents.filter(
+              (c: any) => c.type === 'question'
+            ).length
+            if (questionCount > 0) {
+              contentSummary += `\n  Practice questions: ${questionCount}`
+            }
+          }
+
+          return `Session ${s.session_number}: ${s.title}${s.description ? ` - ${s.description}` : ''}${contentSummary}`
+        }).join('\n\n')
+
+        previousSessionsContext = `\n\n=== PREVIOUS SESSIONS IN THIS CLASS ===
 ${sessionsSummary}
 
-Please ensure this session builds upon previous content and maintains continuity.`
+IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating content. Reference previous concepts when introducing new material.`
       }
     }
 

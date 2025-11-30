@@ -68,6 +68,31 @@ export async function POST(req: Request) {
       return new Response('Session not found', { status: 404 })
     }
 
+    // Get previous sessions for context
+    let contextInfo = `\n\nCONTEXT INFORMATION:
+Class: ${classData.name}
+Session Number: ${session.session_number}
+Session Title: ${session.title}
+Session Description: ${session.description || 'N/A'}`
+
+    const { data: previousSessions } = await supabase
+      .from('course_sessions')
+      .select('session_number, title, description')
+      .eq('class_id', classId)
+      .lt('session_number', session.session_number)
+      .order('session_number', { ascending: true })
+
+    if (previousSessions && previousSessions.length > 0) {
+      const prevSessionsList = previousSessions
+        .map((s: any) => `  - Session ${s.session_number}: ${s.title}`)
+        .join('\n')
+
+      contextInfo += `\n\nPrevious Sessions (for reference):
+${prevSessionsList}
+
+NOTE: This session should build upon previous sessions and avoid repeating content.`
+    }
+
     // Get AI Gateway configuration
     const gatewayKey = process.env.VERCEL_GATEWAY_KEY
     if (!gatewayKey) {
@@ -79,10 +104,13 @@ export async function POST(req: Request) {
       baseURL: 'https://ai-gateway.vercel.sh/v1',
     })
 
+    // Enhanced system prompt with context
+    const enhancedSystemPrompt = SYSTEM_PROMPT + contextInfo
+
     // Stream the response
     const result = await streamText({
       model: openai.chat('meituan/longcat-flash-chat'),
-      system: SYSTEM_PROMPT,
+      system: enhancedSystemPrompt,
       messages,
       temperature: 0.7,
     })
