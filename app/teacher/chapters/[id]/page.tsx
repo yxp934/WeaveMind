@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { ChapterPreviewWrapper } from "@/components/preview/chapter-preview-wrapper"
 
 export default async function ChapterDetailPage({
   params,
@@ -10,9 +11,9 @@ export default async function ChapterDetailPage({
 }) {
   const { id } = await params
   const supabase = await createClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) {
     redirect("/auth/login")
   }
@@ -61,9 +62,16 @@ export default async function ChapterDetailPage({
                 Course: {chapter.course?.title || "Unknown"} • Chapter #{chapter.order_index + 1}
               </p>
             </div>
-            <Link href={`/teacher/chapters/${id}/edit`}>
-              <Button variant="outline">Edit Chapter</Button>
-            </Link>
+            <div className="flex gap-2">
+              <ChapterPreviewWrapper
+                chapterTitle={chapter.title}
+                chapterDescription={chapter.description}
+                components={components || []}
+              />
+              <Link href={`/teacher/chapters/${id}/edit`}>
+                <Button variant="outline">Edit Chapter</Button>
+              </Link>
+            </div>
           </div>
         </div>
 
