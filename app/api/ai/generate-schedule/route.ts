@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createOpenAI } from '@ai-sdk/openai'
 
 // Parse schedule requirements from conversation text
 function parseRequirementsFromConversation(conversationText: string): {
@@ -90,64 +91,164 @@ function parseRequirementsFromConversation(conversationText: string): {
   return { totalClasses, frequency, startDate, startTime, durationMinutes, courseTopic, objectives }
 }
 
-// Generate sessions based on requirements (no AI call - deterministic)
-function generateSessions(requirements: ReturnType<typeof parseRequirementsFromConversation>) {
-  const sessions = []
-  const startDate = new Date(requirements.startDate)
-  let currentDate = new Date(startDate)
+// Generate sessions using AI to create course-specific topics
+async function generateSessions(requirements: ReturnType<typeof parseRequirementsFromConversation>) {
+  try {
+    // Initialize OpenAI client
+    const openai = createOpenAI({
+      apiKey: process.env.VERCEL_GATEWAY_KEY,
+      baseURL: 'https://gateway.ai.vercel.ai/openai'
+    })
 
-  // Determine days of week based on frequency
-  let daysOfWeek: number[] = []
-  if (requirements.frequency === 'twice a week') {
-    daysOfWeek = [1, 3] // Monday, Wednesday
-  } else if (requirements.frequency === 'three times a week') {
-    daysOfWeek = [1, 3, 5] // Monday, Wednesday, Friday
-  } else {
-    daysOfWeek = [1] // Monday only
-  }
+    // Create a prompt to generate specific session topics
+    const sessionTopicPrompt = `Generate ${requirements.totalClasses} specific, meaningful session topics for a course on "${requirements.courseTopic}".
 
-  // Generate session titles based on course topic
-  const sessionTitles = [
-    'Introduction and Setup',
-    'Core Concepts Part 1',
-    'Core Concepts Part 2',
-    'Practical Application 1',
-    'Intermediate Topics',
-    'Practical Application 2',
-    'Advanced Topics',
-    'Review and Assessment',
-    'Project Work 1',
-    'Project Work 2',
-    'Final Review',
-    'Course Conclusion'
-  ]
+Requirements:
+- Course Topic: ${requirements.courseTopic}
+- Total Sessions: ${requirements.totalClasses}
+- Course Objectives: ${requirements.objectives.join('; ')}
 
-  let sessionCount = 0
-  while (sessionCount < requirements.totalClasses) {
-    // Find next valid day
-    while (!daysOfWeek.includes(currentDate.getDay())) {
+Instructions:
+- Generate exactly ${requirements.totalClasses} session topics
+- Each topic should be specific and relevant to the course content
+- Avoid generic titles like "Introduction" or "Core Concepts"
+- Make topics progressive, building on each other
+- Each topic should be 3-7 words
+- Return ONLY a JSON array of strings, like this:
+["Topic 1", "Topic 2", "Topic 3", ...]
+
+Example for a Python course:
+["Python Basics and Environment Setup", "Data Types and Variables", "Control Structures and Functions", "Object-Oriented Programming in Python"]
+
+Now generate topics for "${requirements.courseTopic}":`
+
+    // Call AI to generate session topics
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'user', content: sessionTopicPrompt }
+      ],
+      temperature: 0.7,
+      maxTokens: 500
+    })
+
+    let sessionTopics: string[] = []
+
+    // Parse the AI response
+    const content = response.choices[0]?.message?.content || '[]'
+    try {
+      // Try to parse as JSON
+      sessionTopics = JSON.parse(content)
+
+      // Validate that we got an array
+      if (!Array.isArray(sessionTopics)) {
+        throw new Error('Response is not an array')
+      }
+
+      // Ensure we have the right number of topics
+      if (sessionTopics.length !== requirements.totalClasses) {
+        console.warn(`AI returned ${sessionTopics.length} topics, expected ${requirements.totalClasses}`)
+        // Pad or truncate as needed
+        while (sessionTopics.length < requirements.totalClasses) {
+          sessionTopics.push(`Session ${sessionTopics.length + 1}`)
+        }
+        sessionTopics = sessionTopics.slice(0, requirements.totalClasses)
+      }
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError)
+      console.log('AI Response:', content)
+      // Fall back to numbered sessions
+      sessionTopics = Array.from({ length: requirements.totalClasses }, (_, i) =>
+        `${requirements.courseTopic} - Part ${i + 1}`
+      )
+    }
+
+    // Now generate the schedule with AI-generated topics
+    const sessions = []
+    const startDate = new Date(requirements.startDate)
+    let currentDate = new Date(startDate)
+
+    // Determine days of week based on frequency
+    let daysOfWeek: number[] = []
+    if (requirements.frequency === 'twice a week') {
+      daysOfWeek = [1, 3] // Monday, Wednesday
+    } else if (requirements.frequency === 'three times a week') {
+      daysOfWeek = [1, 3, 5] // Monday, Wednesday, Friday
+    } else {
+      daysOfWeek = [1] // Monday only
+    }
+
+    let sessionCount = 0
+    while (sessionCount < requirements.totalClasses) {
+      // Find next valid day
+      while (!daysOfWeek.includes(currentDate.getDay())) {
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+
+      const [hours, minutes] = requirements.startTime.split(':').map(Number)
+      const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
+      const endMinutes = (minutes + requirements.durationMinutes) % 60
+
+      const topic = sessionTopics[sessionCount] || `Session ${sessionCount + 1}`
+
+      sessions.push({
+        session_number: sessionCount + 1,
+        title: `Session ${sessionCount + 1}: ${topic}`,
+        description: `${topic} - ${requirements.courseTopic}`,
+        date: currentDate.toISOString().split('T')[0],
+        start_time: requirements.startTime,
+        end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
+        duration_minutes: requirements.durationMinutes
+      })
+
+      sessionCount++
       currentDate.setDate(currentDate.getDate() + 1)
     }
 
-    const [hours, minutes] = requirements.startTime.split(':').map(Number)
-    const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
-    const endMinutes = (minutes + requirements.durationMinutes) % 60
+    return sessions
+  } catch (error) {
+    console.error('Error generating sessions with AI:', error)
 
-    sessions.push({
-      session_number: sessionCount + 1,
-      title: `Session ${sessionCount + 1}: ${sessionTitles[sessionCount % sessionTitles.length]}`,
-      description: `${requirements.courseTopic} - ${sessionTitles[sessionCount % sessionTitles.length]}`,
-      date: currentDate.toISOString().split('T')[0],
-      start_time: requirements.startTime,
-      end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
-      duration_minutes: requirements.durationMinutes
-    })
+    // Fallback to basic sessions if AI fails
+    const sessions = []
+    const startDate = new Date(requirements.startDate)
+    let currentDate = new Date(startDate)
 
-    sessionCount++
-    currentDate.setDate(currentDate.getDate() + 1)
+    let daysOfWeek: number[] = []
+    if (requirements.frequency === 'twice a week') {
+      daysOfWeek = [1, 3]
+    } else if (requirements.frequency === 'three times a week') {
+      daysOfWeek = [1, 3, 5]
+    } else {
+      daysOfWeek = [1]
+    }
+
+    let sessionCount = 0
+    while (sessionCount < requirements.totalClasses) {
+      while (!daysOfWeek.includes(currentDate.getDay())) {
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+
+      const [hours, minutes] = requirements.startTime.split(':').map(Number)
+      const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
+      const endMinutes = (minutes + requirements.durationMinutes) % 60
+
+      sessions.push({
+        session_number: sessionCount + 1,
+        title: `Session ${sessionCount + 1}: ${requirements.courseTopic} - Part ${sessionCount + 1}`,
+        description: `${requirements.courseTopic} - Part ${sessionCount + 1}`,
+        date: currentDate.toISOString().split('T')[0],
+        start_time: requirements.startTime,
+        end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
+        duration_minutes: requirements.durationMinutes
+      })
+
+      sessionCount++
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    return sessions
   }
-
-  return sessions
 }
 
 export async function POST(req: Request) {
@@ -188,8 +289,8 @@ export async function POST(req: Request) {
       parsedRequirements.courseTopic = course.title || 'Course'
     }
 
-    // Generate sessions deterministically (no AI call)
-    const sessions = generateSessions(parsedRequirements)
+    // Generate sessions using AI for course-specific topics
+    const sessions = await generateSessions(parsedRequirements)
 
     // Store schedule requirements in course_outlines
     const { error: outlineError } = await supabase
