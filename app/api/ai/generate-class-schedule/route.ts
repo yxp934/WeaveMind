@@ -111,16 +111,21 @@ function parseRequirementsFromConversation(conversationText: string): {
     }
   }
 
-  // Pattern 2: "1) Topic, 2) Topic" or "1. Topic, 2. Topic"
+  // Pattern 2: "1) Topic 2) Topic" or "1. Topic 2. Topic"
   if (sessionTopics.length === 0) {
-    // First try to match numbered list items separated by numbers
-    const sessionPattern2 = conversationText.matchAll(/(\d+)[\)\.]\s*([^\d\n]+?)(?=\s*\d+[\)\.]|$)/gi)
-    for (const match of sessionPattern2) {
-      let topic = match[2].trim()
-      // Remove trailing punctuation and whitespace
-      topic = topic.replace(/[,;.\s]+$/, '').trim()
-      if (topic && topic.length > 0 && !topic.match(/^(sessions?|classes?|hours?|minutes?)/i)) {
-        sessionTopics.push(topic)
+    // Split by "Topics:" first to isolate the topics section
+    const topicsMatch = conversationText.match(/topics?:\s*(.+?)(?=\n|$)/i)
+    if (topicsMatch) {
+      const topicsText = topicsMatch[1]
+      // Match numbered items: "1) Topic 2) Topic" or "1. Topic 2. Topic"
+      const sessionPattern2 = topicsText.matchAll(/(\d+)[\)\.]\s*([^0-9]+?)(?=\s*\d+[\)\.]|$)/gi)
+      for (const match of sessionPattern2) {
+        let topic = match[2].trim()
+        // Remove trailing punctuation and whitespace
+        topic = topic.replace(/[,;.\s]+$/, '').trim()
+        if (topic && topic.length > 0 && !topic.match(/^(sessions?|classes?|hours?|minutes?)/i)) {
+          sessionTopics.push(topic)
+        }
       }
     }
   }
