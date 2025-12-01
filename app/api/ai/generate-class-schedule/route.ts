@@ -113,9 +113,12 @@ function parseRequirementsFromConversation(conversationText: string): {
 
   // Pattern 2: "1) Topic, 2) Topic" or "1. Topic, 2. Topic"
   if (sessionTopics.length === 0) {
-    const sessionPattern2 = conversationText.matchAll(/(\d+)[\)\.]\s*([^,\n\d]+?)(?=(?:\s*\d+[\)\.])|$)/gi)
+    // First try to match numbered list items separated by numbers
+    const sessionPattern2 = conversationText.matchAll(/(\d+)[\)\.]\s*([^\d\n]+?)(?=\s*\d+[\)\.]|$)/gi)
     for (const match of sessionPattern2) {
-      const topic = match[2].trim()
+      let topic = match[2].trim()
+      // Remove trailing punctuation and whitespace
+      topic = topic.replace(/[,;.\s]+$/, '').trim()
       if (topic && topic.length > 0 && !topic.match(/^(sessions?|classes?|hours?|minutes?)/i)) {
         sessionTopics.push(topic)
       }
