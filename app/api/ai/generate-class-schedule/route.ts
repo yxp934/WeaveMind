@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createOpenAI } from '@ai-sdk/openai'
+import { generateText } from 'ai'
 
 // Parse schedule requirements from conversation text
 function parseRequirementsFromConversation(conversationText: string): {
@@ -148,8 +150,83 @@ function parseRequirementsFromConversation(conversationText: string): {
   return { totalClasses, frequency, startDate, startTime, durationMinutes, classTopic, objectives, sessionTopics, daysOfWeek }
 }
 
-// Generate sessions based on requirements (no AI call - deterministic)
-function generateSessions(requirements: ReturnType<typeof parseRequirementsFromConversation>) {
+// Generate sessions using AI to create course-specific topics
+async function generateSessions(requirements: ReturnType<typeof parseRequirementsFromConversation>) {
+  let sessionTopics: string[] = []
+
+  try {
+    // Initialize OpenAI client
+    const openai = createOpenAI({
+      apiKey: process.env.VERCEL_GATEWAY_KEY,
+      baseURL: 'https://ai-gateway.vercel.sh/v1'
+    })
+
+    // Create a prompt to generate specific session topics
+    const sessionTopicPrompt = `Generate ${requirements.totalClasses} specific, meaningful session topics for a class on "${requirements.classTopic}".
+
+Requirements:
+- Class Topic: ${requirements.classTopic}
+- Total Sessions: ${requirements.totalClasses}
+- Class Objectives: ${requirements.objectives.join('; ')}
+
+Instructions:
+- Generate exactly ${requirements.totalClasses} session topics
+- Each topic should be specific and relevant to the class content
+- Avoid generic titles like "Introduction" or "Core Concepts"
+- Make topics progressive, building on each other
+- Each topic should be 3-7 words
+- Return ONLY a JSON array of strings, like this:
+["Topic 1", "Topic 2", "Topic 3", ...]
+
+Example for a Python class:
+["Python Basics and Environment Setup", "Data Types and Variables", "Control Structures and Functions", "Object-Oriented Programming in Python"]
+
+Now generate topics for "${requirements.classTopic}":`
+
+    // Call AI to generate session topics using generateText
+    const { text } = await generateText({
+      model: openai.chat('meituan/longcat-flash-chat'),
+      prompt: sessionTopicPrompt,
+      temperature: 0.7
+    })
+
+    // Parse the AI response
+    const content = text || '[]'
+    try {
+      // Try to parse as JSON
+      sessionTopics = JSON.parse(content)
+
+      // Validate that we got an array
+      if (!Array.isArray(sessionTopics)) {
+        throw new Error('Response is not an array')
+      }
+
+      // Ensure we have the right number of topics
+      if (sessionTopics.length !== requirements.totalClasses) {
+        console.warn(`AI returned ${sessionTopics.length} topics, expected ${requirements.totalClasses}`)
+        // Pad or truncate as needed
+        while (sessionTopics.length < requirements.totalClasses) {
+          sessionTopics.push(`Session ${sessionTopics.length + 1}`)
+        }
+        sessionTopics = sessionTopics.slice(0, requirements.totalClasses)
+      }
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError)
+      console.log('AI Response:', content)
+      // Fall back to basic topics
+      sessionTopics = Array.from({ length: requirements.totalClasses }, (_, i) =>
+        `${requirements.classTopic} - Part ${i + 1}`
+      )
+    }
+  } catch (error) {
+    console.error('Error generating topics with AI:', error)
+    // Fallback to basic topics if AI fails
+    sessionTopics = Array.from({ length: requirements.totalClasses }, (_, i) =>
+      `${requirements.classTopic} - Part ${i + 1}`
+    )
+  }
+
+  // Generate the schedule with AI-generated topics
   const sessions = []
   const startDate = new Date(requirements.startDate)
   let currentDate = new Date(startDate)
@@ -175,27 +252,6 @@ function generateSessions(requirements: ReturnType<typeof parseRequirementsFromC
     }
   }
 
-  // Default session titles (fallback if no topics provided)
-  const defaultSessionTitles = [
-    'Introduction and Setup',
-    'Core Concepts Part 1',
-    'Core Concepts Part 2',
-    'Practical Application 1',
-    'Intermediate Topics',
-    'Practical Application 2',
-    'Advanced Topics',
-    'Review and Assessment',
-    'Project Work 1',
-    'Project Work 2',
-    'Final Review',
-    'Course Conclusion'
-  ]
-
-  // Use parsed session topics if available, otherwise use defaults
-  const sessionTitles = requirements.sessionTopics.length > 0
-    ? requirements.sessionTopics
-    : defaultSessionTitles
-
   let sessionCount = 0
   while (sessionCount < requirements.totalClasses) {
     // Find next valid day
@@ -207,13 +263,12 @@ function generateSessions(requirements: ReturnType<typeof parseRequirementsFromC
     const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
     const endMinutes = (minutes + requirements.durationMinutes) % 60
 
-    // Get the topic for this session
-    const sessionTopic = sessionTitles[sessionCount] || sessionTitles[sessionCount % sessionTitles.length]
+    const topic = sessionTopics[sessionCount] || `Session ${sessionCount + 1}`
 
     sessions.push({
       session_number: sessionCount + 1,
-      title: `Session ${sessionCount + 1}: ${sessionTopic}`,
-      description: `${requirements.classTopic} - ${sessionTopic}`,
+      title: `Session ${sessionCount + 1}: ${topic}`,
+      description: `${requirements.classTopic} - ${topic}`,
       date: currentDate.toISOString().split('T')[0],
       start_time: requirements.startTime,
       end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
@@ -265,8 +320,8 @@ export async function POST(req: Request) {
       parsedRequirements.classTopic = classData.name || 'Class'
     }
 
-    // Generate sessions deterministically (no AI call)
-    const sessions = generateSessions(parsedRequirements)
+    // Generate sessions using AI for class-specific topics
+    const sessions = await generateSessions(parsedRequirements)
 
     // Insert sessions into database
     const sessionsToInsert = sessions.map((session) => ({

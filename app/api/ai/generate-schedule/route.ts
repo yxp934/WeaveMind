@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createOpenAI } from '@ai-sdk/openai'
+import { generateText } from 'ai'
 
 // Parse schedule requirements from conversation text
 function parseRequirementsFromConversation(conversationText: string): {
@@ -97,7 +98,7 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
     // Initialize OpenAI client
     const openai = createOpenAI({
       apiKey: process.env.VERCEL_GATEWAY_KEY,
-      baseURL: 'https://gateway.ai.vercel.ai/openai'
+      baseURL: 'https://ai-gateway.vercel.sh/v1'
     })
 
     // Create a prompt to generate specific session topics
@@ -122,20 +123,17 @@ Example for a Python course:
 
 Now generate topics for "${requirements.courseTopic}":`
 
-    // Call AI to generate session topics
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'user', content: sessionTopicPrompt }
-      ],
-      temperature: 0.7,
-      maxTokens: 500
+    // Call AI to generate session topics using generateText
+    const { text } = await generateText({
+      model: openai.chat('meituan/longcat-flash-chat'),
+      prompt: sessionTopicPrompt,
+      temperature: 0.7
     })
 
     let sessionTopics: string[] = []
 
     // Parse the AI response
-    const content = response.choices[0]?.message?.content || '[]'
+    const content = text || '[]'
     try {
       // Try to parse as JSON
       sessionTopics = JSON.parse(content)

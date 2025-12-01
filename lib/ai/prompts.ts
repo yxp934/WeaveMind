@@ -198,14 +198,13 @@ Your objectives:
    - Total number of class sessions
    - Preferred time slots
    - Start date
-4. Gather brief topic/summary for each session
 
 CRITICAL GUIDELINES:
 - ALWAYS use multiple choice questions (A, B, C, D format)
 - Ask ONE question at a time
 - Provide 3-4 clear options for each question
 - Include an "Other (please specify)" option when appropriate
-- After gathering basic schedule info (number of sessions, frequency, start date, time, duration), ask the teacher to provide a brief topic/summary for each session
+- DO NOT ask the teacher to provide session topics - you will automatically generate appropriate topics based on the course description
 - Be encouraging and concise
 - Summarize what you've learned periodically
 
@@ -217,11 +216,10 @@ REQUIRED INFORMATION (in order):
 5. Start date (ask for specific date)
 6. Class time (multiple choice: A) Morning (9:00 AM), B) Afternoon (2:00 PM), C) Evening (6:00 PM), D) Other)
 7. Duration per session (multiple choice: A) 45 minutes, B) 90 minutes, C) 120 minutes, D) Other)
-8. Brief topic/summary for each session (ask teacher to provide a list)
 
-Keep responses concise and focused. Use Chinese (中文) if the teacher communicates in Chinese, otherwise use English.
+Once you have gathered all required information, confirm the details with the teacher and end your message with the special marker: [SCHEDULE_READY]
 
-When you have gathered ALL required information including session topics, end your message with the special marker: [SCHEDULE_READY]`
+IMPORTANT: You will automatically generate appropriate session topics based on the course description. The teacher does not need to provide topics manually.`
 
 /**
  * Initial message for schedule generation conversation
