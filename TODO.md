@@ -32,13 +32,23 @@
 
 ## Phase 3 – Teacher AI: Requirement Gathering & Outline
 
-- [ ] Integrate Vercel AI Gateway and Vercel AI SDK in the backend.
-- [ ] Design prompts and context builders for requirement-gathering conversations.
-- [ ] Implement teacher-side AI chat UI for starting a new AI-assisted course.
-- [ ] Implement backend handlers that convert chat history into a structured outline (chapters + descriptions).
+- [x] Integrate Vercel AI Gateway and Vercel AI SDK in the backend.
+- [x] Design prompts and context builders for requirement-gathering conversations.
+- [x] Implement teacher-side AI chat UI for starting a new AI-assisted course.
+- [x] Implement backend handlers that convert chat history into a structured outline (chapters + descriptions).
 - [ ] Persist outlines in the database and link them to draft courses.
 - [ ] Implement outline editing UI with drag-and-drop reorder, rename, add/remove chapter.
 - [ ] Support natural-language outline editing commands translated to structured changes.
+
+**Recent Enhancement (2025-12-02):**
+- [x] Enhanced schedule generation to collect comprehensive course context:
+  * Target audience (age, background, prior knowledge, skill level)
+  * Specific learning goals and outcomes
+  * Detailed overview of each session
+- [x] Added explicit user confirmation step before schedule generation
+- [x] Integrated all collected context into AI generation prompts for better course-specific content
+- [x] No hardcoded responses - all information dynamically extracted from user conversation
+- [x] Improved session descriptions to include target audience, goals, and session overviews
 
 ## Phase 4 – AI Course Generation (Dual-Agent)
 
