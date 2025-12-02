@@ -154,94 +154,95 @@ function parseRequirementsFromConversation(conversationText: string): {
 async function generateSessions(requirements: ReturnType<typeof parseRequirementsFromConversation>) {
   let sessionTopics: string[] = []
 
-  try {
-    // Initialize OpenAI client
-    const openai = createOpenAI({
-      apiKey: process.env.VERCEL_GATEWAY_KEY,
-      baseURL: 'https://ai-gateway.vercel.sh/v1'
-    })
+  // Initialize OpenAI client
+  const openai = createOpenAI({
+    apiKey: process.env.VERCEL_GATEWAY_KEY,
+    baseURL: 'https://ai-gateway.vercel.sh/v1'
+  })
 
-    // Create a prompt to generate specific session topics
-    const sessionTopicPrompt = `Generate ${requirements.totalClasses} specific, meaningful session topics for a class on "${requirements.classTopic}".
+  // Create a strict prompt to generate specific session topics
+  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} specific session topics for a class on "${requirements.classTopic}".
 
-Requirements:
-- Class Topic: ${requirements.classTopic}
-- Total Sessions: ${requirements.totalClasses}
-- Class Objectives: ${requirements.objectives.join('; ')}
+IMPORTANT RULES:
+- Return ONLY a JSON array of strings
+- NO markdown code blocks
+- NO explanations or extra text
+- Each topic must be 4-6 words
+- Topics must be specific to "${requirements.classTopic}"
+- NO generic terms like "Introduction", "Overview", "Basics", "Part X"
+- Make topics progressive and meaningful
 
-Instructions:
-- Generate exactly ${requirements.totalClasses} session topics
-- Each topic should be specific and relevant to the class content
-- Avoid generic titles like "Introduction" or "Core Concepts"
-- Make topics progressive, building on each other
-- Each topic should be 3-7 words
-- Return ONLY a JSON array of strings, like this:
-["Topic 1", "Topic 2", "Topic 3", ...]
+Example JSON format:
+["Topic 1", "Topic 2", "Topic 3"]
 
-Example for a Python class:
-["Python Basics and Environment Setup", "Data Types and Variables", "Control Structures and Functions", "Object-Oriented Programming in Python"]
+Class Topic: ${requirements.classTopic}
+Objectives: ${requirements.objectives.join(', ')}
 
-Now generate topics for "${requirements.classTopic}":`
+Generate exactly ${requirements.totalClasses} specific topics now:`
 
-    // Call AI to generate session topics using generateText
-    const { text } = await generateText({
-      model: openai.chat('meituan/longcat-flash-chat'),
-      prompt: sessionTopicPrompt,
-      temperature: 0.7
-    })
+  // Retry mechanism - retry up to 3 times to get valid AI response
+  let attempts = 0
+  const maxAttempts = 3
 
-    // Parse the AI response
-    let content = text || '[]'
-
+  while (attempts < maxAttempts) {
+    attempts++
     try {
-      // Try to extract JSON from the response (handle code blocks, extra text, etc.)
-      let jsonStr = content.trim()
+      // Call AI to generate session topics using generateText
+      const { text } = await generateText({
+        model: openai.chat('meituan/longcat-flash-chat'),
+        prompt: sessionTopicPrompt,
+        temperature: 0.3
+      })
 
-      // Remove code block markers if present
-      if (jsonStr.startsWith('```')) {
-        jsonStr = jsonStr.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
-      }
+      // Parse the AI response - no fallbacks
+      let content = text.trim()
 
-      // Find JSON array in the response
-      const jsonMatch = jsonStr.match(/\[[\s\S]*\]/)
+      // Remove any markdown code blocks
+      content = content.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
+
+      // Extract JSON array
+      const jsonMatch = content.match(/\[[\s\S]*\]/)
       if (jsonMatch) {
-        jsonStr = jsonMatch[0]
+        content = jsonMatch[0]
       }
 
-      // Try to parse as JSON
-      sessionTopics = JSON.parse(jsonStr)
+      // Parse JSON
+      sessionTopics = JSON.parse(content)
 
-      // Validate that we got an array
+      // Validate
       if (!Array.isArray(sessionTopics)) {
         throw new Error('Response is not an array')
       }
 
-      // Ensure we have the right number of topics
       if (sessionTopics.length !== requirements.totalClasses) {
-        console.warn(`AI returned ${sessionTopics.length} topics, expected ${requirements.totalClasses}`)
-        // Pad or truncate as needed
-        while (sessionTopics.length < requirements.totalClasses) {
-          sessionTopics.push(`Session ${sessionTopics.length + 1}`)
+        throw new Error(`Expected ${requirements.totalClasses} topics, got ${sessionTopics.length}`)
+      }
+
+      // Validate each topic
+      for (const topic of sessionTopics) {
+        if (typeof topic !== 'string' || topic.length < 3) {
+          throw new Error('Invalid topic format')
         }
-        sessionTopics = sessionTopics.slice(0, requirements.totalClasses)
+        const lowerTopic = topic.toLowerCase()
+        if (lowerTopic.includes('introduction') ||
+            lowerTopic.includes('overview') ||
+            lowerTopic.includes('basic') ||
+            lowerTopic.includes('part')) {
+          throw new Error('Generic topic detected')
+        }
       }
 
       console.log('Successfully generated session topics:', sessionTopics)
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError)
-      console.log('AI Response content:', content)
-      console.log('Attempted to parse:', content)
-      // Fall back to basic topics
-      sessionTopics = Array.from({ length: requirements.totalClasses }, (_, i) =>
-        `${requirements.classTopic} - Part ${i + 1}`
-      )
+      break // Success, exit retry loop
+    } catch (error) {
+      console.error(`AI generation attempt ${attempts} failed:`, error)
+      if (attempts >= maxAttempts) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new Error(`Failed to generate AI session topics after ${maxAttempts} attempts: ${errorMessage}`)
+      }
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000))
     }
-  } catch (error) {
-    console.error('Error generating topics with AI:', error)
-    // Fallback to basic topics if AI fails
-    sessionTopics = Array.from({ length: requirements.totalClasses }, (_, i) =>
-      `${requirements.classTopic} - Part ${i + 1}`
-    )
   }
 
   // Generate the schedule with AI-generated topics
@@ -281,7 +282,10 @@ Now generate topics for "${requirements.classTopic}":`
     const endHours = hours + Math.floor((minutes + requirements.durationMinutes) / 60)
     const endMinutes = (minutes + requirements.durationMinutes) % 60
 
-    const topic = sessionTopics[sessionCount] || `Session ${sessionCount + 1}`
+    const topic = sessionTopics[sessionCount]
+    if (!topic) {
+      throw new Error(`Missing topic for session ${sessionCount + 1}`)
+    }
 
     sessions.push({
       session_number: sessionCount + 1,
