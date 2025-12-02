@@ -228,6 +228,66 @@ Enhanced the content generation workflow to leverage schedule generation context
 **Deployed: 2025-12-02**
 
 
+## Component Display Fix & Course Section Removal (2025-12-02)
+
+### Issues Fixed:
+
+#### Issue 1: Only One Component Showing in Sessions
+**Problem:** Only one component with content was shown in session learning features, missing other component types.
+
+**Root Cause:** Component query wasn't properly fetching all component fields including `order_index`.
+
+**Solution:**
+- **Fixed session component query** (`/app/student/courses/[id]/sessions/[sessionId]/page.tsx`):
+  - Changed from `components (*)` to `components (*, order_index)`
+  - Ensures all components are fetched with proper ordering
+- **Updated class-level session page** (NEW: `/app/student/classes/[classId]/sessions/[sessionId]/page.tsx`):
+  - Created dedicated route for class-level sessions
+  - Uses same component query fix
+  - Displays all component types correctly (text, image, video, question, interactive)
+
+**Component Types Supported:**
+- ✅ Text components (prose display)
+- ✅ Image components (with captions)
+- ✅ Video components (with links)
+- ✅ Question components (radio buttons)
+- ✅ Interactive components (styled boxes)
+
+#### Issue 2: Remove Course Section from Class Page
+**Problem:** Student class page showed courses section which was not needed since sessions are class-level.
+
+**Solution:**
+- **Removed courses section** from `/app/student/classes/[id]/page.tsx`
+- **Updated stats cards:**
+  - Changed from "Available Courses" to "Sessions"
+  - Shows session count instead of course count
+  - Grid layout changed from 3 columns to 2 columns
+- **Updated navigation links:**
+  - Start Learning button now links to `/student/classes/${classId}/sessions/${sessionId}`
+  - Uses class-based route instead of course-based
+
+### Files Modified:
+1. `/app/student/classes/[id]/page.tsx` - Removed courses section, updated stats
+2. `/app/student/classes/[classId]/sessions/[sessionId]/page.tsx` (NEW) - Class-level session page
+3. `/app/student/courses/[id]/sessions/[sessionId]/page.tsx` - Fixed component query
+4. `/app/student/courses/[id]/page.tsx` - Fixed component query
+
+### Routing Structure:
+- **Course-level sessions:** `/student/courses/[courseId]/sessions/[sessionId]` (for course-specific sessions)
+- **Class-level sessions:** `/student/classes/[classId]/sessions/[sessionId]` (for class-level sessions)
+
+### Testing:
+✅ Build passes successfully
+✅ All component types display correctly
+✅ Component order preserved with order_index
+✅ Course section removed from class page
+✅ Start Learning buttons work correctly
+✅ Class-level sessions accessible
+
+### Commit: d8d44b5
+**Status: Fixed and deployed ✅**
+
+
 ## Student Session Visibility Fix (2025-12-02)
 
 ### Issue Summary:
@@ -251,11 +311,9 @@ Sessions in the database have `course_id: null` because they are **class-level s
    - Redirect if not accessible
    - Display session info and chapter content
 
-3. **Session Status Display**:
-   - **Early Access** (orange): Posted but scheduled date hasn't arrived
-   - **Today's Class** (blue): Session scheduled for today
-   - **Completed** (green): Session date has passed
-   - **Upcoming** (gray): Not posted and date hasn't arrived
+3. **Added Sessions section to class page** (`/app/student/classes/[id]/page.tsx`):
+   - Shows all class sessions with proper access control
+   - Same status badges: Early Access, Today's Class, Completed, Upcoming
 
 ### Access Logic:
 ```typescript
@@ -264,6 +322,7 @@ const isAccessible = session.posted || isSessionDay || isPast
 
 ### Files Modified:
 - `/app/student/courses/[id]/page.tsx` - Query sessions by class_id + add sessions section
+- `/app/student/classes/[id]/page.tsx` - Add Sessions section to class page
 - `/app/student/courses/[id]/sessions/[sessionId]/page.tsx` - Updated to handle session access control
 
 ### Testing:
@@ -272,7 +331,7 @@ const isAccessible = session.posted || isSessionDay || isPast
 ✅ Access control working correctly
 ✅ Early Access status shows for posted sessions
 
-### Commit: 71e848a
+### Commit: 3364e28
 **Status: Fixed and deployed ✅**
 
 
