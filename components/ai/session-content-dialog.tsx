@@ -344,17 +344,31 @@ Note: No schedule context found. Please manually describe the content you want f
       }
 
       let currentIterationData: any = {}
+      let buffer = '' // Buffer for incomplete JSON lines
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          console.log('[A2A Client] Stream ended')
+          break
+        }
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n').filter(line => line.trim())
+        // Append new data to buffer
+        buffer += decoder.decode(value, { stream: true })
+
+        // Split by newlines and process complete lines
+        const lines = buffer.split('\n')
+
+        // Keep the last potentially incomplete line in the buffer
+        buffer = lines.pop() || ''
 
         for (const line of lines) {
+          const trimmedLine = line.trim()
+          if (!trimmedLine) continue
+
           try {
-            const event = JSON.parse(line)
+            const event = JSON.parse(trimmedLine)
+            console.log('[A2A Client] Received event:', event.type)
 
             switch (event.type) {
               case 'iteration_start':
@@ -369,7 +383,7 @@ Note: No schedule context found. Please manually describe the content you want f
                 break
 
               case 'teacher_content':
-                currentIterationData.teacherContent = event.components
+                currentIterationData.teacherContent = event.components || []
                 currentIterationData.teacherRawResponse = event.rawResponse
                 break
 
@@ -379,14 +393,16 @@ Note: No schedule context found. Please manually describe the content you want f
                 break
 
               case 'iteration_complete':
-                setA2aIterations(prev => [...prev, currentIterationData])
+                console.log('[A2A Client] Iteration complete:', event.iteration, currentIterationData)
+                setA2aIterations(prev => [...prev, { ...currentIterationData }])
                 setA2aCurrentAgent(null)
                 setA2aCurrentActivity('')
                 currentIterationData = {}
                 break
 
               case 'a2a_complete':
-                setA2aFinalComponents(event.finalComponents)
+                console.log('[A2A Client] A2A complete, saving content')
+                setA2aFinalComponents(event.finalComponents || [])
                 setA2aActive(false)
 
                 // Save the final components to database
@@ -398,7 +414,7 @@ Note: No schedule context found. Please manually describe the content you want f
                     classId,
                     sessionTitle: session.title,
                     sessionDescription: session.description,
-                    components: event.finalComponents
+                    components: event.finalComponents || []
                   })
                 })
 
@@ -406,6 +422,7 @@ Note: No schedule context found. Please manually describe the content you want f
                   throw new Error('Failed to save content')
                 }
 
+                console.log('[A2A Client] Content saved successfully')
                 // Keep dialog open for 5 seconds to show final results
                 setTimeout(() => {
                   onOpenChange(false)
@@ -414,11 +431,47 @@ Note: No schedule context found. Please manually describe the content you want f
                 break
 
               case 'error':
+                console.error('[A2A Client] Error event received:', event.error)
                 throw new Error(event.error)
             }
           } catch (parseError) {
-            console.error('Failed to parse event:', parseError)
+            console.error('[A2A Client] Failed to parse event line:', trimmedLine, parseError)
           }
+        }
+      }
+
+      // Process any remaining data in buffer
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer.trim())
+          console.log('[A2A Client] Processing final buffered event:', event.type)
+          if (event.type === 'a2a_complete') {
+            setA2aFinalComponents(event.finalComponents || [])
+            setA2aActive(false)
+
+            const saveResponse = await fetch('/api/ai/save-session-content', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionId: session.id,
+                classId,
+                sessionTitle: session.title,
+                sessionDescription: session.description,
+                components: event.finalComponents || []
+              })
+            })
+
+            if (!saveResponse.ok) {
+              throw new Error('Failed to save content')
+            }
+
+            setTimeout(() => {
+              onOpenChange(false)
+              router.refresh()
+            }, 5000)
+          }
+        } catch (e) {
+          console.error('[A2A Client] Failed to parse final buffer:', buffer)
         }
       }
     } catch (error) {

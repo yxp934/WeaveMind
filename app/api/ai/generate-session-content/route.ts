@@ -203,6 +203,8 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
 
           // A2A Refinement Loop
           for (let iteration = 1; iteration <= NUM_ITERATIONS; iteration++) {
+            console.log(`[A2A] Starting iteration ${iteration}/${NUM_ITERATIONS}`)
+
             // Send iteration start event
             controller.enqueue(encoder.encode(JSON.stringify({
               type: 'iteration_start',
@@ -211,6 +213,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
             }) + '\n'))
 
             // TEACHER AGENT: Generate/Refine Content
+            console.log(`[A2A] Iteration ${iteration}: Teacher agent starting`)
             controller.enqueue(encoder.encode(JSON.stringify({
               type: 'agent_activity',
               agent: 'teacher',
@@ -227,7 +230,9 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
               temperature: 0.7,
             })
 
+            console.log(`[A2A] Iteration ${iteration}: Teacher agent completed`)
             currentComponents = extractComponentsFromTeacherResponse(teacherResult.text)
+            console.log(`[A2A] Iteration ${iteration}: Extracted ${currentComponents.length} components`)
 
             // Send teacher content
             controller.enqueue(encoder.encode(JSON.stringify({
@@ -237,8 +242,9 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
               rawResponse: teacherResult.text
             }) + '\n'))
 
-            // STUDENT AGENT: Review Content
+            // STUDENT AGENT: Review Content (only for non-final iterations)
             if (iteration < NUM_ITERATIONS) {
+              console.log(`[A2A] Iteration ${iteration}: Student agent starting review`)
               controller.enqueue(encoder.encode(JSON.stringify({
                 type: 'agent_activity',
                 agent: 'student',
@@ -255,6 +261,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
                 temperature: 0.5,
               })
 
+              console.log(`[A2A] Iteration ${iteration}: Student agent completed`)
               const feedback = extractFeedbackFromStudentResponse(studentResult.text)
 
               // Send student feedback
@@ -272,6 +279,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
               })
             } else {
               // Final iteration - no student review needed
+              console.log(`[A2A] Iteration ${iteration}: Final iteration, skipping student review`)
               allIterations.push({
                 iteration,
                 teacherContent: currentComponents,
@@ -280,6 +288,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
             }
 
             // Send iteration complete event
+            console.log(`[A2A] Iteration ${iteration}: Complete`)
             controller.enqueue(encoder.encode(JSON.stringify({
               type: 'iteration_complete',
               iteration
@@ -287,17 +296,20 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
           }
 
           // Send final components
+          console.log(`[A2A] All iterations complete, sending final result with ${currentComponents.length} components`)
           controller.enqueue(encoder.encode(JSON.stringify({
             type: 'a2a_complete',
             finalComponents: currentComponents,
             allIterations
           }) + '\n'))
 
+          console.log(`[A2A] Stream closing`)
           controller.close()
         } catch (error: any) {
+          console.error('[A2A] Error in stream:', error)
           controller.enqueue(encoder.encode(JSON.stringify({
             type: 'error',
-            error: error.message
+            error: error.message || 'Unknown error occurred'
           }) + '\n'))
           controller.close()
         }
