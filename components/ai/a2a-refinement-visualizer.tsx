@@ -117,8 +117,19 @@ export function A2ARefinementVisualizer({
       {/* Iterations History */}
       <div className="space-y-3">
         {iterations.map((iter) => {
+          // Safety checks for iteration data
+          if (!iter || typeof iter.iteration !== 'number') {
+            return null
+          }
+
           const isExpanded = expandedIterations.has(iter.iteration)
           const isComplete = iter.iteration < currentIteration || !isActive
+
+          // Safe access to feedback data
+          const hasFeedback = iter.studentFeedback && typeof iter.studentFeedback === 'object'
+          const overallScore = hasFeedback && typeof iter.studentFeedback.overall_score === 'number'
+            ? iter.studentFeedback.overall_score
+            : null
 
           return (
             <div
@@ -146,9 +157,9 @@ export function A2ARefinementVisualizer({
                   <span className="font-medium text-gray-900">
                     Iteration {iter.iteration}
                   </span>
-                  {iter.studentFeedback && typeof iter.studentFeedback.overall_score === 'number' && (
+                  {overallScore !== null && (
                     <span className="text-sm text-gray-500">
-                      Score: {iter.studentFeedback.overall_score.toFixed(1)}/10
+                      Score: {overallScore.toFixed(1)}/10
                     </span>
                   )}
                 </div>
@@ -170,13 +181,13 @@ export function A2ARefinementVisualizer({
                     </h4>
                     <div className="bg-gray-50 rounded p-3 text-sm">
                       <p className="text-gray-600">
-                        {iter.teacherContent.length} components generated
+                        {Array.isArray(iter.teacherContent) ? iter.teacherContent.length : 0} components generated
                       </p>
                     </div>
                   </div>
 
                   {/* Student Feedback */}
-                  {iter.studentFeedback && (
+                  {iter.studentFeedback && typeof iter.studentFeedback === 'object' && (
                     <div>
                       <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
                         <GraduationCap className="h-4 w-4" />
@@ -184,11 +195,11 @@ export function A2ARefinementVisualizer({
                       </h4>
                       <div className="bg-green-50 rounded p-3 space-y-2 text-sm">
                         {/* Scores */}
-                        {iter.studentFeedback.scores && typeof iter.studentFeedback.scores === 'object' && (
+                        {iter.studentFeedback.scores && typeof iter.studentFeedback.scores === 'object' && !Array.isArray(iter.studentFeedback.scores) && (
                           <div className="grid grid-cols-2 gap-2">
                             {Object.entries(iter.studentFeedback.scores).map(([key, value]) => (
                               <div key={key} className="flex justify-between">
-                                <span className="text-gray-600 capitalize">{key.replace('_', ' ')}:</span>
+                                <span className="text-gray-600 capitalize">{String(key).replace('_', ' ')}:</span>
                                 <span className="font-medium">{typeof value === 'number' ? value : String(value)}/10</span>
                               </div>
                             ))}
@@ -197,13 +208,13 @@ export function A2ARefinementVisualizer({
                         {/* Overall Feedback */}
                         {iter.studentFeedback.overall_feedback && (
                           <p className="text-gray-700 mt-2 pt-2 border-t border-green-200">
-                            {iter.studentFeedback.overall_feedback}
+                            {String(iter.studentFeedback.overall_feedback)}
                           </p>
                         )}
                         {/* Fallback when feedback format is unexpected */}
                         {!iter.studentFeedback.scores && !iter.studentFeedback.overall_feedback && (
                           <p className="text-gray-600 italic">
-                            Feedback data format not recognized. Raw data available in console.
+                            Feedback data format not recognized.
                           </p>
                         )}
                       </div>
