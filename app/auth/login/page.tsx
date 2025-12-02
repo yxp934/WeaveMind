@@ -28,9 +28,22 @@ export default function LoginPage() {
 
       if (error) throw error
 
-      // Redirect to role selection or dashboard
-      router.push("/role-select")
-      router.refresh()
+      // Check if user has a role and redirect appropriately
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user?.id)
+        .maybeSingle()
+
+      if (profile?.role) {
+        // User already has a role, redirect to their dashboard
+        router.push(`/${profile.role}`)
+        router.refresh()
+      } else {
+        // User doesn't have a role yet, redirect to role selection
+        router.push("/role-select")
+        router.refresh()
+      }
     } catch (err: any) {
       setError(err.message || "Failed to login")
     } finally {
