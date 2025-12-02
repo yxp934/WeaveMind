@@ -11,6 +11,14 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  buttons?: ChatButton[]
+}
+
+interface ChatButton {
+  id: string
+  text: string
+  value: string
+  type: 'multiple_choice' | 'fill_blank' | 'custom'
 }
 
 interface ScheduleChatProps {
@@ -41,6 +49,41 @@ export function ScheduleChat({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Parse buttons from AI response
+  const parseButtonsFromContent = (content: string): { cleanContent: string; buttons: ChatButton[] } => {
+    const buttonPattern = /\[BUTTONS\]([\s\S]*?)\[\/BUTTONS\]/
+    const match = buttonPattern.exec(content)
+
+    if (!match) {
+      return { cleanContent: content, buttons: [] }
+    }
+
+    const buttonsSection = match[1]
+    const buttons: ChatButton[] = []
+
+    // Parse button type
+    const typeMatch = buttonsSection.match(/\[BUTTON_TYPE:(multiple_choice|fill_blank|custom)\]/)
+    const buttonType = typeMatch ? typeMatch[1] as ChatButton['type'] : 'multiple_choice'
+
+    // Parse individual buttons
+    const buttonRegex = /\[BUTTON:([^\|\]]+)\|([^\|\]]+)\|([^\]]+)\]/g
+    let buttonMatch
+
+    while ((buttonMatch = buttonRegex.exec(buttonsSection)) !== null) {
+      buttons.push({
+        id: buttonMatch[1],
+        text: buttonMatch[2],
+        value: buttonMatch[3],
+        type: buttonType
+      })
+    }
+
+    // Remove buttons section from content
+    const cleanContent = content.replace(buttonPattern, '').trim()
+
+    return { cleanContent, buttons }
+  }
+
   // Check if last message contains the ready marker or is asking for confirmation
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
@@ -57,6 +100,62 @@ export function ScheduleChat({
       }
     }
   }, [messages])
+
+  // Handle button clicks
+  const handleButtonClick = async (button: ChatButton) => {
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: button.value
+    }
+
+    setMessages(prev => [...prev, userMessage])
+    setIsLoading(true)
+
+    try {
+      const response = await fetch('/api/ai/schedule-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, userMessage].map(m => ({
+            role: m.role,
+            content: m.content.replace('[SCHEDULE_READY]', '')
+          }))
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to get response')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantMessage = ''
+      const assistantMessageId = (Date.now() + 1).toString()
+
+      setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: '' }])
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value)
+          assistantMessage += chunk
+          const { cleanContent, buttons } = parseButtonsFromContent(assistantMessage)
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMessageId ? { ...m, content: cleanContent, buttons } : m
+          ))
+        }
+      }
+    } catch (error) {
+      console.error('Chat error:', error)
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '抱歉，发生了错误。请重试。 / Sorry, an error occurred. Please try again.'
+      }])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
@@ -98,8 +197,9 @@ export function ScheduleChat({
           if (done) break
           const chunk = decoder.decode(value)
           assistantMessage += chunk
-          setMessages(prev => prev.map(m => 
-            m.id === assistantMessageId ? { ...m, content: assistantMessage } : m
+          const { cleanContent, buttons } = parseButtonsFromContent(assistantMessage)
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMessageId ? { ...m, content: cleanContent, buttons } : m
           ))
         }
       }
@@ -172,6 +272,24 @@ export function ScheduleChat({
             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200'}`}>
                 <p className="text-sm whitespace-pre-wrap">{message.content.replace('[SCHEDULE_READY]', '')}</p>
+
+                {/* Render interactive buttons */}
+                {message.buttons && message.buttons.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {message.buttons.map((button) => (
+                      <Button
+                        key={button.id}
+                        variant={button.type === 'multiple_choice' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => handleButtonClick(button)}
+                        disabled={isLoading}
+                        className="w-full text-left justify-start h-auto py-2 px-3"
+                      >
+                        <span className="text-sm">{button.text}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ))}

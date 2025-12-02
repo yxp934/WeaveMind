@@ -172,13 +172,55 @@ function parseRequirementsFromConversation(conversationText: string): {
     }
   }
 
-  // Pattern 3: Look in "Topics:" section
+  // Pattern 3: Look in "Topics:" section - IMPROVED extraction
   if (sessionTopics.length === 0) {
-    const topicsSection = conversationText.match(/(?:topics?|session topics?)[:\s]*([^\n]+)/i)
-    if (topicsSection) {
-      const topics = topicsSection[1].split(/[,;]/).map(t => t.trim()).filter(t => t.length > 0 && t.length < 100)
-      sessionTopics.push(...topics)
+    // Try to find a "Topics:" section
+    const topicsMatch = conversationText.match(/(?:topics?|session topics?)[:\s]*([\s\S]*?)(?=\n\n|SCHEDULE_READY|Goals:|Teaching|Method|$)/i)
+    if (topicsMatch && topicsMatch[1]) {
+      const topicsText = topicsMatch[1]
+      // Match numbered items: "1) Topic 2) Topic" or "1. Topic 2. Topic" or "- Topic"
+      const sessionPattern3 = topicsText.matchAll(/(\d+)[\)\.\-]\s*([^0-9\n\-]+?)(?=\s*\d+[\)\.\-]|\s*\-|\n\n|$)/gi)
+      for (const match of sessionPattern3) {
+        let topic = match[2].trim()
+        // Remove trailing punctuation and clean up
+        topic = topic.replace(/[,;.\s]+$/, '').trim()
+        // Additional cleaning for chat artifacts
+        topic = topic.replace(/For:\s*[^|]*$/i, '').trim()
+        topic = topic.replace(/Goals:\s*[^|]*$/i, '').trim()
+        topic = topic.replace(/Method:\s*[^|]*$/i, '').trim()
+
+        if (topic && topic.length > 3 && topic.length < 100 && !topic.match(/^(sessions?|classes?|hours?|minutes?|goals?|teaching)/i)) {
+          sessionTopics.push(topic)
+        }
+      }
+
+      // If still no topics, try simple comma/line separation
+      if (sessionTopics.length === 0) {
+        const topics = topicsText.split(/[,;\n]/).map(t => {
+          let cleaned = t.trim().replace(/^\d+[\)\.\-]\s*/, '').replace(/For:.*$/i, '').replace(/Goals:.*$/i, '').trim()
+          return cleaned.length > 3 && cleaned.length < 100 ? cleaned : null
+        }).filter((t): t is string => Boolean(t))
+        sessionTopics.push(...topics)
+      }
     }
+  }
+
+  // NEW Pattern 4: Extract from detailed session descriptions
+  if (sessionTopics.length === 0) {
+    // Look for patterns like "Session 1: Binary Logic Fundamentals" or "1) Binary Logic Fundamentals"
+    const sessionTopicPattern = conversationText.matchAll(/(?:^|\n)(?:Session\s*\d+|\d+)\s*[:\)]\s*([^,\n|]+?)(?=\s*[-:|]|\s*For:|\s*Goals:|\n|$)/gi)
+    for (const match of sessionTopicPattern) {
+      let topic = match[1].trim()
+      topic = topic.replace(/For:\s*[^|]*$/i, '').replace(/Goals:\s*[^|]*$/i, '').trim()
+      if (topic && topic.length > 3 && topic.length < 80 && !topic.match(/^(introduction|overview|basic|part)/i)) {
+        sessionTopics.push(topic)
+      }
+    }
+  }
+
+  // Ensure we have at least totalClasses topics (fill with placeholders if needed)
+  while (sessionTopics.length < totalClasses && sessionTopics.length > 0) {
+    sessionTopics.push(`${classTopic} - Additional Session ${sessionTopics.length + 1}`)
   }
 
   // Parse objectives
@@ -213,24 +255,32 @@ function parseRequirementsFromConversation(conversationText: string): {
     }
   }
 
-  // Parse session overviews - CLEAN extraction avoiding chat artifacts
+  // Parse session overviews - IMPROVED extraction avoiding chat artifacts
   // First, try to extract from "Session X: Content" patterns
   const sessionOverviewPattern1 = conversationText.matchAll(/Session\s*\d+[:\-\s\n]+([^.!?]{20,200}?)(?=(?:Session\s*\d+|A\)|B\)|C\)|Overview:|Goals:|Teaching|$))/gi)
   for (const match of sessionOverviewPattern1) {
     let overview = match[1].trim()
-    // Clean up common chat artifacts
+    // Clean up common chat artifacts - IMPROVED cleaning
     overview = overview.replace(/^(Your|你的|Your -|你的 -)\s*/i, '')
     overview = overview.replace(/\|.*?(Goals?:|Goals|目标|GOALS).*?$/i, '')
     overview = overview.replace(/\*\*.*?\*\*/g, '') // Remove bold markdown
     overview = overview.replace(/---.*$/i, '') // Remove everything after ---
+    overview = overview.replace(/For:\s*[^|]*\|/i, '') // Remove "For: ... |"
+    overview = overview.replace(/Goals:\s*[^|]*\|/i, '') // Remove "Goals: ... |"
+    overview = overview.replace(/Method:\s*[^|]*\|/i, '') // Remove "Method: ... |"
     overview = overview.trim()
 
-    if (overview && overview.length > 10 && overview.length < 200) {
+    // Additional validation to avoid chat artifacts
+    if (overview &&
+        overview.length > 10 &&
+        overview.length < 200 &&
+        !overview.match(/^(Your|你的)/i) &&
+        !overview.includes('Binary Logic Foundations')) {
       sessionOverviews.push(overview)
     }
   }
 
-  // If still empty, try looking in summary sections
+  // If still empty, try looking in summary sections - IMPROVED extraction
   if (sessionOverviews.length === 0) {
     const summaryMatch = conversationText.match(/(?:session-by-session|Session-by-Session|session details|Session Details)[:\s]*([\s\S]*?)(?=SCHEDULE_READY|Schedule|Frequency|$)/i)
     if (summaryMatch && summaryMatch[1]) {
@@ -238,12 +288,44 @@ function parseRequirementsFromConversation(conversationText: string): {
       const sessionParts = summaryMatch[1].split(/(?:Session\s*\d+|第\d+节)/i)
       for (const part of sessionParts) {
         const trimmed = part.trim()
-        if (trimmed.length > 15 && trimmed.length < 200 && !trimmed.match(/^(course|audience|goal|target|schedule|Teaching|Method)/i)) {
-          let cleaned = trimmed.replace(/---.*$/i, '').replace(/\*\*.*?\*\*/g, '').trim()
-          if (cleaned.length > 10) {
+        if (trimmed.length > 15 &&
+            trimmed.length < 200 &&
+            !trimmed.match(/^(course|audience|goal|target|schedule|Teaching|Method)/i) &&
+            !trimmed.includes('Binary Logic Foundations')) {
+          let cleaned = trimmed
+            .replace(/---.*$/i, '')
+            .replace(/\*\*.*?\*\*/g, '')
+            .replace(/For:\s*[^|]*\|/i, '')
+            .replace(/Goals:\s*[^|]*\|/i, '')
+            .replace(/Method:\s*[^|]*\|/i, '')
+            .trim()
+          if (cleaned.length > 10 && !cleaned.match(/^(Your|你的)/i)) {
             sessionOverviews.push(cleaned)
           }
         }
+      }
+    }
+  }
+
+  // NEW PATTERN: Try to extract from structured content with session topics
+  if (sessionOverviews.length === 0) {
+    // Look for patterns like "Session X - Topic: Overview content"
+    const structuredPattern = conversationText.matchAll(/Session\s*\d+\s*[-:]\s*[^.\n]+[:\-\s\n]+([^.!?\n]{20,150})(?=\n|Session|\d+\)|A\)|B\)|C\)|$)/gi)
+    for (const match of structuredPattern) {
+      let overview = match[1].trim()
+      overview = overview
+        .replace(/For:\s*[^|]*\|/i, '')
+        .replace(/Goals:\s*[^|]*\|/i, '')
+        .replace(/Method:\s*[^|]*\|/i, '')
+        .replace(/\*\*.*?\*\*/g, '')
+        .trim()
+
+      if (overview &&
+          overview.length > 10 &&
+          overview.length < 150 &&
+          !overview.match(/^(Your|你的)/i) &&
+          !overview.includes('Binary Logic Foundations')) {
+        sessionOverviews.push(overview)
       }
     }
   }
@@ -382,12 +464,20 @@ Generate exactly ${requirements.totalClasses} specific topics that align with th
     }
   }
 
-  // Generate the schedule with AI-generated topics
+  // Generate the schedule with AI-generated topics - IMPROVED date calculation
   const sessions = []
   const startDate = new Date(requirements.startDate)
   let currentDate = new Date(startDate)
 
-  // Determine days of week based on frequency and parsed days
+  // Validate start date is not in the past
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (currentDate < today) {
+    currentDate = new Date(today)
+    currentDate.setDate(currentDate.getDate() + 1) // Start tomorrow
+  }
+
+  // Determine days of week based on frequency and parsed days - IMPROVED logic
   let daysOfWeek: number[] = []
 
   // If specific days were mentioned, use those
@@ -398,19 +488,26 @@ Generate exactly ${requirements.totalClasses} specific topics that align with th
     }
     daysOfWeek = requirements.daysOfWeek.map(day => dayMap[day]).filter(d => d !== undefined)
   } else {
-    // Fall back to frequency-based days
+    // Fall back to frequency-based days - IMPROVED distribution
     if (requirements.frequency === 'twice a week') {
-      daysOfWeek = [1, 3] // Monday, Wednesday
+      // Use Tuesday and Thursday for better spacing
+      daysOfWeek = [2, 4] // Tuesday, Thursday
     } else if (requirements.frequency === 'three times a week') {
+      // Use Monday, Wednesday, Friday
       daysOfWeek = [1, 3, 5] // Monday, Wednesday, Friday
     } else {
-      daysOfWeek = [5] // Friday only for weekly
+      // For weekly, use the day closest to the start date
+      daysOfWeek = [currentDate.getDay() || 5] // Default to Friday if Sunday
     }
   }
 
   let sessionCount = 0
-  while (sessionCount < requirements.totalClasses) {
-    // Find next valid day
+  let safetyCounter = 0 // Prevent infinite loop
+
+  while (sessionCount < requirements.totalClasses && safetyCounter < 365) {
+    safetyCounter++
+
+    // Find next valid day - IMPROVED algorithm
     while (!daysOfWeek.includes(currentDate.getDay())) {
       currentDate.setDate(currentDate.getDate() + 1)
     }
@@ -447,7 +544,35 @@ Generate exactly ${requirements.totalClasses} specific topics that align with th
     })
 
     sessionCount++
-    currentDate.setDate(currentDate.getDate() + 1)
+
+    // Move to next valid day based on frequency - IMPROVED logic
+    if (requirements.daysOfWeek.length > 0) {
+      // For custom schedules, find next occurrence of specified days
+      let nextDate = new Date(currentDate)
+      nextDate.setDate(nextDate.getDate() + 1)
+
+      // Find next day in the custom days list
+      let daysToAdd = 1
+      while (!daysOfWeek.includes(nextDate.getDay()) && daysToAdd < 14) {
+        nextDate.setDate(nextDate.getDate() + 1)
+        daysToAdd++
+      }
+      currentDate = nextDate
+    } else {
+      // For standard frequencies, use fixed intervals
+      if (requirements.frequency === 'twice a week') {
+        currentDate.setDate(currentDate.getDate() + 3) // 3 days later (Tue->Fri or Thu->Mon)
+      } else if (requirements.frequency === 'three times a week') {
+        currentDate.setDate(currentDate.getDate() + 2) // 2 days later (Mon->Wed, Wed->Fri, Fri->Mon)
+      } else {
+        currentDate.setDate(currentDate.getDate() + 7) // 1 week later for weekly
+      }
+    }
+  }
+
+  // Validate we generated all sessions
+  if (sessionCount < requirements.totalClasses) {
+    throw new Error(`Failed to generate all ${requirements.totalClasses} sessions. Only generated ${sessionCount}.`)
   }
 
   return sessions

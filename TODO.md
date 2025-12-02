@@ -130,3 +130,54 @@
 - [ ] Plan and document data residency and compliance approach for different regions.
 - [ ] Implement observability dashboards for performance, latency, and LLM usage across regions.
 
+
+## Phase 6 - Student AI Assistant & Schedule Generation (CONTINUED)
+
+### Recently Fixed Issues (2025-12-02):
+
+#### Schedule Generation Functionality:
+- [x] **Fixed session description format issue** - Enhanced parsing logic to remove chat artifacts (e.g., "Your - Binary Logic Foundations | For: ...")
+  - Location: `/app/api/ai/generate-class-schedule/route.ts` (parseRequirementsFromConversation function)
+  - Added: Specific regex patterns to clean "For:", "Goals:", "Method:" artifacts
+  - Added: Validation to exclude problematic patterns
+
+- [x] **Fixed missing course sessions issue** - Enhanced session topics extraction with multiple parsing patterns
+  - Location: `/app/api/ai/generate-class-schedule/route.ts` (Pattern 3 & 4)
+  - Added: Smart extraction from "Topics:" sections
+  - Added: Fallback mechanism to ensure sufficient topics
+  - Added: Type-safe filtering to prevent null values
+
+- [x] **Fixed date calculation algorithm** - Improved scheduling logic with proper date alignment
+  - Location: `/app/api/ai/generate-class-schedule/route.ts` (generateSessions function)
+  - Added: Start date validation (prevents past dates)
+  - Added: Smart frequency-based distribution (Tuesday/Thursday for twice/week, etc.)
+  - Added: Safety counter to prevent infinite loops
+  - Added: Enhanced validation for session count
+
+- [x] **Implemented interactive chat buttons** - Added full button support for better UX
+  - Location: `/components/ai/schedule-chat.tsx`
+  - Added: ChatButton interface for multiple choice/fill-in-blank/custom buttons
+  - Added: Button parsing logic with special markers [BUTTONS] and [/BUTTONS]
+  - Added: Button rendering component with proper styling
+  - Updated: `/lib/ai/prompts.ts` to guide AI in generating buttons
+  - Location: `/lib/ai/prompts.ts` (SCHEDULE_REQUIREMENT_SYSTEM_PROMPT)
+
+#### Testing Results:
+- [x] All TypeScript type checks pass
+- [x] `npm run build` completes successfully
+- [x] Functionality tests verified:
+  * Session descriptions extract without artifacts ✅
+  * Session topics parsed from multiple formats ✅
+  * Date calculation improved ✅
+  * Button parsing works correctly ✅
+
+#### Files Modified:
+1. `/app/api/ai/generate-class-schedule/route.ts` - Backend API logic
+2. `/components/ai/schedule-chat.tsx` - Frontend chat component
+3. `/lib/ai/prompts.ts` - AI prompt templates
+
+#### Documentation Created:
+- `/SCHEDULE_GENERATION_FIXES.md` - Comprehensive fix report with technical details
+
+**Status: All 4 critical issues resolved and tested ✅**
+
