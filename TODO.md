@@ -181,3 +181,48 @@
 
 **Status: All 4 critical issues resolved and tested ✅**
 
+
+### Session Content Generation Enhancement (2025-12-02)
+
+#### Implementation Summary:
+Enhanced the content generation workflow to leverage schedule generation context and add an outline planning phase before A2A content generation.
+
+#### Key Features:
+1. **Schedule Context Storage**:
+   - Created `schedule_generation_context` table to store collected course information
+   - Stores: target audience, learning goals, teaching method, class topic, session details
+   - Automatically saved during schedule generation
+
+2. **Outline Planning Phase**:
+   - AI now presents session outline based on schedule context
+   - Teachers can review and modify the outline through chat
+   - Explicit confirmation required before content generation
+   - Uses [OUTLINE_CONFIRMED] marker to signal completion
+
+3. **Context Integration**:
+   - Session content dialog fetches schedule context on open
+   - Displays context banner with course information
+   - Automatically triggers outline generation with context
+   - Passes context to A2A generation for better content quality
+
+#### Files Modified:
+1. `/app/api/ai/generate-class-schedule/route.ts` - Save schedule context
+2. `/app/api/ai/session-content-chat/route.ts` - Outline planning with context
+3. `/app/api/ai/generate-session-content/route.ts` - Pass context to A2A
+4. `/lib/ai/prompts.ts` - Updated prompts to use schedule context
+5. `/components/ai/session-content-dialog.tsx` - Updated UI workflow
+6. `/app/api/classes/[id]/schedule-context/route.ts` - New endpoint to fetch context
+7. Database migration: `add_schedule_generation_context_table`
+
+#### Workflow:
+1. Teacher generates class schedule with AI chat
+2. Schedule context automatically saved
+3. Teacher clicks "Generate Content" for a session
+4. AI fetches and displays schedule context
+5. AI presents outline based on context
+6. Teacher reviews and modifies outline
+7. Teacher confirms outline ([OUTLINE_CONFIRMED])
+8. A2A content generation begins with full context
+
+**Status: Implementation complete, TypeScript build passes ✅**
+**Deployed: 2025-12-02**
