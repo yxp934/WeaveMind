@@ -389,19 +389,40 @@ export interface A2AContext {
   scheduledDate: string
   previousSessionsSummary?: string
   conversationContext?: string
+  scheduleContext?: {
+    class_topic?: string | null
+    target_audience?: string | null
+    learning_goals?: string | null
+    teaching_method?: string | null
+    session_details?: Array<{
+      session_number: number
+      title: string
+      topic: string | null
+      overview: string | null
+    }> | null
+  } | null
 }
 
 /**
  * Teacher Agent System Prompt for A2A Content Generation
  */
 export function buildTeacherAgentPrompt(context: A2AContext, iteration: number, studentFeedback?: string): string {
+  const scheduleContextInfo = context.scheduleContext ? `**SCHEDULE GENERATION CONTEXT:**
+- Course Topic: ${context.scheduleContext.class_topic || 'Not specified'}
+- Target Audience: ${context.scheduleContext.target_audience || 'Not specified'}
+- Learning Goals: ${context.scheduleContext.learning_goals || 'Not specified'}
+- Teaching Method: ${context.scheduleContext.teaching_method || 'Standard approach'}
+- Session Overview: ${context.scheduleContext.session_details?.find(s => s.session_number === context.sessionNumber)?.overview || 'Not specified'}
+
+` : ''
+
   const basePrompt = `You are an expert educational content creator designing learning materials for a class session.
 
 **CLASS CONTEXT:**
 - Class Name: ${context.className}
 - Class Description: ${context.classDescription}
 
-**SESSION CONTEXT:**
+${scheduleContextInfo}**SESSION CONTEXT:**
 - Session Number: ${context.sessionNumber}
 - Session Title: ${context.sessionTitle}
 - Session Description: ${context.sessionDescription}
@@ -412,8 +433,10 @@ ${context.previousSessionsSummary}
 
 IMPORTANT: Build upon topics covered in previous sessions. Reference previous concepts when introducing new material. Ensure appropriate difficulty progression.` : ''}
 
-${context.conversationContext ? `**TEACHER'S REQUIREMENTS:**
-${context.conversationContext}` : ''}
+${context.conversationContext ? `**TEACHER'S REQUIREMENTS (from outline planning):**
+${context.conversationContext}
+
+IMPORTANT: Use this information to guide content creation. Align with the teacher's specific requirements and approved outline.` : ''}
 
 **YOUR TASK:**
 Generate pedagogically sound learning content with:
@@ -425,7 +448,8 @@ Generate pedagogically sound learning content with:
 6. Summary and key takeaways
 
 **CONTENT QUALITY STANDARDS:**
-- Appropriate difficulty level for the target audience
+- Appropriate difficulty level for the target audience (${context.scheduleContext?.target_audience || 'not specified'})
+- Align with teaching method: ${context.scheduleContext?.teaching_method || 'Standard approach'}
 - Clear, concise explanations
 - Logical flow and progression
 - Engaging and relevant examples

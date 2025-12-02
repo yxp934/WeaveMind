@@ -575,7 +575,7 @@ Generate exactly ${requirements.totalClasses} specific topics that align with th
     throw new Error(`Failed to generate all ${requirements.totalClasses} sessions. Only generated ${sessionCount}.`)
   }
 
-  return sessions
+  return { sessions, sessionTopics }
 }
 
 export async function POST(req: Request) {
@@ -617,7 +617,7 @@ export async function POST(req: Request) {
     }
 
     // Generate sessions using AI for class-specific topics
-    const sessions = await generateSessions(parsedRequirements)
+    const { sessions, sessionTopics } = await generateSessions(parsedRequirements)
 
     // Insert sessions into database
     const sessionsToInsert = sessions.map((session) => ({
@@ -647,6 +647,40 @@ export async function POST(req: Request) {
     if (insertError) {
       console.error('Failed to insert sessions:', insertError)
       return NextResponse.json({ error: 'Failed to save sessions' }, { status: 500 })
+    }
+
+    // Save schedule generation context for content generation
+    const scheduleContext = {
+      class_id: classId,
+      target_audience: parsedRequirements.targetAudience || null,
+      learning_goals: parsedRequirements.goals || null,
+      teaching_method: parsedRequirements.teachingMethod || null,
+      class_topic: parsedRequirements.classTopic || null,
+      total_sessions: parsedRequirements.totalClasses,
+      frequency: parsedRequirements.frequency || null,
+      session_details: sessions.map((s, i) => ({
+        session_number: s.session_number,
+        title: s.title,
+        topic: sessionTopics[i] || null,
+        overview: parsedRequirements.sessionOverviews[i] || null
+      })),
+      conversation_context: requirements.courseOverview
+    }
+
+    // Delete existing context first
+    await supabase
+      .from('schedule_generation_context')
+      .delete()
+      .eq('class_id', classId)
+
+    // Insert new context
+    const { error: contextError } = await supabase
+      .from('schedule_generation_context')
+      .insert(scheduleContext)
+
+    if (contextError) {
+      console.error('Failed to save schedule context:', contextError)
+      // Don't fail the request, just log it
     }
 
     return NextResponse.json({

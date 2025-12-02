@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Send, BookOpen } from 'lucide-react'
+import { Loader2, Send, BookOpen, CheckCircle, FileText } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { A2ARefinementVisualizer } from './a2a-refinement-visualizer'
 
@@ -28,6 +28,20 @@ interface Message {
   content: string
 }
 
+interface ScheduleContext {
+  class_topic: string | null
+  target_audience: string | null
+  learning_goals: string | null
+  teaching_method: string | null
+  total_sessions: number | null
+  session_details: Array<{
+    session_number: number
+    title: string
+    topic: string | null
+    overview: string | null
+  }> | null
+}
+
 export function SessionContentDialog({
   open,
   onOpenChange,
@@ -40,6 +54,8 @@ export function SessionContentDialog({
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [input, setInput] = useState('')
+  const [scheduleContext, setScheduleContext] = useState<ScheduleContext | null>(null)
+  const [outlineConfirmed, setOutlineConfirmed] = useState(false)
 
   // A2A State
   const [a2aActive, setA2aActive] = useState(false)
@@ -51,7 +67,48 @@ export function SessionContentDialog({
   const [a2aFinalComponents, setA2aFinalComponents] = useState<any[]>([])
   const [classDescription, setClassDescription] = useState('')
 
-  const initialMessage = `你好！我将帮助你为 Session ${session.session_number} 生成详细的学习内容。
+  // Build initial message based on schedule context
+  const buildInitialMessage = (ctx: ScheduleContext | null) => {
+    const sessionDetail = ctx?.session_details?.find(
+      s => s.session_number === session.session_number
+    )
+
+    if (ctx && sessionDetail) {
+      return `你好！我将帮助你为 Session ${session.session_number} 规划和生成学习内容。
+
+**已收集的课程信息：**
+- 课程主题：${ctx.class_topic || className}
+- 目标受众：${ctx.target_audience || '未指定'}
+- 学习目标：${ctx.learning_goals || '未指定'}
+- 教学方式：${ctx.teaching_method || '标准方式'}
+
+**本节课信息：**
+- 标题：${sessionDetail.title}
+- 主题：${sessionDetail.topic || '待定'}
+- 概述：${sessionDetail.overview || '待定'}
+- 日期：${new Date(session.scheduled_date).toLocaleDateString()}
+
+基于以上信息，我来为你规划本节课的大纲。请稍等...
+
+---
+Hello! I'll help you plan and generate learning content for Session ${session.session_number}.
+
+**Collected Course Information:**
+- Course Topic: ${ctx.class_topic || className}
+- Target Audience: ${ctx.target_audience || 'Not specified'}
+- Learning Goals: ${ctx.learning_goals || 'Not specified'}
+- Teaching Method: ${ctx.teaching_method || 'Standard approach'}
+
+**This Session Info:**
+- Title: ${sessionDetail.title}
+- Topic: ${sessionDetail.topic || 'To be defined'}
+- Overview: ${sessionDetail.overview || 'To be defined'}
+- Date: ${new Date(session.scheduled_date).toLocaleDateString()}
+
+Based on this information, let me plan the outline for this session. Please wait...`
+    }
+
+    return `你好！我将帮助你为 Session ${session.session_number} 生成详细的学习内容。
 
 **Session 信息：**
 - 标题：${session.title}
@@ -69,36 +126,128 @@ ${session.description ? `- Description: ${session.description}` : ''}
 - Date: ${new Date(session.scheduled_date).toLocaleDateString()}
 
 Please tell me what specific content, learning objectives, and practice types you want to cover in this session.`
+  }
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'initial',
-      role: 'assistant',
-      content: initialMessage
+  const [messages, setMessages] = useState<Message[]>([])
+
+  // Fetch schedule context and class description on mount
+  useEffect(() => {
+    const fetchContext = async () => {
+      if (!open || !classId) return
+
+      try {
+        // Fetch class description
+        const classResponse = await fetch(`/api/classes/${classId}`)
+        if (classResponse.ok) {
+          const data = await classResponse.json()
+          setClassDescription(data.description || '')
+        }
+
+        // Fetch schedule context
+        const contextResponse = await fetch(`/api/classes/${classId}/schedule-context`)
+        if (contextResponse.ok) {
+          const ctx = await contextResponse.json()
+          setScheduleContext(ctx)
+
+          // Set initial message with context
+          setMessages([{
+            id: 'initial',
+            role: 'assistant',
+            content: buildInitialMessage(ctx)
+          }])
+
+          // If context exists, automatically trigger outline generation
+          if (ctx) {
+            triggerOutlineGeneration(ctx)
+          }
+        } else {
+          // No context, use default message
+          setMessages([{
+            id: 'initial',
+            role: 'assistant',
+            content: buildInitialMessage(null)
+          }])
+        }
+      } catch (error) {
+        console.error('Failed to fetch context:', error)
+        setMessages([{
+          id: 'initial',
+          role: 'assistant',
+          content: buildInitialMessage(null)
+        }])
+      }
     }
-  ])
+
+    fetchContext()
+  }, [open, classId, session])
+
+  // Trigger outline generation when context is available
+  const triggerOutlineGeneration = async (ctx: ScheduleContext) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/ai/session-content-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: '请根据已收集的信息为这节课生成一个详细的大纲，包括学习目标、内容板块和练习类型。'
+          }],
+          sessionId: session.id,
+          classId
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to get response')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantMessage = ''
+
+      const assistantMessageId = Date.now().toString()
+      setMessages(prev => [...prev, {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: ''
+      }])
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value)
+          assistantMessage += chunk
+
+          // Check for confirmation marker
+          if (assistantMessage.includes('[OUTLINE_CONFIRMED]')) {
+            setOutlineConfirmed(true)
+          }
+
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMessageId
+              ? { ...m, content: assistantMessage.replace('[OUTLINE_CONFIRMED]', '') }
+              : m
+          ))
+        }
+      }
+    } catch (error) {
+      console.error('Outline generation error:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Fetch class description on mount
+  // Check for outline confirmation in messages
   useEffect(() => {
-    const fetchClassDescription = async () => {
-      try {
-        const response = await fetch(`/api/classes/${classId}`)
-        if (response.ok) {
-          const data = await response.json()
-          setClassDescription(data.description || '')
-        }
-      } catch (error) {
-        console.error('Failed to fetch class description:', error)
-      }
+    const lastMessage = messages[messages.length - 1]
+    if (lastMessage?.role === 'assistant' && lastMessage.content.includes('[OUTLINE_CONFIRMED]')) {
+      setOutlineConfirmed(true)
     }
-    if (open && classId) {
-      fetchClassDescription()
-    }
-  }, [open, classId])
+  }, [messages])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,7 +270,7 @@ Please tell me what specific content, learning objectives, and practice types yo
         body: JSON.stringify({
           messages: [...messages, userMessage].map(m => ({
             role: m.role,
-            content: m.content
+            content: m.content.replace('[OUTLINE_CONFIRMED]', '')
           })),
           sessionId: session.id,
           classId
@@ -151,9 +300,15 @@ Please tell me what specific content, learning objectives, and practice types yo
 
         const chunk = decoder.decode(value)
         assistantMessage += chunk
+
+        // Check for confirmation marker
+        if (assistantMessage.includes('[OUTLINE_CONFIRMED]')) {
+          setOutlineConfirmed(true)
+        }
+
         setMessages(prev => prev.map(m =>
           m.id === assistantMessageId
-            ? { ...m, content: assistantMessage }
+            ? { ...m, content: assistantMessage.replace('[OUTLINE_CONFIRMED]', '') }
             : m
         ))
       }
@@ -181,7 +336,8 @@ Please tell me what specific content, learning objectives, and practice types yo
           classDescription,
           sessionTitle: session.title,
           sessionDescription: session.description,
-          conversationContext: messages.map(m => `${m.role}: ${m.content}`).join('\n')
+          conversationContext: messages.map(m => `${m.role}: ${m.content.replace('[OUTLINE_CONFIRMED]', '')}`).join('\n'),
+          scheduleContext: scheduleContext
         })
       })
 
@@ -292,11 +448,29 @@ Please tell me what specific content, learning objectives, and practice types yo
             Generate Content for Session {session.session_number}
           </DialogTitle>
           <DialogDescription>
-            Chat with AI to define the learning content for this session
+            {outlineConfirmed
+              ? 'Outline confirmed! Ready to generate content with A2A refinement.'
+              : 'Review and confirm the session outline, then generate content'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Schedule Context Banner */}
+          {scheduleContext && !a2aActive && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-800 text-sm">
+                  使用已收集的课程信息 / Using collected course information
+                </span>
+              </div>
+              <div className="text-xs text-blue-700 space-y-1">
+                <div>目标受众: {scheduleContext.target_audience || '未指定'}</div>
+                <div>教学方式: {scheduleContext.teaching_method || '未指定'}</div>
+              </div>
+            </div>
+          )}
+
           {/* A2A Refinement Visualizer */}
           {(a2aActive || a2aIterations.length > 0) && (
             <A2ARefinementVisualizer
@@ -316,7 +490,7 @@ Please tell me what specific content, learning objectives, and practice types yo
                 {messages.map((message) => (
                   <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200'}`}>
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      <p className="text-sm whitespace-pre-wrap">{message.content.replace('[OUTLINE_CONFIRMED]', '')}</p>
                     </div>
                   </div>
                 ))}
@@ -328,7 +502,7 @@ Please tell me what specific content, learning objectives, and practice types yo
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="描述你想要的学习内容... / Describe the learning content you want..."
+                  placeholder="描述你想要的修改... / Describe your modifications..."
                   disabled={isLoading || isGenerating}
                   className="flex-1"
                 />
@@ -337,19 +511,42 @@ Please tell me what specific content, learning objectives, and practice types yo
                 </Button>
               </form>
 
+              {/* Confirmation Status */}
+              {outlineConfirmed && !isGenerating && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <span className="font-medium text-green-800">
+                      大纲已确认！/ Outline Confirmed!
+                    </span>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    点击下方按钮开始生成内容。AI将使用双代理系统反复优化内容质量。
+                    <br />
+                    Click the button below to start content generation. AI will use a dual-agent system to iteratively refine content quality.
+                  </p>
+                </div>
+              )}
+
               {/* Generate Button */}
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isGenerating}>
                   Cancel
                 </Button>
-                <Button onClick={handleGenerateContent} disabled={isGenerating || messages.length < 3}>
+                <Button
+                  onClick={handleGenerateContent}
+                  disabled={isGenerating || !outlineConfirmed}
+                  className={outlineConfirmed ? 'bg-green-600 hover:bg-green-700' : ''}
+                >
                   {isGenerating ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Generating with A2A Refinement...
                     </>
-                  ) : (
+                  ) : outlineConfirmed ? (
                     'Generate Content with A2A'
+                  ) : (
+                    'Confirm Outline First'
                   )}
                 </Button>
               </div>
@@ -360,4 +557,3 @@ Please tell me what specific content, learning objectives, and practice types yo
     </Dialog>
   )
 }
-

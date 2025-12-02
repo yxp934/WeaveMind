@@ -25,7 +25,8 @@ export async function POST(req: Request) {
       sessionDescription,
       className,
       classDescription,
-      conversationContext
+      conversationContext,
+      scheduleContext: providedScheduleContext
     } = await req.json()
 
     if (!sessionId) {
@@ -178,7 +179,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
       baseURL: 'https://ai-gateway.vercel.sh/v1',
     })
 
-    // Build A2A context
+    // Build A2A context with schedule context
     const a2aContext: A2AContext = {
       className: className || entityTitle,
       classDescription: classDescription || entityDescription || '',
@@ -187,7 +188,8 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
       sessionDescription: sessionDescription || '',
       scheduledDate: session.scheduled_date,
       previousSessionsSummary: previousSessionsContext,
-      conversationContext: conversationContext
+      conversationContext: conversationContext,
+      scheduleContext: providedScheduleContext || null
     }
 
     // Create streaming response
