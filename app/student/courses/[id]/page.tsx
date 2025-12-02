@@ -5,6 +5,7 @@ import { ComponentDisplay } from "@/components/student/component-display"
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { ArrowLeft, AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 export default async function StudentCoursePage({
   params,
@@ -45,11 +46,12 @@ export default async function StudentCoursePage({
     redirect("/student")
   }
 
-  // Get course sessions
+  // Get class-level sessions (course_id is null for class-level sessions)
+  // Sessions are accessible if posted OR if the session date has arrived
   const { data: sessions } = await supabase
     .from("course_sessions")
     .select("*")
-    .eq("course_id", id)
+    .eq("class_id", course.class_id)
     .order("session_number", { ascending: true })
 
   // Get chapters with components
@@ -107,6 +109,87 @@ export default async function StudentCoursePage({
           <div className="mb-6">
             <p className="text-gray-600">{course.description || "No description"}</p>
           </div>
+
+          {/* Course Sessions Section */}
+          {hasSessions && (
+            <div className="mb-8">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Sessions</h3>
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="space-y-4">
+                  {sessions?.map((session: any) => {
+                    const sessionDate = new Date(session.scheduled_date)
+                    const today = new Date()
+                    const isPosted = session.posted
+                    const isSessionDay = sessionDate.toDateString() === today.toDateString()
+                    const isPast = sessionDate < today
+                    const isAccessible = isPosted || isSessionDay || isPast
+
+                    return (
+                      <div key={session.id} className={`border rounded-lg p-4 ${isAccessible ? 'hover:bg-gray-50' : 'opacity-75'}`}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-sm font-bold text-indigo-600">Session {session.session_number}</span>
+                              {isPosted && !isSessionDay && !isPast && (
+                                <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800 border border-orange-200">
+                                  Early Access
+                                </span>
+                              )}
+                              {isSessionDay && (
+                                <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                                  Today&apos;s Class
+                                </span>
+                              )}
+                              {isPast && (
+                                <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">
+                                  Completed
+                                </span>
+                              )}
+                              {!isAccessible && (
+                                <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                                  Upcoming
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="font-semibold text-lg mb-1">{session.title}</h4>
+                            <p className="text-sm text-gray-600 mb-3">{session.description || 'No description'}</p>
+                            <div className="flex items-center gap-4 text-sm text-gray-500">
+                              <span>
+                                📅 {sessionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                              {session.start_time && (
+                                <span>
+                                  🕐 {session.start_time}
+                                  {session.duration_minutes && ` (${session.duration_minutes} min)`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            {isAccessible && session.content_generated && session.chapter_id ? (
+                              <Link href={`/student/courses/${id}/sessions/${session.id}`}>
+                                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                                  Start Learning
+                                </Button>
+                              </Link>
+                            ) : isAccessible && !session.content_generated ? (
+                              <Button size="sm" variant="outline" disabled>
+                                Content Coming Soon
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" disabled>
+                                🔒 Locked
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Course Content (chapters-based view) */}
           <div className="space-y-6">

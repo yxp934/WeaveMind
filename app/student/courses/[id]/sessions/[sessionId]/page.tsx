@@ -20,32 +20,43 @@ export default async function StudentSessionPage({
     redirect("/auth/login")
   }
 
-  // Note: course_sessions table doesn't exist in current schema
-  // sessionId now refers to a chapter ID
-  // Redirect to course page with chapter anchor
-
-  // Get chapter details
-  const { data: chapter } = await supabase
-    .from("chapters")
-    .select("*, course:courses(id, title, class_id, published)")
+  // Get session details
+  const { data: session } = await supabase
+    .from("course_sessions")
+    .select("*")
     .eq("id", sessionId)
     .single()
 
-  if (!chapter) {
+  if (!session) {
     redirect(`/student/courses/${id}`)
   }
 
-  // Check if course is published (unless teacher preview)
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
+  // Check if session is accessible (posted or date has arrived)
+  const sessionDate = new Date(session.scheduled_date)
+  const today = new Date()
+  const isPosted = session.posted
+  const isSessionDay = sessionDate.toDateString() === today.toDateString()
+  const isPast = sessionDate < today
+  const isAccessible = isPosted || isSessionDay || isPast
 
-  const isTeacher = profile?.role === "teacher"
+  // Redirect if not accessible
+  if (!isAccessible) {
+    redirect(`/student/courses/${id}`)
+  }
 
-  if (!chapter.course?.published && !isTeacher) {
-    redirect("/student/courses")
+  // Get chapter with components if content is generated
+  let chapter = null
+  if (session.chapter_id) {
+    const { data: chapterData } = await supabase
+      .from("chapters")
+      .select(`
+        *,
+        components (*)
+      `)
+      .eq("id", session.chapter_id)
+      .single()
+
+    chapter = chapterData
   }
 
   const navItems = [
@@ -64,8 +75,8 @@ export default async function StudentSessionPage({
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <DashboardHeader
-          title={`Chapter: ${chapter.title}`}
-          subtitle={chapter.course?.title || "Course"}
+          title={session.title}
+          subtitle={`Session ${session.session_number}`}
           userEmail={user.email || ""}
         />
 
@@ -75,31 +86,61 @@ export default async function StudentSessionPage({
             <span>Back to Course</span>
           </Link>
 
-          {/* Chapter Content */}
-          {chapter && (
-            <div className="bg-white rounded-lg shadow-md overflow-hidden">
-              <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
-                <h3 className="text-xl font-bold text-gray-900">{chapter.title}</h3>
-                {chapter.description && (
-                  <p className="text-gray-600 mt-2">{chapter.description}</p>
-                )}
+          {/* Session Info */}
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
+              <span>
+                📅 {sessionDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </span>
+              {session.start_time && (
+                <span>
+                  🕐 {session.start_time}
+                  {session.duration_minutes && ` (${session.duration_minutes} min)`}
+                </span>
+              )}
+            </div>
+            {session.description && (
+              <p className="text-gray-700">{session.description}</p>
+            )}
+          </div>
+
+          {/* Session Content */}
+          {chapter ? (
+            <div className="space-y-6">
+              <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
+                  <div className="flex items-center gap-3">
+                    <span className="px-3 py-1 text-sm font-semibold text-indigo-600 bg-white rounded-full shadow-sm">
+                      Session {session.session_number} Content
+                    </span>
+                    <h3 className="text-xl font-bold text-gray-900">{chapter.title}</h3>
+                  </div>
+                  {chapter.description && (
+                    <p className="text-gray-600 mt-3">{chapter.description}</p>
+                  )}
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {chapter.components && chapter.components.length > 0 ? (
+                    chapter.components
+                      .sort((a: any, b: any) => a.order_index - b.order_index)
+                      .map((component: any) => (
+                        <ComponentDisplay
+                          key={component.id}
+                          component={component}
+                          courseId={id}
+                          chapterId={chapter.id}
+                        />
+                      ))
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No content in this chapter</p>
+                  )}
+                </div>
               </div>
-              <div className="p-6 space-y-6">
-                {chapter.components && chapter.components.length > 0 ? (
-                  chapter.components
-                    .sort((a: any, b: any) => a.order_index - b.order_index)
-                    .map((component: any) => (
-                      <ComponentDisplay
-                        key={component.id}
-                        component={component}
-                        courseId={id}
-                        chapterId={chapter.id}
-                      />
-                    ))
-                ) : (
-                  <p className="text-gray-500 text-center py-8">No content available</p>
-                )}
-              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow p-12 text-center">
+              <p className="text-gray-500">Content has not been generated yet</p>
             </div>
           )}
         </main>
