@@ -414,3 +414,49 @@ Implemented a 'post' feature allowing teachers to make sessions available to stu
 
 ### Commit: 5d4b2b5
 **Status: Deployed to production ✅**
+
+
+## Authentication Redirect Fix (2025-12-02)
+
+### Issue Summary:
+Existing users with roles were being incorrectly redirected to `/role-select` after logging in, even though they already had selected roles.
+
+### Root Cause:
+Login page (`/app/auth/login/page.tsx`) always redirected all users to `/role-select` after successful authentication, without checking if the user already had a role selected.
+
+### Solution:
+- **Updated login page** to check user's role after successful authentication
+- If user has a role (`teacher` or `student`), redirect directly to their dashboard
+- If user doesn't have a role, redirect to `/role-select` for role selection
+- Maintains existing behavior for new users while fixing the issue for existing users
+
+### Code Changes:
+**File:** `/app/auth/login/page.tsx`
+```typescript
+// After successful authentication:
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("role")
+  .eq("id", data.user?.id)
+  .maybeSingle()
+
+if (profile?.role) {
+  router.push(`/${profile.role}`)  // Direct to dashboard
+} else {
+  router.push("/role-select")      // Role selection for new users
+}
+```
+
+### Testing:
+✅ Build passes successfully
+✅ TypeScript type checking passes
+✅ No breaking changes to signup flow
+✅ Existing middleware logic remains unchanged
+
+### Benefits:
+1. **Better UX**: Existing users skip unnecessary role selection step
+2. **Efficiency**: Reduces page redirects and improves login speed
+3. **Consistency**: Aligns with middleware logic that already checks for roles
+
+### Commit: 34298e9
+**Status: Fixed and deployed ✅**
