@@ -460,3 +460,48 @@ if (profile?.role) {
 
 ### Commit: 34298e9
 **Status: Fixed and deployed ✅**
+
+
+### Authentication Fix - getUser() Update (2025-12-02)
+
+### Issue Summary:
+After the initial fix, login succeeded but no redirection occurred for any users (existing or new).
+
+### Root Cause:
+The `data.user` object from `signInWithPassword` response was not immediately available or had a different structure. The user ID was undefined, causing the profile query to fail silently.
+
+### Solution:
+- **Added explicit call to `supabase.auth.getUser()`** after successful authentication
+- This ensures we have the authenticated user object with the correct ID
+- The profile query now uses the properly retrieved user ID
+- Added validation to check if user exists before querying profile
+
+### Code Changes:
+**File:** `/app/auth/login/page.tsx`
+```typescript
+// After successful login:
+const {
+  data: { user },
+} = await supabase.auth.getUser()
+
+if (!user) {
+  setError("Failed to get user after login")
+  return
+}
+
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("role")
+  .eq("id", user.id)  // Now using properly retrieved user
+  .maybeSingle()
+```
+
+### Testing:
+✅ Build passes successfully
+✅ TypeScript type checking passes
+✅ Login flow now properly redirects users
+✅ Existing users go to correct dashboard
+✅ New users go to role selection
+
+### Commit: 399de5f
+**Status: Fixed and deployed ✅**
