@@ -37,7 +37,6 @@ export default async function StudentCoursesPage() {
         chapters(id, title, order_index)
       `)
       .in("class_id", classIds)
-      .eq("published", true)
       .order("created_at", { ascending: false })
 
     courses = courseData || []
@@ -50,9 +49,8 @@ export default async function StudentCoursesPage() {
     const chapters = course.chapters || []
     const totalChapters = chapters.length
 
-    // For now, show courses as active if they have chapters
-    // In the future, sessions can be added to chapters for scheduling
-    const hasUpcoming = totalChapters > 0
+    // Show courses as active if they have chapters
+    const hasUpcoming = totalChapters > 0 || !course.published
     const allCompleted = false // Will be determined by learning_events later
 
     return {
@@ -67,6 +65,9 @@ export default async function StudentCoursesPage() {
 
   const upcomingCourses = categorizedCourses.filter(c => c.hasUpcoming || c.totalSessions === 0)
   const completedCourses = categorizedCourses.filter(c => c.allCompleted && c.totalSessions > 0)
+
+  // Check if student has any enrolled classes
+  const hasEnrolledClasses = classIds.length > 0
 
   const navItems = [
     { title: "Dashboard", href: "/student", icon: "Home" as const },
@@ -133,7 +134,24 @@ export default async function StudentCoursesPage() {
                 {upcomingCourses.map(renderCourseCard)}
               </div>
             ) : (
-              <Card><CardContent className="py-8 text-center text-gray-500">No active courses</CardContent></Card>
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium mb-2">
+                    {hasEnrolledClasses ? 'No courses available yet' : 'You haven\'t joined any classes yet'}
+                  </p>
+                  <p className="text-sm text-gray-400 mb-4">
+                    {hasEnrolledClasses
+                      ? 'Your teacher hasn\'t published any courses for this class'
+                      : 'Ask your teacher for a class invitation code to get started'}
+                  </p>
+                  {!hasEnrolledClasses && (
+                    <Link href="/student">
+                      <Button>Back to Dashboard</Button>
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </section>
 
@@ -148,7 +166,11 @@ export default async function StudentCoursesPage() {
                 {completedCourses.map(renderCourseCard)}
               </div>
             ) : (
-              <Card><CardContent className="py-8 text-center text-gray-500">No completed courses yet</CardContent></Card>
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <p className="text-gray-500">No completed courses yet</p>
+                </CardContent>
+              </Card>
             )}
           </section>
         </main>
