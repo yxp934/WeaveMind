@@ -56,21 +56,17 @@ export default async function ClassDetailPage({
     .eq("class_id", id)
     .eq("role", "student")
 
-  // Get class sessions with chapter information
-  // Note: course_sessions table doesn't exist yet - using chapters as sessions for now
-  const { data: chapters } = await supabase
-    .from("chapters")
+  // Get class sessions
+  const { data: sessions } = await supabase
+    .from("course_sessions")
     .select(`
       *,
-      course:courses(id, title)
+      chapter:chapters(id, title)
     `)
-    .in(
-      "course_id",
-      courses?.map(c => c.id) || []
-    )
-    .order("order_index", { ascending: true })
+    .eq("class_id", id)
+    .order("scheduled_date", { ascending: true })
 
-  const hasSchedule = !!(chapters && chapters.length > 0)
+  const hasSchedule = !!(sessions && sessions.length > 0)
 
   const navItems = [
     { title: "Dashboard", href: "/teacher", icon: "Home" as const },
@@ -169,7 +165,7 @@ export default async function ClassDetailPage({
               <h3 className="text-xl font-bold text-gray-900">Class Sessions</h3>
             </div>
             <SessionsList
-              sessions={chapters || []}
+              sessions={sessions || []}
               classId={id}
               className={classData.name}
             />

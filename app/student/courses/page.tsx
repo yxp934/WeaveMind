@@ -33,34 +33,63 @@ export default async function StudentCoursesPage() {
       .from("courses")
       .select(`
         *,
-        class:classes(id, name),
-        chapters(id, title, order_index)
+        class:classes(id, name)
       `)
       .in("class_id", classIds)
       .eq("published", true)
       .order("created_at", { ascending: false })
 
     courses = courseData || []
+
+    // Get sessions for each course
+    const courseIds = courses.map(c => c.id)
+    if (courseIds.length > 0) {
+      const { data: sessionsData } = await supabase
+        .from("course_sessions")
+        .select("*")
+        .in("course_id", courseIds)
+        .order("scheduled_date", { ascending: true })
+
+      // Group sessions by course
+      const sessionsByCourse = sessionsData?.reduce((acc: any, session: any) => {
+        if (!acc[session.course_id]) acc[session.course_id] = []
+        acc[session.course_id].push(session)
+        return acc
+      }, {}) || {}
+
+      // Attach sessions to courses
+      courses = courses.map(course => ({
+        ...course,
+        sessions: sessionsByCourse[course.id] || []
+      }))
+    }
   }
 
-  // Categorize courses based on their chapters
+  // Categorize courses based on their sessions
   const today = startOfDay(new Date())
 
   const categorizedCourses = courses.map(course => {
-    const chapters = course.chapters || []
-    const totalChapters = chapters.length
+    const sessions = course.sessions || []
+    const upcomingSessions = sessions.filter((s: any) => {
+      const sessionDate = startOfDay(parseISO(s.scheduled_date))
+      return !isBefore(sessionDate, today) && !isToday(sessionDate)
+    })
 
-    // Show courses as active if they have chapters
-    const hasUpcoming = totalChapters > 0 || !course.published
-    const allCompleted = false // Will be determined by learning_events later
+    const hasUpcoming = upcomingSessions.length > 0
+    const allCompleted = sessions.length > 0 && upcomingSessions.length === 0
+
+    // Find next session date
+    const nextSession = sessions
+      .filter((s: any) => !isBefore(startOfDay(parseISO(s.scheduled_date)), today))
+      .sort((a: any, b: any) => parseISO(a.scheduled_date).getTime() - parseISO(b.scheduled_date).getTime())[0]
 
     return {
       ...course,
       hasUpcoming,
       allCompleted,
-      nextSessionDate: null, // No session concept yet
-      totalSessions: totalChapters, // Use chapters as sessions for now
-      completedSessions: 0 // Will track via learning_events
+      nextSessionDate: nextSession?.scheduled_date,
+      totalSessions: sessions.length,
+      completedSessions: sessions.length - upcomingSessions.length
     }
   })
 

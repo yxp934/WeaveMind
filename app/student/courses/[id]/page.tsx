@@ -45,7 +45,14 @@ export default async function StudentCoursePage({
     redirect("/student")
   }
 
-  // Get chapters with components (chapters serve as sessions in current schema)
+  // Get course sessions
+  const { data: sessions } = await supabase
+    .from("course_sessions")
+    .select("*")
+    .eq("course_id", id)
+    .order("session_number", { ascending: true })
+
+  // Get chapters with components
   const { data: chapters } = await supabase
     .from("chapters")
     .select(`
@@ -55,8 +62,7 @@ export default async function StudentCoursePage({
     .eq("course_id", id)
     .order("order_index", { ascending: true })
 
-  // Note: course_sessions table doesn't exist in current schema
-  // Using chapters as sessions instead
+  const hasSessions = sessions && sessions.length > 0
 
   const navItems = [
     { title: "Dashboard", href: "/student", icon: "Home" as const },

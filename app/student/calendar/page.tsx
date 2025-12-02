@@ -25,16 +25,14 @@ export default async function StudentCalendarPage() {
   // Get all sessions for enrolled classes
   let sessions: any[] = []
   if (classIds.length > 0) {
-    // Query chapters as sessions for now
     const { data: sessionData } = await supabase
-      .from("chapters")
+      .from("course_sessions")
       .select(`
         *,
-        course:courses(id, title, class_id),
         class:classes(id, name)
       `)
-      .in("course.class_id", classIds)
-      .order("order_index", { ascending: true })
+      .in("class_id", classIds)
+      .order("scheduled_date", { ascending: true })
 
     sessions = sessionData || []
   }
