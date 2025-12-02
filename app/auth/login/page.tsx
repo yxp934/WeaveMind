@@ -28,11 +28,21 @@ export default function LoginPage() {
 
       if (error) throw error
 
+      // Get the current authenticated user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        setError("Failed to get user after login")
+        return
+      }
+
       // Check if user has a role and redirect appropriately
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
-        .eq("id", data.user?.id)
+        .eq("id", user.id)
         .maybeSingle()
 
       if (profile?.role) {
