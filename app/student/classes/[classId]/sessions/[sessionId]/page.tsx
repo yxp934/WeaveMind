@@ -6,12 +6,12 @@ import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { ArrowLeft } from "lucide-react"
 
-export default async function StudentSessionPage({
+export default async function StudentClassSessionPage({
   params,
 }: {
-  params: Promise<{ id: string; sessionId: string }>
+  params: Promise<{ classId: string; sessionId: string }>
 }) {
-  const { id, sessionId } = await params
+  const { classId, sessionId } = await params
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -20,15 +20,27 @@ export default async function StudentSessionPage({
     redirect("/auth/login")
   }
 
+  // Get class details
+  const { data: classData } = await supabase
+    .from("classes")
+    .select("*, organization:organizations(name)")
+    .eq("id", classId)
+    .single()
+
+  if (!classData) {
+    redirect("/student/classes")
+  }
+
   // Get session details
   const { data: session } = await supabase
     .from("course_sessions")
     .select("*")
     .eq("id", sessionId)
+    .eq("class_id", classId)
     .single()
 
   if (!session) {
-    redirect(`/student/courses/${id}`)
+    redirect(`/student/classes/${classId}`)
   }
 
   // Check if session is accessible (posted or date has arrived)
@@ -41,7 +53,7 @@ export default async function StudentSessionPage({
 
   // Redirect if not accessible
   if (!isAccessible) {
-    redirect(`/student/courses/${id}`)
+    redirect(`/student/classes/${classId}`)
   }
 
   // Get chapter with components if content is generated
@@ -79,14 +91,14 @@ export default async function StudentSessionPage({
       <div className="flex-1 flex flex-col overflow-hidden">
         <DashboardHeader
           title={session.title}
-          subtitle={`Session ${session.session_number}`}
+          subtitle={`${classData.name} • Session ${session.session_number}`}
           userEmail={user.email || ""}
         />
 
         <main className="flex-1 overflow-y-auto p-6">
-          <Link href={`/student/courses/${id}`} className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 mb-6">
+          <Link href={`/student/classes/${classId}`} className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 mb-6">
             <ArrowLeft className="h-4 w-4" />
-            <span>Back to Course</span>
+            <span>Back to Class</span>
           </Link>
 
           {/* Session Info */}
@@ -131,7 +143,7 @@ export default async function StudentSessionPage({
                         <ComponentDisplay
                           key={component.id}
                           component={component}
-                          courseId={id}
+                          courseId={classId}
                           chapterId={chapter.id}
                         />
                       ))
@@ -151,4 +163,3 @@ export default async function StudentSessionPage({
     </div>
   )
 }
-

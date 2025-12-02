@@ -32,14 +32,6 @@ export default async function StudentClassPage({
     redirect("/student")
   }
 
-  // Get published courses in this class
-  const { data: courses } = await supabase
-    .from("courses")
-    .select("*")
-    .eq("class_id", id)
-    .eq("published", true)
-    .order("created_at", { ascending: false })
-
   // Get class-level sessions (shared across all courses in the class)
   const { data: sessions } = await supabase
     .from("course_sessions")
@@ -94,10 +86,10 @@ export default async function StudentClassPage({
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <StatCard
-              title="Available Courses"
-              value={courses?.length || 0}
+              title="Sessions"
+              value={sessions?.length || 0}
               change={0}
               icon={BookOpen}
               iconColor="text-blue-600"
@@ -119,38 +111,6 @@ export default async function StudentClassPage({
               iconColor="text-green-600"
               iconBgColor="bg-green-100"
             />
-          </div>
-
-          {/* Courses Section */}
-          <div className="bg-white rounded-lg shadow p-6 mb-8">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Courses</h3>
-
-            {courses && courses.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {courses.map((course: any) => (
-                  <Link key={course.id} href={`/student/courses/${course.id}`}>
-                    <div className="border border-gray-200 rounded-lg p-5 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer">
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 bg-indigo-100 rounded-lg">
-                          <BookOpen className="h-5 w-5 text-indigo-600" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-lg text-gray-900 mb-1">{course.title}</h4>
-                          <p className="text-sm text-gray-500 line-clamp-2">
-                            {course.description || "No description"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No courses available yet</p>
-              </div>
-            )}
           </div>
 
           {/* Sessions Section */}
@@ -209,7 +169,7 @@ export default async function StudentClassPage({
                         </div>
                         <div className="ml-4">
                           {isAccessible && session.content_generated && session.chapter_id ? (
-                            <Link href={`/student/courses/${courses?.[0]?.id}/sessions/${session.id}`}>
+                            <Link href={`/student/classes/${id}/sessions/${session.id}`}>
                               <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
                                 Start Learning
                               </Button>
