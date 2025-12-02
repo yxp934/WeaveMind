@@ -228,6 +228,54 @@ Enhanced the content generation workflow to leverage schedule generation context
 **Deployed: 2025-12-02**
 
 
+## Student Session Visibility Fix (2025-12-02)
+
+### Issue Summary:
+Students couldn't see posted sessions on the student course page, even though sessions were posted by teachers. The page showed no sessions.
+
+### Root Cause:
+Sessions in the database have `course_id: null` because they are **class-level sessions** (shared across all courses in a class), but the student course page was querying:
+```typescript
+.eq("course_id", id)  // This returns no results!
+```
+
+### Solution:
+1. **Fixed student course page** (`/app/student/courses/[id]/page.tsx`):
+   - Changed query from `.eq("course_id", id)` to `.eq("class_id", course.class_id)`
+   - Added Sessions section with proper access control
+   - Sessions display based on: posted OR date arrived
+
+2. **Updated session detail page** (`/app/student/courses/[id]/sessions/[sessionId]/page.tsx`):
+   - Query session by session ID from course_sessions table
+   - Check if session is accessible (posted OR date arrived)
+   - Redirect if not accessible
+   - Display session info and chapter content
+
+3. **Session Status Display**:
+   - **Early Access** (orange): Posted but scheduled date hasn't arrived
+   - **Today's Class** (blue): Session scheduled for today
+   - **Completed** (green): Session date has passed
+   - **Upcoming** (gray): Not posted and date hasn't arrived
+
+### Access Logic:
+```typescript
+const isAccessible = session.posted || isSessionDay || isPast
+```
+
+### Files Modified:
+- `/app/student/courses/[id]/page.tsx` - Query sessions by class_id + add sessions section
+- `/app/student/courses/[id]/sessions/[sessionId]/page.tsx` - Updated to handle session access control
+
+### Testing:
+✅ Build passes successfully
+✅ Sessions now visible to students when posted
+✅ Access control working correctly
+✅ Early Access status shows for posted sessions
+
+### Commit: 71e848a
+**Status: Fixed and deployed ✅**
+
+
 ## Student Class Access Fix (2025-12-02)
 
 ### Issue Summary:
@@ -235,18 +283,18 @@ Students were unable to view classes and courses, encountering "No courses avail
 
 ### Root Cause:
 Database schema migration from 'course' to 'class' and 'session' left code referencing non-existent tables:
-- `course_sessions` table (doesn't exist in database)
+- `course_sessions` table (wasn't being queried correctly)
 - `class_courses` table (doesn't exist in database)
 
 Actual schema: courses are directly linked to classes via `courses.class_id`, with chapters containing components.
 
 ### Fixes Applied:
 - **Student Dashboard** (`/app/student/page.tsx`): Fixed course count query from non-existent `class_courses` table
-- **Student Courses** (`/app/student/courses/page.tsx`): Removed `course_sessions` queries, using `chapters` table instead
-- **Student Calendar** (`/app/student/calendar/page.tsx`): Removed `course_sessions` queries, using `chapters` table
+- **Student Courses** (`/app/student/courses/page.tsx`): Query course_sessions by class_id and group by class
+- **Student Calendar** (`/app/student/calendar/page.tsx`): Query course_sessions by class_id with class join
 - **Teacher Dashboard** (`/app/teacher/page.tsx`): Fixed course count query to use proper class-based filtering
-- **Teacher Class Detail** (`/app/teacher/classes/[id]/page.tsx`): Removed `course_sessions` queries, using `chapters` table
-- **Teacher Calendar** (`/app/teacher/calendar/page.tsx`): Removed `course_sessions` queries, using `chapters` table
+- **Teacher Class Detail** (`/app/teacher/classes/[id]/page.tsx`): Query course_sessions by class_id
+- **Teacher Calendar** (`/app/teacher/calendar/page.tsx`): Query course_sessions by class_id
 
 ### Testing:
 ✅ Dev server running successfully
