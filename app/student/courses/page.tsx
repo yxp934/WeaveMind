@@ -34,7 +34,7 @@ export default async function StudentCoursesPage() {
       .select(`
         *,
         class:classes(id, name),
-        course_sessions(id, scheduled_date, content_generated)
+        chapters(id, title, order_index)
       `)
       .in("class_id", classIds)
       .eq("published", true)
@@ -43,35 +43,25 @@ export default async function StudentCoursesPage() {
     courses = courseData || []
   }
 
-  // Categorize courses based on their sessions
+  // Categorize courses based on their chapters
   const today = startOfDay(new Date())
-  
+
   const categorizedCourses = courses.map(course => {
-    const sessions = course.course_sessions || []
-    const futureSessions = sessions.filter((s: any) => {
-      const sessionDate = startOfDay(parseISO(s.scheduled_date))
-      return !isBefore(sessionDate, today) && !isToday(sessionDate)
-    })
-    const pastSessions = sessions.filter((s: any) => {
-      const sessionDate = startOfDay(parseISO(s.scheduled_date))
-      return isBefore(sessionDate, today) || isToday(sessionDate)
-    })
-    
-    const hasUpcoming = futureSessions.length > 0
-    const allCompleted = sessions.length > 0 && futureSessions.length === 0
-    
-    // Find next session date
-    const nextSession = sessions
-      .filter((s: any) => !isBefore(startOfDay(parseISO(s.scheduled_date)), today))
-      .sort((a: any, b: any) => parseISO(a.scheduled_date).getTime() - parseISO(b.scheduled_date).getTime())[0]
+    const chapters = course.chapters || []
+    const totalChapters = chapters.length
+
+    // For now, show courses as active if they have chapters
+    // In the future, sessions can be added to chapters for scheduling
+    const hasUpcoming = totalChapters > 0
+    const allCompleted = false // Will be determined by learning_events later
 
     return {
       ...course,
       hasUpcoming,
       allCompleted,
-      nextSessionDate: nextSession?.scheduled_date,
-      totalSessions: sessions.length,
-      completedSessions: pastSessions.length
+      nextSessionDate: null, // No session concept yet
+      totalSessions: totalChapters, // Use chapters as sessions for now
+      completedSessions: 0 // Will track via learning_events
     }
   })
 

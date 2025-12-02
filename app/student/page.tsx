@@ -33,12 +33,13 @@ export default async function StudentDashboard() {
 
   // Get enrolled courses count
   const { count: coursesCount } = await supabase
-    .from("class_courses")
+    .from("courses")
     .select("*", { count: "exact", head: true })
     .in(
       "class_id",
       classMemberships?.map((m: any) => m.class_id) || []
     )
+    .eq("published", true)
 
   // Get assignments count
   const { count: assignmentsCount } = await supabase

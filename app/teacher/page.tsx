@@ -36,14 +36,22 @@ export default async function TeacherDashboard() {
       orgMemberships?.map((m: any) => m.organization_id) || []
     )
 
-  // Get courses count
-  const { count: coursesCount } = await supabase
-    .from("courses")
-    .select("*", { count: "exact", head: true })
+  // Get class IDs for course count
+  const { data: classes } = await supabase
+    .from("classes")
+    .select("id")
     .in(
       "organization_id",
       orgMemberships?.map((m: any) => m.organization_id) || []
     )
+
+  const classIds = classes?.map(c => c.id) || []
+
+  // Get courses count
+  const { count: coursesCount } = await supabase
+    .from("courses")
+    .select("*", { count: "exact", head: true })
+    .in("class_id", classIds)
 
   // Get total students count
   const { count: studentsCount } = await supabase
