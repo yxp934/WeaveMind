@@ -194,13 +194,27 @@ function parseRequirementsFromConversation(conversationText: string): {
         }
       }
 
-      // If still no topics, try simple comma/line separation
+      // Strict validation for extracted topics - reject generic patterns
       if (sessionTopics.length === 0) {
         const topics = topicsText.split(/[,;\n]/).map(t => {
           let cleaned = t.trim().replace(/^\d+[\)\.\-]\s*/, '').replace(/For:.*$/i, '').replace(/Goals:.*$/i, '').trim()
-          return cleaned.length > 3 && cleaned.length < 100 ? cleaned : null
+          // Apply strict validation to prevent generic topics
+          if (!cleaned || cleaned.length < 5 || cleaned.length > 80) return null
+          const lowerTopic = cleaned.toLowerCase()
+          // Reject generic terms
+          if (lowerTopic.match(/^(introduction|overview|basic|introduction to|basics of|fundamentals|part|chapter|session|class|lesson|module|week|material|content)$/)) {
+            return null
+          }
+          // Reject if it contains only generic words
+          if (lowerTopic.split(/\s+/).every(word => ['the', 'a', 'an', 'to', 'of', 'and', 'or', 'in', 'on', 'for', 'with', 'by', 'is', 'are', 'be', 'will', 'can', 'should'].includes(word))) {
+            return null
+          }
+          return cleaned
         }).filter((t): t is string => Boolean(t))
-        sessionTopics.push(...topics)
+        if (topics.length > 0) {
+          console.log(`Extracted ${topics.length} specific topics from conversation`)
+          sessionTopics.push(...topics)
+        }
       }
     }
   }
@@ -218,9 +232,12 @@ function parseRequirementsFromConversation(conversationText: string): {
     }
   }
 
-  // Ensure we have at least totalClasses topics (fill with placeholders if needed)
-  while (sessionTopics.length < totalClasses && sessionTopics.length > 0) {
-    sessionTopics.push(`${classTopic} - Additional Session ${sessionTopics.length + 1}`)
+  // Validate that we have enough topics - do NOT use fallback placeholders
+  // If we don't have enough topics from conversation, the AI will generate them
+  if (sessionTopics.length === 0) {
+    console.log('No session topics found in conversation - AI will generate topics')
+  } else if (sessionTopics.length < totalClasses) {
+    console.log(`Only found ${sessionTopics.length} topics for ${totalClasses} sessions - AI will generate the rest`)
   }
 
   // Parse objectives
@@ -330,11 +347,11 @@ function parseRequirementsFromConversation(conversationText: string): {
     }
   }
 
-  // Final fallback: if we still have no overviews, create from class topic
-  if (sessionOverviews.length === 0 && totalClasses > 0) {
-    for (let i = 0; i < totalClasses; i++) {
-      sessionOverviews.push(`${classTopic} - Session ${i + 1}`)
-    }
+  // Final validation - do NOT use fallback overviews
+  // If we don't have overviews from conversation, the system will work without them
+  // or fail if AI cannot generate appropriate content
+  if (sessionOverviews.length === 0) {
+    console.log('No session overviews found in conversation - will use topic-based descriptions')
   }
 
   return {
@@ -368,7 +385,7 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
   console.log(`Generating ${requirements.totalClasses} sessions for class: ${requirements.classTopic}`)
 
   // Create a comprehensive prompt with all collected context
-  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} specific session topics for a class on "${requirements.classTopic}".
+  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} highly specific and meaningful session topics for a class on "${requirements.classTopic}".
 
 **COMPREHENSIVE COURSE CONTEXT:**
 
@@ -380,24 +397,40 @@ Learning Goals and Objectives: ${requirements.goals || requirements.objectives.j
 
 Teaching Methodology: ${requirements.teachingMethod || 'Not specified'}
 
-Session Overviews: ${requirements.sessionOverviews.length > 0 ? requirements.sessionOverviews.map((o, i) => `Session ${i + 1}: ${o}`).join(' | ') : 'Not specified'}
+Session Overviews (from conversation):
+${requirements.sessionOverviews.length > 0 ? requirements.sessionOverviews.map((o, i) => `Session ${i + 1}: ${o}`).join('\n') : 'Not specified in conversation'}
 
-**IMPORTANT RULES:**
+**CRITICAL REQUIREMENTS:**
 - Return ONLY a JSON array of strings
-- NO markdown code blocks
-- NO explanations or extra text
-- Each topic must be 4-6 words
-- Topics must be specific to "${requirements.classTopic}" and appropriate for the target audience
-- Adapt topics to the teaching methodology: ${requirements.teachingMethod || 'Standard approach'}
-- NO generic terms like "Introduction", "Overview", "Basics", "Part X"
-- Make topics progressive and meaningful
-- Consider the learning goals when creating topics
-- Align topics with the session overviews if provided
+- NO markdown code blocks, explanations, or extra text
+- Each topic must be 5-7 words
+- Topics MUST be specific to "${requirements.classTopic}" and aligned with the learning objectives
+- Topics MUST be appropriate for the target audience: ${requirements.targetAudience || 'General learners'}
+- Topics MUST work with the teaching methodology: ${requirements.teachingMethod || 'Standard approach'}
+
+**STRICTLY FORBIDDEN GENERIC TERMS:**
+- "Introduction", "Overview", "Basics", "Fundamentals", "Part X", "Session X", "Class X", "Lesson X"
+- "Getting Started", "Basic Concepts", "General Overview", "Theory and Practice"
+- Any topic that contains: introduction, overview, basic, fundamentals, part, session, class, lesson, week, module, material, content, general
+
+**QUALITY STANDARDS:**
+- Topics must be progressive and build logically upon each other
+- Each topic should focus on a distinct subtopic, skill, or concept of "${requirements.classTopic}"
+- Topics should be engaging, specific, and academically rigorous
+- Topics should reflect real learning objectives and outcomes
+- Avoid theoretical topics unless specifically requested
+
+**VALIDATION:**
+Before responding, verify each topic:
+1. Does not contain any forbidden words
+2. Is specific to "${requirements.classTopic}"
+3. Would be meaningful in an educational setting
+4. Could realistically be taught in ${requirements.durationMinutes || 90} minutes
 
 Example JSON format:
 ["Topic 1", "Topic 2", "Topic 3"]
 
-Generate exactly ${requirements.totalClasses} specific topics that align with the course context above:`
+Generate exactly ${requirements.totalClasses} highly specific, progressive, and meaningful topics that align with all the course context above:`
 
   // Retry mechanism - retry up to 3 times to get valid AI response
   let attempts = 0

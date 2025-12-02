@@ -103,24 +103,33 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
   })
 
   // Create a strict prompt to generate specific session topics
-  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} specific session topics for a course on "${requirements.courseTopic}".
+  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} highly specific session topics for a course on "${requirements.courseTopic}".
 
-IMPORTANT RULES:
+**COMPREHENSIVE COURSE CONTEXT:**
+
+Course Topic: ${requirements.courseTopic}
+
+Learning Objectives: ${requirements.objectives.length > 0 ? requirements.objectives.join(', ') : 'Not specified'}
+
+**CRITICAL REQUIREMENTS:**
 - Return ONLY a JSON array of strings
-- NO markdown code blocks
-- NO explanations or extra text
-- Each topic must be 4-6 words
-- Topics must be specific to "${requirements.courseTopic}"
-- NO generic terms like "Introduction", "Overview", "Basics", "Part X"
-- Make topics progressive and meaningful
+- NO markdown code blocks, explanations, or extra text
+- Each topic must be 5-7 words
+- Topics MUST be specific to "${requirements.courseTopic}" and the learning objectives
+- STRICTLY FORBIDDEN generic terms: "Introduction", "Overview", "Basics", "Fundamentals", "Part X", "Session X", "Class X", "Lesson X"
+- Topics must be progressive and build upon each other
+- Each topic should focus on a distinct subtopic of "${requirements.courseTopic}"
+- Make topics engaging and academically rigorous
+
+**VALIDATION CRITERIA:**
+- Topics should not contain words like: introduction, overview, basic, fundamentals, part, session, class, lesson, week, module, material, content, general, theory
+- Topics should focus on specific concepts, techniques, or skills
+- Topics should be appropriate for an educational setting
 
 Example JSON format:
 ["Topic 1", "Topic 2", "Topic 3"]
 
-Course Topic: ${requirements.courseTopic}
-Objectives: ${requirements.objectives.join(', ')}
-
-Generate exactly ${requirements.totalClasses} specific topics now:`
+Generate exactly ${requirements.totalClasses} highly specific, progressive topics that align with the course context:`
 
   // Retry mechanism - retry up to 3 times to get valid AI response
   let attempts = 0
