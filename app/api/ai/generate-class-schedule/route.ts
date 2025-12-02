@@ -17,6 +17,7 @@ function parseRequirementsFromConversation(conversationText: string): {
   targetAudience: string
   goals: string
   sessionOverviews: string[]
+  teachingMethod: string
 } {
   // Default values
   let totalClasses = 8
@@ -31,10 +32,19 @@ function parseRequirementsFromConversation(conversationText: string): {
   let targetAudience = ''
   let goals = ''
   let sessionOverviews: string[] = []
+  let teachingMethod = ''
 
-  // Parse total classes
-  const classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课)/i)
-  if (classMatch) totalClasses = parseInt(classMatch[1])
+  // Parse total classes - improved patterns to catch various formats
+  let classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课|次课)/i)
+  if (classMatch) {
+    totalClasses = parseInt(classMatch[1])
+  } else {
+    // Check in structured text like "Number of sessions: X" or "Total: X sessions"
+    classMatch = conversationText.match(/(?:number of|total|共|总共).*?(\d+).*?(?:classes|sessions|节课|次课)/i)
+    if (classMatch) {
+      totalClasses = parseInt(classMatch[1])
+    }
+  }
 
   // Parse frequency
   if (conversationText.match(/twice\s+a?\s*week|每周两次|周二次/i)) {
@@ -109,12 +119,36 @@ function parseRequirementsFromConversation(conversationText: string): {
     if (topicMatch) classTopic = topicMatch[1].trim()
   }
 
+  // Parse teaching method
+  const teachingMethodPatterns = [
+    { pattern: /(?:teaching method|教学方式|教学方法|teaching style|教学模式)[:\s]*([^.!?\n]+)/i, method: null },
+    { pattern: /A\)\s*(lecture-based with Q&A|讲座式问答)/i, method: 'Lecture-based with Q&A' },
+    { pattern: /B\)\s*(group discussions and collaborative tasks|小组讨论和协作任务)/i, method: 'Group discussions and collaborative tasks' },
+    { pattern: /C\)\s*(project-based learning with hands-on activities|项目式学习与实践操作)/i, method: 'Project-based learning with hands-on activities' },
+    { pattern: /D\)\s*(workshop style with practical exercises|工作坊式实践练习)/i, method: 'Workshop style with practical exercises' },
+    { pattern: /E\)\s*(flipped classroom|翻转课堂)/i, method: 'Flipped classroom' },
+    { pattern: /F\)\s*(mixed approach|混合式方法)/i, method: 'Mixed approach' },
+    { pattern: /(lecture-based|讲座式|讲授式)/i, method: 'Lecture-based with Q&A' },
+    { pattern: /(project-based|项目式)/i, method: 'Project-based learning with hands-on activities' },
+    { pattern: /(group|小组|collaborative|协作)/i, method: 'Group discussions and collaborative tasks' },
+    { pattern: /(workshop|工作坊|practical|实践)/i, method: 'Workshop style with practical exercises' },
+    { pattern: /(flipped|翻转)/i, method: 'Flipped classroom' }
+  ]
+
+  for (const { pattern, method } of teachingMethodPatterns) {
+    const match = conversationText.match(pattern)
+    if (match) {
+      teachingMethod = method || match[1].trim()
+      break
+    }
+  }
+
   // Parse session topics - look for patterns like "Session 1: Topic" or "1) Topic" or "Topics: 1) Topic"
   // Pattern 1: "Session X: Topic" or "Session X - Topic"
-  const sessionPattern1 = conversationText.matchAll(/(?:session|Session)\s*(\d+)[:\-]\s*([^,\n]+?)(?=(?:\s*(?:session|Session)\s*\d+)|(?:\s*\d+\))|$)/gi)
+  const sessionPattern1 = conversationText.matchAll(/(?:session|Session|第\d+节)\s*(\d+)[:\-]\s*([^,\n]+?)(?=(?:\s*(?:session|Session)\s*\d+)|(?:\s*\d+\))|$)/gi)
   for (const match of sessionPattern1) {
     const topic = match[2].trim()
-    if (topic && topic.length > 0) {
+    if (topic && topic.length > 0 && topic.length < 100) {
       sessionTopics.push(topic)
     }
   }
@@ -131,7 +165,7 @@ function parseRequirementsFromConversation(conversationText: string): {
         let topic = match[2].trim()
         // Remove trailing punctuation and whitespace
         topic = topic.replace(/[,;.\s]+$/, '').trim()
-        if (topic && topic.length > 0 && !topic.match(/^(sessions?|classes?|hours?|minutes?)/i)) {
+        if (topic && topic.length > 0 && !topic.match(/^(sessions?|classes?|hours?|minutes?)/i) && topic.length < 100) {
           sessionTopics.push(topic)
         }
       }
@@ -142,7 +176,7 @@ function parseRequirementsFromConversation(conversationText: string): {
   if (sessionTopics.length === 0) {
     const topicsSection = conversationText.match(/(?:topics?|session topics?)[:\s]*([^\n]+)/i)
     if (topicsSection) {
-      const topics = topicsSection[1].split(/[,;]/).map(t => t.trim()).filter(t => t.length > 0)
+      const topics = topicsSection[1].split(/[,;]/).map(t => t.trim()).filter(t => t.length > 0 && t.length < 100)
       sessionTopics.push(...topics)
     }
   }
@@ -168,7 +202,7 @@ function parseRequirementsFromConversation(conversationText: string): {
   }
 
   // Parse goals - comprehensive goal extraction
-  const goalSection = conversationText.match(/(?:goals?|objectives?|学习目标|学习成果|学习效果)[:\s]*([\s\S]*?)(?=session|audience|target|schedule|频率|duration|date|time|$)/i)
+  const goalSection = conversationText.match(/(?:goals?|objectives?|学习目标|学习成果|学习效果)[:\s]*([\s\S]*?)(?=session|audience|target|schedule|频率|duration|date|time|teaching|method|Teaching|Method|$)/i)
   if (goalSection && goalSection[1]) {
     goals = goalSection[1].trim()
   } else {
@@ -179,40 +213,45 @@ function parseRequirementsFromConversation(conversationText: string): {
     }
   }
 
-  // Parse session overviews - look for detailed session descriptions
-  // Pattern 1: "Session 1: Description" or "第1节: Description"
-  const sessionOverviewPattern1 = conversationText.matchAll(/(?:session|Session|第\d+节)\s*\d+[:\-\s]*([^.!?\n]+)/gi)
+  // Parse session overviews - CLEAN extraction avoiding chat artifacts
+  // First, try to extract from "Session X: Content" patterns
+  const sessionOverviewPattern1 = conversationText.matchAll(/Session\s*\d+[:\-\s\n]+([^.!?]{20,200}?)(?=(?:Session\s*\d+|A\)|B\)|C\)|Overview:|Goals:|Teaching|$))/gi)
   for (const match of sessionOverviewPattern1) {
-    const overview = match[1].trim()
-    if (overview && overview.length > 10) {
+    let overview = match[1].trim()
+    // Clean up common chat artifacts
+    overview = overview.replace(/^(Your|你的|Your -|你的 -)\s*/i, '')
+    overview = overview.replace(/\|.*?(Goals?:|Goals|目标|GOALS).*?$/i, '')
+    overview = overview.replace(/\*\*.*?\*\*/g, '') // Remove bold markdown
+    overview = overview.replace(/---.*$/i, '') // Remove everything after ---
+    overview = overview.trim()
+
+    if (overview && overview.length > 10 && overview.length < 200) {
       sessionOverviews.push(overview)
     }
   }
 
-  // Pattern 2: Look for detailed descriptions after session numbers
+  // If still empty, try looking in summary sections
   if (sessionOverviews.length === 0) {
-    const sessionDetailPattern = /(\d+)[.\)]\s*([^.!?\n]{20,})/g
-    let match
-    while ((match = sessionDetailPattern.exec(conversationText)) !== null) {
-      const detail = match[2].trim()
-      if (detail && detail.length > 10) {
-        sessionOverviews.push(detail)
+    const summaryMatch = conversationText.match(/(?:session-by-session|Session-by-Session|session details|Session Details)[:\s]*([\s\S]*?)(?=SCHEDULE_READY|Schedule|Frequency|$)/i)
+    if (summaryMatch && summaryMatch[1]) {
+      // Extract individual sessions from summary
+      const sessionParts = summaryMatch[1].split(/(?:Session\s*\d+|第\d+节)/i)
+      for (const part of sessionParts) {
+        const trimmed = part.trim()
+        if (trimmed.length > 15 && trimmed.length < 200 && !trimmed.match(/^(course|audience|goal|target|schedule|Teaching|Method)/i)) {
+          let cleaned = trimmed.replace(/---.*$/i, '').replace(/\*\*.*?\*\*/g, '').trim()
+          if (cleaned.length > 10) {
+            sessionOverviews.push(cleaned)
+          }
+        }
       }
     }
   }
 
-  // Pattern 3: Extract from comprehensive summaries
-  if (sessionOverviews.length === 0) {
-    const summaryMatch = conversationText.match(/(?:summary|摘要|概述)[:\s]*([\s\S]*?)(?=SCHEDULE_READY|$)/i)
-    if (summaryMatch && summaryMatch[1]) {
-      // Split by session indicators
-      const sessionParts = summaryMatch[1].split(/(?:session|Session|第\d+节|\d+[.\)])/i)
-      for (const part of sessionParts) {
-        const trimmed = part.trim()
-        if (trimmed.length > 15 && !trimmed.match(/^(course|audience|goal|target|schedule)/i)) {
-          sessionOverviews.push(trimmed.substring(0, 200))
-        }
-      }
+  // Final fallback: if we still have no overviews, create from class topic
+  if (sessionOverviews.length === 0 && totalClasses > 0) {
+    for (let i = 0; i < totalClasses; i++) {
+      sessionOverviews.push(`${classTopic} - Session ${i + 1}`)
     }
   }
 
@@ -228,7 +267,8 @@ function parseRequirementsFromConversation(conversationText: string): {
     daysOfWeek,
     targetAudience,
     goals,
-    sessionOverviews
+    sessionOverviews,
+    teachingMethod
   }
 }
 
@@ -242,6 +282,9 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
     baseURL: 'https://ai-gateway.vercel.sh/v1'
   })
 
+  // Log the actual number of classes for debugging
+  console.log(`Generating ${requirements.totalClasses} sessions for class: ${requirements.classTopic}`)
+
   // Create a comprehensive prompt with all collected context
   const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} specific session topics for a class on "${requirements.classTopic}".
 
@@ -253,6 +296,8 @@ Target Audience: ${requirements.targetAudience || 'Not specified'}
 
 Learning Goals and Objectives: ${requirements.goals || requirements.objectives.join(', ') || 'Not specified'}
 
+Teaching Methodology: ${requirements.teachingMethod || 'Not specified'}
+
 Session Overviews: ${requirements.sessionOverviews.length > 0 ? requirements.sessionOverviews.map((o, i) => `Session ${i + 1}: ${o}`).join(' | ') : 'Not specified'}
 
 **IMPORTANT RULES:**
@@ -261,6 +306,7 @@ Session Overviews: ${requirements.sessionOverviews.length > 0 ? requirements.ses
 - NO explanations or extra text
 - Each topic must be 4-6 words
 - Topics must be specific to "${requirements.classTopic}" and appropriate for the target audience
+- Adapt topics to the teaching methodology: ${requirements.teachingMethod || 'Standard approach'}
 - NO generic terms like "Introduction", "Overview", "Basics", "Part X"
 - Make topics progressive and meaningful
 - Consider the learning goals when creating topics
@@ -378,13 +424,16 @@ Generate exactly ${requirements.totalClasses} specific topics that align with th
       throw new Error(`Missing topic for session ${sessionCount + 1}`)
     }
 
-    // Build comprehensive session description with all context
+    // Build comprehensive session description with all context - CLEAN VERSION
     const sessionOverview = requirements.sessionOverviews[sessionCount] || ''
+    const teachingMethod = requirements.teachingMethod ? `Method: ${requirements.teachingMethod}` : ''
+
     const descriptionParts = [
       `${requirements.classTopic} - ${topic}`,
       requirements.targetAudience ? `For: ${requirements.targetAudience}` : '',
-      requirements.goals ? `Goals: ${requirements.goals.substring(0, 100)}${requirements.goals.length > 100 ? '...' : ''}` : '',
-      sessionOverview ? `Overview: ${sessionOverview.substring(0, 150)}${sessionOverview.length > 150 ? '...' : ''}` : ''
+      requirements.goals ? `Goals: ${requirements.goals.substring(0, 80)}${requirements.goals.length > 80 ? '...' : ''}` : '',
+      teachingMethod,
+      sessionOverview ? `Overview: ${sessionOverview.substring(0, 100)}${sessionOverview.length > 100 ? '...' : ''}` : ''
     ].filter(Boolean)
 
     sessions.push({
