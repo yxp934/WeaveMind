@@ -4,7 +4,6 @@ import Link from "next/link"
 import { ComponentDisplay } from "@/components/student/component-display"
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
-import { CourseSessionsDisplay } from "@/components/student/course-sessions-display"
 import { ArrowLeft, AlertCircle } from "lucide-react"
 
 export default async function StudentCoursePage({
@@ -46,14 +45,7 @@ export default async function StudentCoursePage({
     redirect("/student")
   }
 
-  // Get course sessions
-  const { data: sessions } = await supabase
-    .from("course_sessions")
-    .select("*")
-    .eq("course_id", id)
-    .order("session_number", { ascending: true })
-
-  // Get chapters with components (for legacy courses without sessions)
+  // Get chapters with components (chapters serve as sessions in current schema)
   const { data: chapters } = await supabase
     .from("chapters")
     .select(`
@@ -63,7 +55,8 @@ export default async function StudentCoursePage({
     .eq("course_id", id)
     .order("order_index", { ascending: true })
 
-  const hasSessions = sessions && sessions.length > 0
+  // Note: course_sessions table doesn't exist in current schema
+  // Using chapters as sessions instead
 
   const navItems = [
     { title: "Dashboard", href: "/student", icon: "Home" as const },
@@ -109,52 +102,47 @@ export default async function StudentCoursePage({
             <p className="text-gray-600">{course.description || "No description"}</p>
           </div>
 
-          {/* Course Sessions (new schedule-based view) */}
-          {hasSessions ? (
-            <CourseSessionsDisplay sessions={sessions} courseId={id} />
-          ) : (
-            /* Legacy Course Content (chapters-based view) */
-            <div className="space-y-6">
-              {chapters && chapters.length > 0 ? (
-                chapters.map((chapter: any, chapterIndex: number) => (
-                  <div key={chapter.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-                    <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
-                      <div className="flex items-center gap-3">
-                        <span className="px-3 py-1 text-sm font-semibold text-indigo-600 bg-white rounded-full shadow-sm">
-                          Chapter {chapterIndex + 1}
-                        </span>
-                        <h3 className="text-xl font-bold text-gray-900">{chapter.title}</h3>
-                      </div>
-                      {chapter.description && (
-                        <p className="text-gray-600 mt-3">{chapter.description}</p>
-                      )}
+          {/* Course Content (chapters-based view) */}
+          <div className="space-y-6">
+            {chapters && chapters.length > 0 ? (
+              chapters.map((chapter: any, chapterIndex: number) => (
+                <div key={chapter.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                  <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 text-sm font-semibold text-indigo-600 bg-white rounded-full shadow-sm">
+                        Chapter {chapterIndex + 1}
+                      </span>
+                      <h3 className="text-xl font-bold text-gray-900">{chapter.title}</h3>
                     </div>
-
-                    <div className="p-6 space-y-6">
-                      {chapter.components && chapter.components.length > 0 ? (
-                        chapter.components
-                          .sort((a: any, b: any) => a.order_index - b.order_index)
-                          .map((component: any) => (
-                            <ComponentDisplay
-                              key={component.id}
-                              component={component}
-                              courseId={id}
-                              chapterId={chapter.id}
-                            />
-                          ))
-                      ) : (
-                        <p className="text-gray-500 text-center py-8">No content in this chapter</p>
-                      )}
-                    </div>
+                    {chapter.description && (
+                      <p className="text-gray-600 mt-3">{chapter.description}</p>
+                    )}
                   </div>
-                ))
-              ) : (
-                <div className="bg-white rounded-lg shadow p-12 text-center">
-                  <p className="text-gray-500">No content available yet</p>
+
+                  <div className="p-6 space-y-6">
+                    {chapter.components && chapter.components.length > 0 ? (
+                      chapter.components
+                        .sort((a: any, b: any) => a.order_index - b.order_index)
+                        .map((component: any) => (
+                          <ComponentDisplay
+                            key={component.id}
+                            component={component}
+                            courseId={id}
+                            chapterId={chapter.id}
+                          />
+                        ))
+                    ) : (
+                      <p className="text-gray-500 text-center py-8">No content in this chapter</p>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+              ))
+            ) : (
+              <div className="bg-white rounded-lg shadow p-12 text-center">
+                <p className="text-gray-500">No content available yet</p>
+              </div>
+            )}
+          </div>
         </main>
       </div>
     </div>
