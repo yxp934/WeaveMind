@@ -9,6 +9,7 @@ export default function RoleSelectPage() {
   const router = useRouter()
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
+  const [roleLoading, setRoleLoading] = useState(false)
   const [error, setError] = useState("")
 
   // If the user already has a fixed role, redirect them automatically
@@ -61,15 +62,21 @@ export default function RoleSelectPage() {
 
   const selectRole = async (role: "teacher" | "student") => {
     setError("")
+    setRoleLoading(true)
+
     try {
+      console.log("🔐 [ROLE-SELECT] Selecting role:", role)
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
       if (!user) {
+        console.log("⚠️ [ROLE-SELECT] No user found, redirecting to login")
         router.push("/auth/login")
         return
       }
+
+      console.log("👤 [ROLE-SELECT] User ID:", user.id)
 
       // Attempt to create or update the profile with the chosen role.
       // A database trigger prevents changing role once it has been set.
@@ -79,7 +86,10 @@ export default function RoleSelectPage() {
         .eq("id", user.id)
         .maybeSingle()
 
+      console.log("📋 [ROLE-SELECT] Existing profile:", existing)
+
       if (existing && existing.role && existing.role !== role) {
+        console.log("⚠️ [ROLE-SELECT] Role already set to:", existing.role)
         setError("Your role has already been set and cannot be changed.")
         if (existing.role === "teacher") router.push("/teacher")
         else if (existing.role === "student") router.push("/student")
@@ -87,25 +97,38 @@ export default function RoleSelectPage() {
       }
 
       if (!existing) {
+        console.log("➕ [ROLE-SELECT] Creating new profile...")
         const { error } = await supabase
           .from("profiles")
           .insert({ id: user.id, role })
 
-        if (error) throw error
+        if (error) {
+          console.error("❌ [ROLE-SELECT] Insert error:", error)
+          throw error
+        }
+        console.log("✅ [ROLE-SELECT] Profile created")
       } else if (!existing.role) {
+        console.log("✏️ [ROLE-SELECT] Updating profile...")
         const { error } = await supabase
           .from("profiles")
           .update({ role })
           .eq("id", user.id)
 
-        if (error) throw error
+        if (error) {
+          console.error("❌ [ROLE-SELECT] Update error:", error)
+          throw error
+        }
+        console.log("✅ [ROLE-SELECT] Profile updated")
       }
 
+      console.log("➡️ [ROLE-SELECT] Redirecting to:", `/${role}`)
       router.push(`/${role}`)
-      router.refresh()
     } catch (err: any) {
-      console.error("Error selecting role:", err)
+      console.error("❌ [ROLE-SELECT] Error selecting role:", err)
       setError(err.message || "Failed to set role")
+    } finally {
+      console.log("🏁 [ROLE-SELECT] Role selection finished")
+      setRoleLoading(false)
     }
   }
 
@@ -132,9 +155,9 @@ export default function RoleSelectPage() {
               <Button
                 onClick={() => selectRole("teacher")}
                 className="w-full"
-                disabled={loading}
+                disabled={roleLoading}
               >
-                Continue as Teacher
+                {roleLoading ? "Setting role..." : "Continue as Teacher"}
               </Button>
             </div>
           </div>
@@ -149,9 +172,9 @@ export default function RoleSelectPage() {
               <Button
                 onClick={() => selectRole("student")}
                 className="w-full"
-                disabled={loading}
+                disabled={roleLoading}
               >
-                Continue as Student
+                {roleLoading ? "Setting role..." : "Continue as Student"}
               </Button>
             </div>
           </div>
