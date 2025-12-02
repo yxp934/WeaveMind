@@ -35,16 +35,26 @@ export function ScheduleChat({
   const [canGenerate, setCanGenerate] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedSessions, setGeneratedSessions] = useState<any[]>([])
+  const [waitingForConfirmation, setWaitingForConfirmation] = useState(false)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Check if last message contains the ready marker
+  // Check if last message contains the ready marker or is asking for confirmation
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === 'assistant' && lastMessage.content.includes('[SCHEDULE_READY]')) {
-      setCanGenerate(true)
+    if (lastMessage?.role === 'assistant') {
+      // Check if message contains confirmation request
+      if (lastMessage.content.includes('Please confirm') && !lastMessage.content.includes('[SCHEDULE_READY]')) {
+        setWaitingForConfirmation(true)
+        setCanGenerate(false)
+      }
+      // Check if message contains the ready marker (after confirmation)
+      if (lastMessage.content.includes('[SCHEDULE_READY]')) {
+        setCanGenerate(true)
+        setWaitingForConfirmation(false)
+      }
     }
   }, [messages])
 
@@ -174,6 +184,21 @@ export function ScheduleChat({
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
+
+        {waitingForConfirmation && !isGenerating && (
+          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle className="h-5 w-5 text-yellow-600" />
+              <span className="font-medium text-yellow-800">等待确认 / Waiting for Confirmation</span>
+            </div>
+            <p className="text-sm text-yellow-700 mb-3">
+              AI已经收集了课程信息并生成了摘要。请在上方确认信息是否准确和完整，然后回复&quot;确认&quot;或&quot;confirm&quot;以继续。/ AI has collected course information and created a summary. Please confirm above if the information is accurate and complete, then reply &quot;确认&quot; or &quot;confirm&quot; to proceed.
+            </p>
+            <div className="text-xs text-yellow-600">
+              💡 提示: 直接回复&quot;确认&quot;、&quot;好的&quot;、&quot;Yes&quot;或&quot;Confirm&quot;即可 / Simply reply &quot;确认&quot;, &quot;好的&quot;, &quot;Yes&quot;, or &quot;Confirm&quot;
+            </div>
+          </div>
+        )}
 
         {canGenerate && !isGenerating && (
           <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">

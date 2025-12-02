@@ -14,6 +14,9 @@ function parseRequirementsFromConversation(conversationText: string): {
   objectives: string[]
   sessionTopics: string[]
   daysOfWeek: string[]
+  targetAudience: string
+  goals: string
+  sessionOverviews: string[]
 } {
   // Default values
   let totalClasses = 8
@@ -25,6 +28,9 @@ function parseRequirementsFromConversation(conversationText: string): {
   let objectives: string[] = []
   let sessionTopics: string[] = []
   let daysOfWeek: string[] = []
+  let targetAudience = ''
+  let goals = ''
+  let sessionOverviews: string[] = []
 
   // Parse total classes
   const classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课)/i)
@@ -147,7 +153,83 @@ function parseRequirementsFromConversation(conversationText: string): {
     objectives = objectiveMatches.map(m => m.replace(/(?:objectives?|goals?|目标)[:\s]*/i, '').trim())
   }
 
-  return { totalClasses, frequency, startDate, startTime, durationMinutes, classTopic, objectives, sessionTopics, daysOfWeek }
+  // Parse target audience - look for patterns mentioning students
+  const audiencePatterns = [
+    /(?:target audience|audience|学生|受众)[:\s]*([^.!?\n]+)/i,
+    /(?:for|面向)\s+(?:students|learners|学生|学习者)[s]?[:\s]*([^.!?\n]+)/i,
+    /(?:students|learners) (?:are|should be|will be)[:\s]*([^.!?\n]+)/i
+  ]
+  for (const pattern of audiencePatterns) {
+    const match = conversationText.match(pattern)
+    if (match && match[1]) {
+      targetAudience = match[1].trim()
+      break
+    }
+  }
+
+  // Parse goals - comprehensive goal extraction
+  const goalSection = conversationText.match(/(?:goals?|objectives?|学习目标|学习成果|学习效果)[:\s]*([\s\S]*?)(?=session|audience|target|schedule|频率|duration|date|time|$)/i)
+  if (goalSection && goalSection[1]) {
+    goals = goalSection[1].trim()
+  } else {
+    // Fallback: extract all goal-related content
+    const goalMatches = conversationText.match(/(?:will be able to|should be able to|goal|objective|学习目标|目标)[:\s]*([^.!?\n]+)/gi)
+    if (goalMatches) {
+      goals = goalMatches.map(m => m.replace(/:[\s]*/, ': ')).join(' ')
+    }
+  }
+
+  // Parse session overviews - look for detailed session descriptions
+  // Pattern 1: "Session 1: Description" or "第1节: Description"
+  const sessionOverviewPattern1 = conversationText.matchAll(/(?:session|Session|第\d+节)\s*\d+[:\-\s]*([^.!?\n]+)/gi)
+  for (const match of sessionOverviewPattern1) {
+    const overview = match[1].trim()
+    if (overview && overview.length > 10) {
+      sessionOverviews.push(overview)
+    }
+  }
+
+  // Pattern 2: Look for detailed descriptions after session numbers
+  if (sessionOverviews.length === 0) {
+    const sessionDetailPattern = /(\d+)[.\)]\s*([^.!?\n]{20,})/g
+    let match
+    while ((match = sessionDetailPattern.exec(conversationText)) !== null) {
+      const detail = match[2].trim()
+      if (detail && detail.length > 10) {
+        sessionOverviews.push(detail)
+      }
+    }
+  }
+
+  // Pattern 3: Extract from comprehensive summaries
+  if (sessionOverviews.length === 0) {
+    const summaryMatch = conversationText.match(/(?:summary|摘要|概述)[:\s]*([\s\S]*?)(?=SCHEDULE_READY|$)/i)
+    if (summaryMatch && summaryMatch[1]) {
+      // Split by session indicators
+      const sessionParts = summaryMatch[1].split(/(?:session|Session|第\d+节|\d+[.\)])/i)
+      for (const part of sessionParts) {
+        const trimmed = part.trim()
+        if (trimmed.length > 15 && !trimmed.match(/^(course|audience|goal|target|schedule)/i)) {
+          sessionOverviews.push(trimmed.substring(0, 200))
+        }
+      }
+    }
+  }
+
+  return {
+    totalClasses,
+    frequency,
+    startDate,
+    startTime,
+    durationMinutes,
+    classTopic,
+    objectives,
+    sessionTopics,
+    daysOfWeek,
+    targetAudience,
+    goals,
+    sessionOverviews
+  }
 }
 
 // Generate sessions using AI to create course-specific topics
@@ -160,25 +242,34 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
     baseURL: 'https://ai-gateway.vercel.sh/v1'
   })
 
-  // Create a strict prompt to generate specific session topics
+  // Create a comprehensive prompt with all collected context
   const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} specific session topics for a class on "${requirements.classTopic}".
 
-IMPORTANT RULES:
+**COMPREHENSIVE COURSE CONTEXT:**
+
+Class Topic: ${requirements.classTopic}
+
+Target Audience: ${requirements.targetAudience || 'Not specified'}
+
+Learning Goals and Objectives: ${requirements.goals || requirements.objectives.join(', ') || 'Not specified'}
+
+Session Overviews: ${requirements.sessionOverviews.length > 0 ? requirements.sessionOverviews.map((o, i) => `Session ${i + 1}: ${o}`).join(' | ') : 'Not specified'}
+
+**IMPORTANT RULES:**
 - Return ONLY a JSON array of strings
 - NO markdown code blocks
 - NO explanations or extra text
 - Each topic must be 4-6 words
-- Topics must be specific to "${requirements.classTopic}"
+- Topics must be specific to "${requirements.classTopic}" and appropriate for the target audience
 - NO generic terms like "Introduction", "Overview", "Basics", "Part X"
 - Make topics progressive and meaningful
+- Consider the learning goals when creating topics
+- Align topics with the session overviews if provided
 
 Example JSON format:
 ["Topic 1", "Topic 2", "Topic 3"]
 
-Class Topic: ${requirements.classTopic}
-Objectives: ${requirements.objectives.join(', ')}
-
-Generate exactly ${requirements.totalClasses} specific topics now:`
+Generate exactly ${requirements.totalClasses} specific topics that align with the course context above:`
 
   // Retry mechanism - retry up to 3 times to get valid AI response
   let attempts = 0
@@ -287,10 +378,19 @@ Generate exactly ${requirements.totalClasses} specific topics now:`
       throw new Error(`Missing topic for session ${sessionCount + 1}`)
     }
 
+    // Build comprehensive session description with all context
+    const sessionOverview = requirements.sessionOverviews[sessionCount] || ''
+    const descriptionParts = [
+      `${requirements.classTopic} - ${topic}`,
+      requirements.targetAudience ? `For: ${requirements.targetAudience}` : '',
+      requirements.goals ? `Goals: ${requirements.goals.substring(0, 100)}${requirements.goals.length > 100 ? '...' : ''}` : '',
+      sessionOverview ? `Overview: ${sessionOverview.substring(0, 150)}${sessionOverview.length > 150 ? '...' : ''}` : ''
+    ].filter(Boolean)
+
     sessions.push({
       session_number: sessionCount + 1,
       title: `Session ${sessionCount + 1}: ${topic}`,
-      description: `${requirements.classTopic} - ${topic}`,
+      description: descriptionParts.join(' | '),
       date: currentDate.toISOString().split('T')[0],
       start_time: requirements.startTime,
       end_time: `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`,
