@@ -41,28 +41,25 @@ export default async function StudentCoursesPage() {
 
     courses = courseData || []
 
-    // Get sessions for each course
-    const courseIds = courses.map(c => c.id)
-    if (courseIds.length > 0) {
-      const { data: sessionsData } = await supabase
-        .from("course_sessions")
-        .select("*")
-        .in("course_id", courseIds)
-        .order("scheduled_date", { ascending: true })
+    // Get sessions for enrolled classes (class-level sessions)
+    const { data: sessionsData } = await supabase
+      .from("course_sessions")
+      .select("*")
+      .in("class_id", classIds)
+      .order("scheduled_date", { ascending: true })
 
-      // Group sessions by course
-      const sessionsByCourse = sessionsData?.reduce((acc: any, session: any) => {
-        if (!acc[session.course_id]) acc[session.course_id] = []
-        acc[session.course_id].push(session)
-        return acc
-      }, {}) || {}
+    // Group sessions by class_id
+    const sessionsByClass = sessionsData?.reduce((acc: any, session: any) => {
+      if (!acc[session.class_id]) acc[session.class_id] = []
+      acc[session.class_id].push(session)
+      return acc
+    }, {}) || {}
 
-      // Attach sessions to courses
-      courses = courses.map(course => ({
-        ...course,
-        sessions: sessionsByCourse[course.id] || []
-      }))
-    }
+    // Attach sessions to courses based on class_id
+    courses = courses.map(course => ({
+      ...course,
+      sessions: sessionsByClass[course.class_id] || []
+    }))
   }
 
   // Categorize courses based on their sessions
