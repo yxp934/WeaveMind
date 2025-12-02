@@ -37,6 +37,7 @@ export default async function StudentCoursesPage() {
         chapters(id, title, order_index)
       `)
       .in("class_id", classIds)
+      .eq("published", true)
       .order("created_at", { ascending: false })
 
     courses = courseData || []
