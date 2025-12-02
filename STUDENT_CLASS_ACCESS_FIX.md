@@ -74,18 +74,58 @@ organizations (1) → (n) classes (1) → (n) courses (1) → (n) chapters (1) �
 ✅ 移除了对不存在数据库表的引用
 ✅ 数据查询逻辑与实际数据库架构匹配
 
+## 后续修复 (第二轮)
+
+### 补充修复文件
+在第一轮修复后，发现还有2个文件引用了错误的 `course_sessions` 表：
+
+#### `/app/student/courses/[id]/page.tsx`
+- 移除对 `course_sessions` 表的查询逻辑
+- 移除 `CourseSessionsDisplay` 组件的使用
+- 直接使用 `chapters` 表显示课程内容
+- 简化显示逻辑，不再区分 "sessions" 和 "chapters"
+
+#### `/app/student/courses/[id]/sessions/[sessionId]/page.tsx`
+- 重写页面逻辑，将 `sessionId` 视为 `chapterId`
+- 移除对 `course_sessions` 表的查询
+- 直接查询 `chapters` 表获取内容
+- 移除日期和时间相关的访问控制逻辑
+- 页面标题从 "Session" 改为 "Chapter"
+
 ## 受影响的文件列表
 
 ### 学生端
-- `/app/student/page.tsx`
-- `/app/student/courses/page.tsx`
-- `/app/student/calendar/page.tsx`
+- `/app/student/page.tsx` ✅ 第一轮修复
+- `/app/student/courses/page.tsx` ✅ 第一轮修复
+- `/app/student/calendar/page.tsx` ✅ 第一轮修复
+- `/app/student/courses/[id]/page.tsx` ✅ 第二轮修复
+- `/app/student/courses/[id]/sessions/[sessionId]/page.tsx` ✅ 第二轮修复
+- `/app/student/classes/[id]/page.tsx` ✅ 之前检查正确
 
 ### 教师端
-- `/app/teacher/page.tsx`
-- `/app/teacher/classes/[id]/page.tsx`
-- `/app/teacher/calendar/page.tsx`
+- `/app/teacher/page.tsx` ✅ 第一轮修复
+- `/app/teacher/classes/[id]/page.tsx` ✅ 第一轮修复
+- `/app/teacher/calendar/page.tsx` ✅ 第一轮修复
+
+## 提交记录
+- 提交 `73186d2` - 第一轮修复 (学生端 + 教师端)
+- 提交 `a6d86b9` - 更新TODO.md
+- 提交 `d95c40e` - 第二轮修复 (课程详情页)
 
 ## 总结
 
-此次修复解决了学生无法查看班级和课程的问题。所有对不存在数据库表的引用已被移除，查询逻辑现在与实际数据库架构完全匹配。学生现在应该能够正常访问他们加入的班级和课程。
+此次修复分两轮完成，彻底解决了学生无法查看班级和课程的问题。所有对不存在数据库表的引用已被移除，查询逻辑现在与实际数据库架构完全匹配。学生现在应该能够正常访问：
+- 他们的班级列表 (`/student/classes/xxx`)
+- 班级中的课程
+- 课程中的章节内容
+
+### 数据库架构现状
+```
+organizations (1) → (n) classes (1) → (n) courses (1) → (n) chapters (1) → (n) components
+                         ↓                ↓                ↓
+                   class_members    assignments     learning_events
+```
+
+**重要说明**: 当前架构中没有 `sessions` 概念。章节 (`chapters`) 是课程内容的最小单位。如果未来需要添加课程日程功能，可以考虑：
+1. 在 `chapters` 表中添加 `scheduled_date` 字段，或
+2. 创建新的 `course_sessions` 表来关联章节和日期
