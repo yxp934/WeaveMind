@@ -22,9 +22,51 @@ function parseRequirementsFromConversation(conversationText: string): {
   let courseTopic = 'Course'
   let objectives: string[] = []
 
-  // Parse total classes
-  const classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课)/i)
-  if (classMatch) totalClasses = parseInt(classMatch[1])
+  // Parse total classes - COMPREHENSIVE patterns
+  console.log('Parsing session count from conversation:', conversationText.substring(0, 200))
+
+  // Pattern 1: "24 sessions/classes/lessons" - most common format
+  let classMatch = conversationText.match(/(\d+)\s*(?:sessions?|classes?|lessons?|节课|堂课|次课)/i)
+  if (classMatch) {
+    totalClasses = parseInt(classMatch[1])
+    console.log(`Pattern 1 matched: ${classMatch[1]} sessions`)
+  } else {
+    // Pattern 2: "Number of sessions: X" or "Total: X sessions" or "共X节课"
+    classMatch = conversationText.match(/(?:number of|total|共|总共|共计).*?(\d+).*?(?:sessions?|classes?|lessons?|节课|次课)/i)
+    if (classMatch) {
+      totalClasses = parseInt(classMatch[1])
+      console.log(`Pattern 2 matched: ${classMatch[1]} sessions`)
+    } else {
+      // Pattern 3: "I want/need/looking for 24 sessions"
+      classMatch = conversationText.match(/(?:i (?:want|need|require|would like|am looking for)|需要|想要).*?(\d+).*?(?:sessions?|classes?|lessons?)/i)
+      if (classMatch) {
+        totalClasses = parseInt(classMatch[1])
+        console.log(`Pattern 3 matched: ${classMatch[1]} sessions`)
+      } else {
+        // Pattern 4: "24-session" or "24 session course/program"
+        classMatch = conversationText.match(/(\d+)[- ]?(?:session|class|lesson)[- ]?(?:course|program|course)?/i)
+        if (classMatch) {
+          totalClasses = parseInt(classMatch[1])
+          console.log(`Pattern 4 matched: ${classMatch[1]} sessions`)
+        } else {
+          // Pattern 5: "for 24 weeks" (assuming 1 session per week)
+          classMatch = conversationText.match(/for\s+(\d+)\s*(?:weeks?|个月|周)/i)
+          if (classMatch) {
+            totalClasses = parseInt(classMatch[1])
+            console.log(`Pattern 5 matched: ${classMatch[1]} sessions (from weeks)`)
+          }
+        }
+      }
+    }
+  }
+
+  // Validate session count
+  if (totalClasses < 1 || totalClasses > 100) {
+    console.warn(`Invalid session count ${totalClasses}, falling back to default 8`)
+    totalClasses = 8
+  }
+
+  console.log(`Final parsed totalClasses: ${totalClasses}`)
 
   // Parse frequency
   if (conversationText.match(/twice\s*a?\s*week|每周两次|2次\/周/i)) {
@@ -103,7 +145,11 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
   })
 
   // Create a strict prompt to generate specific session topics
-  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} highly specific session topics for a course on "${requirements.courseTopic}".
+  const sessionTopicPrompt = `CRITICAL: You MUST generate exactly ${requirements.totalClasses} session topics for a course on "${requirements.courseTopic}".
+
+**ABSOLUTE REQUIREMENT: Generate exactly ${requirements.totalClasses} topics - no more, no less**
+
+This is for ${requirements.totalClasses} sessions total.
 
 **COMPREHENSIVE COURSE CONTEXT:**
 
@@ -128,6 +174,14 @@ Learning Objectives: ${requirements.objectives.length > 0 ? requirements.objecti
 
 Example JSON format:
 ["Topic 1", "Topic 2", "Topic 3"]
+
+**FINAL VERIFICATION CHECKLIST:**
+Before responding, confirm:
+✓ I am generating exactly ${requirements.totalClasses} topics (not ${requirements.totalClasses - 1}, not ${requirements.totalClasses + 1})
+✓ Each topic is unique and specific to "${requirements.courseTopic}"
+✓ Each topic is 5-7 words long
+✓ No topics contain forbidden generic terms
+✓ All ${requirements.totalClasses} topics are returned in a valid JSON array
 
 Generate exactly ${requirements.totalClasses} highly specific, progressive topics that align with the course context:`
 

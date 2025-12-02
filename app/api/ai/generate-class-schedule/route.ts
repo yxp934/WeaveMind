@@ -34,16 +34,73 @@ function parseRequirementsFromConversation(conversationText: string): {
   let sessionOverviews: string[] = []
   let teachingMethod = ''
 
-  // Parse total classes - improved patterns to catch various formats
-  let classMatch = conversationText.match(/(\d+)\s*(classes|sessions|节课|堂课|次课)/i)
+  // Parse total classes - COMPREHENSIVE patterns to catch all possible formats
+  console.log('Parsing session count from conversation:', conversationText.substring(0, 200))
+
+  // Pattern 1: "24 sessions/classes/lessons" - most common format
+  let classMatch = conversationText.match(/(\d+)\s*(?:sessions?|classes?|lessons?|节课|堂课|次课)/i)
   if (classMatch) {
     totalClasses = parseInt(classMatch[1])
+    console.log(`Pattern 1 matched: ${classMatch[1]} sessions`)
   } else {
-    // Check in structured text like "Number of sessions: X" or "Total: X sessions"
-    classMatch = conversationText.match(/(?:number of|total|共|总共).*?(\d+).*?(?:classes|sessions|节课|次课)/i)
+    // Pattern 2: "Number of sessions: X" or "Total: X sessions" or "共X节课"
+    classMatch = conversationText.match(/(?:number of|total|共|总共|共计).*?(\d+).*?(?:sessions?|classes?|lessons?|节课|次课)/i)
     if (classMatch) {
       totalClasses = parseInt(classMatch[1])
+      console.log(`Pattern 2 matched: ${classMatch[1]} sessions`)
+    } else {
+      // Pattern 3: "I want/need/looking for 24 sessions"
+      classMatch = conversationText.match(/(?:i (?:want|need|require|would like|am looking for)|需要|想要).*?(\d+).*?(?:sessions?|classes?|lessons?)/i)
+      if (classMatch) {
+        totalClasses = parseInt(classMatch[1])
+        console.log(`Pattern 3 matched: ${classMatch[1]} sessions`)
+      } else {
+        // Pattern 4: "24-session" or "24 session course/program"
+        classMatch = conversationText.match(/(\d+)[- ]?(?:session|class|lesson)[- ]?(?:course|program|course)?/i)
+        if (classMatch) {
+          totalClasses = parseInt(classMatch[1])
+          console.log(`Pattern 4 matched: ${classMatch[1]} sessions`)
+        } else {
+          // Pattern 5: "for 24 weeks" (assuming 1 session per week)
+          classMatch = conversationText.match(/for\s+(\d+)\s*(?:weeks?|个月|周)/i)
+          if (classMatch) {
+            totalClasses = parseInt(classMatch[1])
+            console.log(`Pattern 5 matched: ${classMatch[1]} sessions (from weeks)`)
+          } else {
+            // Pattern 6: "24 total" or "total of 24"
+            classMatch = conversationText.match(/(?:total(?:\s+of)?|共计)\s*:?\s*(\d+)(?:\s+total)?/i)
+            if (classMatch) {
+              totalClasses = parseInt(classMatch[1])
+              console.log(`Pattern 6 matched: ${classMatch[1]} sessions`)
+            } else {
+              // Pattern 7: Standalone number (when context clearly indicates sessions)
+              classMatch = conversationText.match(/(?:over|跨度|duration).*?(\d{2})\s*(?:sessions?|classes?)/i)
+              if (classMatch) {
+                totalClasses = parseInt(classMatch[1])
+                console.log(`Pattern 7 matched: ${classMatch[1]} sessions`)
+              }
+            }
+          }
+        }
+      }
     }
+  }
+
+  // Validate session count
+  if (totalClasses < 1 || totalClasses > 100) {
+    console.warn(`Invalid session count ${totalClasses}, falling back to default 8`)
+    totalClasses = 8
+  }
+
+  console.log(`Final parsed totalClasses: ${totalClasses}`)
+
+  // BACKUP VALIDATION: Extract session count from session overviews if available
+  // Look for explicit session count mentions in conversation
+  const sessionCountMatch = conversationText.match(/(?:^|\n)(?:session|session)\s*(\d+)[:\)\-\s\n]/gi)
+  if (sessionCountMatch && sessionCountMatch.length > totalClasses) {
+    // Found more sessions in overview than initially parsed - use the higher count
+    console.log(`Found ${sessionCountMatch.length} sessions in overview, updating totalClasses from ${totalClasses} to ${sessionCountMatch.length}`)
+    totalClasses = sessionCountMatch.length
   }
 
   // Parse frequency
@@ -385,7 +442,11 @@ async function generateSessions(requirements: ReturnType<typeof parseRequirement
   console.log(`Generating ${requirements.totalClasses} sessions for class: ${requirements.classTopic}`)
 
   // Create a comprehensive prompt with all collected context
-  const sessionTopicPrompt = `You MUST generate exactly ${requirements.totalClasses} highly specific and meaningful session topics for a class on "${requirements.classTopic}".
+  const sessionTopicPrompt = `CRITICAL: You MUST generate exactly ${requirements.totalClasses} session topics for a class on "${requirements.classTopic}".
+
+**ABSOLUTE REQUIREMENT: Generate exactly ${requirements.totalClasses} topics - no more, no less**
+
+This is for ${requirements.totalClasses} sessions total.
 
 **COMPREHENSIVE COURSE CONTEXT:**
 
@@ -429,6 +490,14 @@ Before responding, verify each topic:
 
 Example JSON format:
 ["Topic 1", "Topic 2", "Topic 3"]
+
+**FINAL VERIFICATION CHECKLIST:**
+Before responding, confirm:
+✓ I am generating exactly ${requirements.totalClasses} topics (not ${requirements.totalClasses - 1}, not ${requirements.totalClasses + 1})
+✓ Each topic is unique and specific to "${requirements.classTopic}"
+✓ Each topic is 5-7 words long
+✓ No topics contain forbidden generic terms
+✓ All ${requirements.totalClasses} topics are returned in a valid JSON array
 
 Generate exactly ${requirements.totalClasses} highly specific, progressive, and meaningful topics that align with all the course context above:`
 
