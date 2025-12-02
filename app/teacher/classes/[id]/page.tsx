@@ -8,6 +8,7 @@ import { StatCard } from "@/components/dashboard/stat-card"
 import { Users, BookOpen, FileText, Key, ArrowLeft, Plus } from "lucide-react"
 import { ClassScheduleAssistantWrapper } from "@/components/ai/class-schedule-assistant-wrapper"
 import { SessionsList } from "@/components/ai/sessions-list"
+import { DeleteClassButton } from "@/components/teacher/delete-class-button"
 
 export default async function ClassDetailPage({
   params,
@@ -95,8 +96,11 @@ export default async function ClassDetailPage({
             <span>Back to Dashboard</span>
           </Link>
 
-          <div className="mb-6">
-            <p className="text-gray-600">{classData.description || "No description"}</p>
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <p className="text-gray-600">{classData.description || "No description"}</p>
+            </div>
+            <DeleteClassButton classId={id} className={classData.name} />
           </div>
 
           {/* Stats */}
