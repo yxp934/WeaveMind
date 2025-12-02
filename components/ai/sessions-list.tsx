@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { BookOpen, Calendar, Clock } from 'lucide-react'
+import { BookOpen, Calendar, Clock, Send, Undo2 } from 'lucide-react'
 import Link from 'next/link'
 import { SessionContentDialog } from './session-content-dialog'
 
@@ -16,6 +16,7 @@ interface Session {
   duration_minutes: number | null
   content_generated: boolean
   chapter_id: string | null
+  posted: boolean
   chapter?: {
     id: string
     title: string
@@ -31,10 +32,36 @@ interface SessionsListProps {
 export function SessionsList({ sessions, classId, className }: SessionsListProps) {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [postingId, setPostingId] = useState<string | null>(null)
 
   const handleGenerateContent = (session: Session) => {
     setSelectedSession(session)
     setDialogOpen(true)
+  }
+
+  const handlePostSession = async (sessionId: string, post: boolean) => {
+    try {
+      setPostingId(sessionId)
+      const response = await fetch(`/api/sessions/${sessionId}/post`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ posted: post }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update session')
+      }
+
+      // Refresh the page to show updated status
+      window.location.reload()
+    } catch (error) {
+      console.error('Error posting session:', error)
+      alert('Failed to update session. Please try again.')
+    } finally {
+      setPostingId(null)
+    }
   }
 
   if (!sessions || sessions.length === 0) {
@@ -72,6 +99,12 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
                         No Content
                       </span>
                     )}
+                    {session.posted && (
+                      <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full flex items-center gap-1">
+                        <Send className="h-3 w-3" />
+                        Posted
+                      </span>
+                    )}
                   </div>
                   <h4 className="font-semibold text-gray-900 mb-1">{session.title || `Session ${session.session_number}`}</h4>
                   {session.description && (
@@ -97,8 +130,8 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
                 </div>
                 <div className="flex flex-col gap-2">
                   {!hasContent && (
-                    <Button 
-                      variant="default" 
+                    <Button
+                      variant="default"
                       size="sm"
                       onClick={() => handleGenerateContent(session)}
                     >
@@ -111,6 +144,29 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
                         View Content
                       </Button>
                     </Link>
+                  )}
+                  {hasContent && (
+                    <Button
+                      variant={session.posted ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => handlePostSession(session.id, !session.posted)}
+                      disabled={postingId === session.id}
+                      className={session.posted ? "border-orange-300 text-orange-700 hover:bg-orange-50" : ""}
+                    >
+                      {postingId === session.id ? (
+                        'Updating...'
+                      ) : session.posted ? (
+                        <>
+                          <Undo2 className="h-4 w-4 mr-1" />
+                          Unpost
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-1" />
+                          Post Session
+                        </>
+                      )}
+                    </Button>
                   )}
                 </div>
               </div>

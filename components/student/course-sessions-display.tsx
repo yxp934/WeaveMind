@@ -17,6 +17,7 @@ interface CourseSession {
   duration_minutes: number | null
   content_generated: boolean
   chapter_id: string | null
+  posted: boolean
 }
 
 interface CourseSessionsDisplayProps {
@@ -49,40 +50,58 @@ export function CourseSessionsDisplay({ sessions, courseId }: CourseSessionsDisp
 
   const getSessionStatus = (session: CourseSession) => {
     const sessionDate = startOfDay(parseISO(session.scheduled_date))
-    
-    if (isToday(sessionDate)) {
-      return { 
-        label: "Today's Class", 
-        color: 'bg-blue-100 text-blue-800 border-blue-200', 
+    const isPosted = session.posted
+    const isSessionDay = isToday(sessionDate)
+    const isPast = isBefore(sessionDate, today)
+
+    // Session is accessible if it's posted OR if the session date has arrived
+    const isAccessible = isPosted || isSessionDay || isPast
+
+    if (isPosted && !isSessionDay && !isPast) {
+      return {
+        label: 'Early Access',
+        color: 'bg-orange-100 text-orange-800 border-orange-200',
+        icon: BookOpen,
+        accessible: true
+      }
+    }
+
+    if (isSessionDay) {
+      return {
+        label: "Today's Class",
+        color: 'bg-blue-100 text-blue-800 border-blue-200',
         icon: Play,
-        accessible: true 
+        accessible: isAccessible
       }
     }
-    if (isBefore(sessionDate, today)) {
-      return { 
-        label: 'Completed', 
-        color: 'bg-green-100 text-green-800 border-green-200', 
+
+    if (isPast) {
+      return {
+        label: 'Completed',
+        color: 'bg-green-100 text-green-800 border-green-200',
         icon: CheckCircle,
-        accessible: true 
+        accessible: true
       }
     }
-    return { 
-      label: 'Upcoming', 
-      color: 'bg-gray-100 text-gray-600 border-gray-200', 
+
+    return {
+      label: 'Upcoming',
+      color: 'bg-gray-100 text-gray-600 border-gray-200',
       icon: Lock,
-      accessible: false 
+      accessible: false
     }
   }
 
-  // Separate sessions into past/today and upcoming
-  const pastSessions = sessions.filter(s => {
+  // Separate sessions into past/today/posted and upcoming
+  // Sessions are available if they are posted OR if the date has arrived
+  const availableSessions = sessions.filter(s => {
     const sessionDate = startOfDay(parseISO(s.scheduled_date))
-    return isBefore(sessionDate, today) || isToday(sessionDate)
+    return s.posted || isBefore(sessionDate, today) || isToday(sessionDate)
   })
-  
+
   const upcomingSessions = sessions.filter(s => {
     const sessionDate = startOfDay(parseISO(s.scheduled_date))
-    return !isBefore(sessionDate, today) && !isToday(sessionDate)
+    return !s.posted && !isBefore(sessionDate, today) && !isToday(sessionDate)
   })
 
   if (!sessions || sessions.length === 0) {
@@ -152,16 +171,16 @@ export function CourseSessionsDisplay({ sessions, courseId }: CourseSessionsDisp
 
   return (
     <div className="space-y-6">
-      {pastSessions.length > 0 && (
+      {availableSessions.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <CheckCircle className="h-5 w-5 text-green-600" />
-              Available Classes ({pastSessions.length})
+              Available Classes ({availableSessions.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {pastSessions.map(renderSession)}
+            {availableSessions.map(renderSession)}
           </CardContent>
         </Card>
       )}
