@@ -523,14 +523,21 @@ Generate exactly ${requirements.totalClasses} specific topics that align with th
 
     // Build comprehensive session description with all context - CLEAN VERSION
     const sessionOverview = requirements.sessionOverviews[sessionCount] || ''
-    const teachingMethod = requirements.teachingMethod ? `Method: ${requirements.teachingMethod}` : ''
+    const teachingMethod = requirements.teachingMethod ? `${requirements.teachingMethod}` : ''
+
+    // Clean session overview to remove artifacts
+    const cleanedOverview = sessionOverview
+      .replace(/^Your\s*-\s*/i, '')
+      .replace(/\s*\|\s*For:\s*[^|]*$/i, '')
+      .replace(/\s*\|\s*Goals:\s*[^|]*$/i, '')
+      .replace(/\s*\|\s*Method:\s*[^|]*$/i, '')
+      .replace(/\*\*.*?\*\*/g, '')
+      .trim()
 
     const descriptionParts = [
       `${requirements.classTopic} - ${topic}`,
-      requirements.targetAudience ? `For: ${requirements.targetAudience}` : '',
-      requirements.goals ? `Goals: ${requirements.goals.substring(0, 80)}${requirements.goals.length > 80 ? '...' : ''}` : '',
       teachingMethod,
-      sessionOverview ? `Overview: ${sessionOverview.substring(0, 100)}${sessionOverview.length > 100 ? '...' : ''}` : ''
+      cleanedOverview
     ].filter(Boolean)
 
     sessions.push({

@@ -88,44 +88,25 @@ export function SessionContentDialog({
 - 概述：${sessionDetail.overview || '待定'}
 - 日期：${new Date(session.scheduled_date).toLocaleDateString()}
 
-基于以上信息，我来为你规划本节课的大纲。请稍等...
-
----
-Hello! I'll help you plan and generate learning content for Session ${session.session_number}.
-
-**Collected Course Information:**
-- Course Topic: ${ctx.class_topic || className}
-- Target Audience: ${ctx.target_audience || 'Not specified'}
-- Learning Goals: ${ctx.learning_goals || 'Not specified'}
-- Teaching Method: ${ctx.teaching_method || 'Standard approach'}
-
-**This Session Info:**
-- Title: ${sessionDetail.title}
-- Topic: ${sessionDetail.topic || 'To be defined'}
-- Overview: ${sessionDetail.overview || 'To be defined'}
-- Date: ${new Date(session.scheduled_date).toLocaleDateString()}
-
-Based on this information, let me plan the outline for this session. Please wait...`
+**正在生成大纲...** / Generating outline...`
     }
 
     return `你好！我将帮助你为 Session ${session.session_number} 生成详细的学习内容。
 
 **Session 信息：**
 - 标题：${session.title}
-${session.description ? `- 描述：${session.description}` : ''}
 - 日期：${new Date(session.scheduled_date).toLocaleDateString()}
 
-请告诉我你想在这节课中涵盖哪些具体内容、学习目标和练习类型。
+注意：未找到日程生成上下文。请手动描述你想要的课程内容。
 
 ---
 Hello! I'll help you generate detailed learning content for Session ${session.session_number}.
 
 **Session Information:**
 - Title: ${session.title}
-${session.description ? `- Description: ${session.description}` : ''}
 - Date: ${new Date(session.scheduled_date).toLocaleDateString()}
 
-Please tell me what specific content, learning objectives, and practice types you want to cover in this session.`
+Note: No schedule context found. Please manually describe the content you want for this session.`
   }
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -149,16 +130,26 @@ Please tell me what specific content, learning objectives, and practice types yo
           const ctx = await contextResponse.json()
           setScheduleContext(ctx)
 
-          // Set initial message with context
-          setMessages([{
-            id: 'initial',
-            role: 'assistant',
-            content: buildInitialMessage(ctx)
-          }])
-
-          // If context exists, automatically trigger outline generation
+          // If context exists, trigger outline generation
           if (ctx) {
-            triggerOutlineGeneration(ctx)
+            // Set initial loading message
+            setMessages([{
+              id: 'initial',
+              role: 'assistant',
+              content: buildInitialMessage(ctx)
+            }])
+
+            // Wait a bit then trigger outline generation
+            setTimeout(() => {
+              triggerOutlineGeneration(ctx)
+            }, 500)
+          } else {
+            // No context, use default message
+            setMessages([{
+              id: 'initial',
+              role: 'assistant',
+              content: buildInitialMessage(null)
+            }])
           }
         } else {
           // No context, use default message
