@@ -232,21 +232,22 @@ Generate exactly ${requirements.totalClasses} specific topics now:`
       currentDate.setDate(currentDate.getDate() + 1)
     }
 
-    return sessions
+    return { sessions, sessionTopics }
 }
 
 export async function POST(req: Request) {
   try {
-    const { requirements, courseId } = await req.json() as {
+    const { requirements, courseId, classId } = await req.json() as {
       requirements: { courseOverview: string }
-      courseId: string
+      courseId?: string
+      classId?: string
     }
 
-    if (!courseId) {
-      return NextResponse.json({ error: 'Course ID is required' }, { status: 400 })
+    if (!courseId && !classId) {
+      return NextResponse.json({ error: 'Either Course ID or Class ID is required' }, { status: 400 })
     }
 
-    // Verify user is authenticated and owns the course
+    // Verify user is authenticated
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -254,50 +255,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify course ownership
-    const { data: course, error: courseError } = await supabase
-      .from('courses')
-      .select('id, created_by, title')
-      .eq('id', courseId)
-      .single()
+    let entityTitle = ''
+    let entityDescription = ''
+    let entityId = courseId || classId
 
-    if (courseError || !course || course.created_by !== user.id) {
-      return NextResponse.json({ error: 'Course not found or access denied' }, { status: 403 })
+    // Verify ownership (either course or class)
+    if (courseId) {
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .select('id, created_by, title, description')
+        .eq('id', courseId)
+        .single()
+
+      if (courseError || !course || course.created_by !== user.id) {
+        return NextResponse.json({ error: 'Course not found or access denied' }, { status: 403 })
+      }
+
+      entityTitle = course.title
+      entityDescription = course.description || ''
+    } else if (classId) {
+      const { data: classData, error: classError } = await supabase
+        .from('classes')
+        .select('id, created_by, name, description')
+        .eq('id', classId)
+        .single()
+
+      if (classError || !classData || classData.created_by !== user.id) {
+        return NextResponse.json({ error: 'Class not found or access denied' }, { status: 403 })
+      }
+
+      entityTitle = classData.name
+      entityDescription = classData.description || ''
     }
 
     // Parse requirements from conversation
     const parsedRequirements = parseRequirementsFromConversation(requirements.courseOverview)
 
-    // Use course title as topic if not parsed
+    // Use entity title as topic if not parsed
     if (parsedRequirements.courseTopic === 'Course') {
-      parsedRequirements.courseTopic = course.title || 'Course'
+      parsedRequirements.courseTopic = entityTitle || 'Course'
     }
 
     // Generate sessions using AI for course-specific topics
-    const sessions = await generateSessions(parsedRequirements)
-
-    // Store schedule requirements in course_outlines
-    const { error: outlineError } = await supabase
-      .from('course_outlines')
-      .upsert({
-        course_id: courseId,
-        requirements: parsedRequirements,
-        schedule_requirements: parsedRequirements,
-        schedule_generated: true,
-        chapters: [],
-        created_by: user.id,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'course_id'
-      })
-
-    if (outlineError) {
-      console.error('Failed to save schedule requirements:', outlineError)
-    }
+    const { sessions, sessionTopics } = await generateSessions(parsedRequirements)
 
     // Insert sessions into database
     const sessionsToInsert = sessions.map((session) => ({
-      course_id: courseId,
+      course_id: courseId || null,
+      class_id: classId || null,
       session_number: session.session_number,
       title: session.title,
       description: session.description,
@@ -309,10 +314,17 @@ export async function POST(req: Request) {
     }))
 
     // Delete existing sessions first
-    await supabase
-      .from('course_sessions')
-      .delete()
-      .eq('course_id', courseId)
+    if (courseId) {
+      await supabase
+        .from('course_sessions')
+        .delete()
+        .eq('course_id', courseId)
+    } else if (classId) {
+      await supabase
+        .from('course_sessions')
+        .delete()
+        .eq('class_id', classId)
+    }
 
     // Insert new sessions
     const { error: insertError } = await supabase
@@ -322,6 +334,77 @@ export async function POST(req: Request) {
     if (insertError) {
       console.error('Failed to insert sessions:', insertError)
       return NextResponse.json({ error: 'Failed to save sessions' }, { status: 500 })
+    }
+
+    // Save schedule generation context for content generation (NEW!)
+    const scheduleContext = {
+      class_id: classId || null,
+      course_id: courseId || null,
+      target_audience: null, // Not parsed in this endpoint yet
+      learning_goals: parsedRequirements.objectives.join(', ') || null,
+      teaching_method: null, // Not parsed in this endpoint yet
+      class_topic: parsedRequirements.courseTopic || null,
+      total_sessions: parsedRequirements.totalClasses,
+      frequency: parsedRequirements.frequency || null,
+      session_details: sessions.map((s, i) => ({
+        session_number: s.session_number,
+        title: s.title,
+        topic: sessionTopics[i] || null,
+        overview: null // Not available in this endpoint yet
+      })),
+      conversation_context: requirements.courseOverview
+    }
+
+    // Delete existing context
+    if (classId) {
+      await supabase
+        .from('schedule_generation_context')
+        .delete()
+        .eq('class_id', classId)
+    } else if (courseId) {
+      await supabase
+        .from('schedule_generation_context')
+        .delete()
+        .eq('course_id', courseId)
+    }
+
+    // Insert new context
+    const { error: contextError } = await supabase
+      .from('schedule_generation_context')
+      .insert(scheduleContext)
+
+    if (contextError) {
+      console.error('Failed to save schedule context:', contextError)
+      // Don't fail the request, just log it
+    }
+
+    // Also store in course_outlines for course-based schedules
+    if (courseId) {
+      const { error: outlineError } = await supabase
+        .from('course_outlines')
+        .upsert({
+          course_id: courseId,
+          requirements: {
+            courseTopic: parsedRequirements.courseTopic,
+            objectives: parsedRequirements.objectives,
+            totalClasses: parsedRequirements.totalClasses,
+            frequency: parsedRequirements.frequency,
+            startDate: parsedRequirements.startDate,
+            startTime: parsedRequirements.startTime,
+            durationMinutes: parsedRequirements.durationMinutes
+          },
+          schedule_requirements: parsedRequirements,
+          schedule_generated: true,
+          chapters: [],
+          created_by: user.id,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'course_id'
+        })
+
+      if (outlineError) {
+        console.error('Failed to save schedule requirements:', outlineError)
+      }
     }
 
     return NextResponse.json({
@@ -338,4 +421,3 @@ export async function POST(req: Request) {
     )
   }
 }
-
