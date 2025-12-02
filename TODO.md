@@ -256,3 +256,54 @@ Actual schema: courses are directly linked to classes via `courses.class_id`, wi
 
 ### Commit: 73186d2
 **Status: Fixed and deployed ✅**
+
+
+## Session 'Post' Feature (2025-12-02)
+
+### Feature Overview:
+Implemented a 'post' feature allowing teachers to make sessions available to students before the scheduled date. This enables early access to course content while maintaining the normal scheduled class flow.
+
+### Implementation Details:
+
+#### Database Changes:
+- Added `posted` (BOOLEAN) field to `course_sessions` table via migration `016_add_posted_field_to_course_sessions.sql`
+- Created index on `posted` field for efficient querying
+- Default value: FALSE (not posted)
+
+#### Teacher Interface:
+- **File**: `components/ai/sessions-list.tsx`
+- Added "Post Session" / "Unpost" button for sessions with generated content
+- Visual indicators:
+  - "Posted" badge (orange) next to session number
+  - Button changes based on post status
+  - Loading state during updates
+- API call to `/api/sessions/[id]/post` updates status
+
+#### Student Interface:
+- **File**: `components/student/course-sessions-display.tsx`
+- Updated session access logic: Sessions accessible if **posted** OR if **scheduled date has arrived**
+- New status: **"Early Access"** (orange) for posted sessions before scheduled date
+- Session categorization:
+  - **Available Classes**: Posted sessions + past/today sessions
+  - **Upcoming Classes**: Only unposted future sessions
+
+#### API Endpoint:
+- **File**: `app/api/sessions/[id]/post/route.ts` (NEW)
+- POST method to update session posted status
+- Validates teacher ownership of class
+- Returns updated session object
+
+### Benefits:
+1. **Flexibility**: Teachers can share content early for previews, extra time, or flipped classroom approaches
+2. **Clarity**: Clear visual indicators show session availability
+3. **Control**: Teachers maintain full control over what and when to post
+
+### Testing Checklist:
+- [x] Database migration applied successfully
+- [x] Code changes committed and pushed
+- [ ] Verify posting functionality in production
+- [ ] Verify student early access works
+- [ ] Test edge cases (no content, bulk operations, etc.)
+
+### Commit: 5d4b2b5
+**Status: Deployed to production ✅**
