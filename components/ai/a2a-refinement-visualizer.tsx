@@ -129,8 +129,13 @@ export function A2ARefinementVisualizer({
             >
               {/* Iteration Header */}
               <button
-                onClick={() => toggleIteration(iter.iteration)}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  toggleIteration(iter.iteration)
+                }}
                 className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                type="button"
               >
                 <div className="flex items-center gap-3">
                   {isComplete ? (
@@ -141,9 +146,9 @@ export function A2ARefinementVisualizer({
                   <span className="font-medium text-gray-900">
                     Iteration {iter.iteration}
                   </span>
-                  {iter.studentFeedback && (
+                  {iter.studentFeedback && typeof iter.studentFeedback.overall_score === 'number' && (
                     <span className="text-sm text-gray-500">
-                      Score: {iter.studentFeedback.overall_score?.toFixed(1)}/10
+                      Score: {iter.studentFeedback.overall_score.toFixed(1)}/10
                     </span>
                   )}
                 </div>
@@ -179,18 +184,26 @@ export function A2ARefinementVisualizer({
                       </h4>
                       <div className="bg-green-50 rounded p-3 space-y-2 text-sm">
                         {/* Scores */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(iter.studentFeedback.scores || {}).map(([key, value]) => (
-                            <div key={key} className="flex justify-between">
-                              <span className="text-gray-600 capitalize">{key.replace('_', ' ')}:</span>
-                              <span className="font-medium">{String(value)}/10</span>
-                            </div>
-                          ))}
-                        </div>
+                        {iter.studentFeedback.scores && typeof iter.studentFeedback.scores === 'object' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(iter.studentFeedback.scores).map(([key, value]) => (
+                              <div key={key} className="flex justify-between">
+                                <span className="text-gray-600 capitalize">{key.replace('_', ' ')}:</span>
+                                <span className="font-medium">{typeof value === 'number' ? value : String(value)}/10</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {/* Overall Feedback */}
                         {iter.studentFeedback.overall_feedback && (
                           <p className="text-gray-700 mt-2 pt-2 border-t border-green-200">
                             {iter.studentFeedback.overall_feedback}
+                          </p>
+                        )}
+                        {/* Fallback when feedback format is unexpected */}
+                        {!iter.studentFeedback.scores && !iter.studentFeedback.overall_feedback && (
+                          <p className="text-gray-600 italic">
+                            Feedback data format not recognized. Raw data available in console.
                           </p>
                         )}
                       </div>
