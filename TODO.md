@@ -505,3 +505,43 @@ const { data: profile } = await supabase
 
 ### Commit: 399de5f
 **Status: Fixed and deployed ✅**
+
+
+### Authentication Fix - router.refresh() Removal (2025-12-02)
+
+### Issue Summary:
+After adding `getUser()`, login still showed no redirection. The `router.refresh()` call after `router.push()` was interfering with the navigation.
+
+### Root Cause:
+Calling `router.refresh()` immediately after `router.push()` causes a race condition:
+1. `router.push()` initiates navigation
+2. `router.refresh()` interrupts the navigation process
+3. Page reloads before redirection completes
+
+### Solution:
+- **Removed `router.refresh()`** from the login flow
+- Navigation now works correctly with just `router.push()`
+- Added console logging for debugging purposes
+- Created Playwright test suite for authentication flow
+
+### Code Changes:
+**File:** `/app/auth/login/page.tsx`
+```typescript
+// Before (broken):
+router.push(`/${profile.role}`)
+router.refresh()  // ❌ This causes issues
+
+// After (fixed):
+router.push(`/${profile.role}`)  // ✅ Works correctly
+```
+
+### Testing Infrastructure:
+- ✅ Created `playwright.config.ts` for test configuration
+- ✅ Created `tests/auth-login.spec.ts` for login flow tests
+- ✅ Installed `@playwright/test` dev dependency
+- Tests verify:
+  - Users with roles redirect to `/teacher` or `/student`
+  - Users without roles redirect to `/role-select`
+
+### Commit: 3ff69b4
+**Status: Fixed and deployed ✅**
