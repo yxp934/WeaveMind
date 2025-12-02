@@ -21,40 +21,53 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      console.log("🔐 Starting login process...")
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Login error:", error)
+        throw error
+      }
+
+      console.log("✅ Login successful, data:", data)
 
       // Get the current authenticated user
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
+      console.log("👤 Retrieved user:", user)
+
       if (!user) {
+        console.error("❌ No user found after login")
         setError("Failed to get user after login")
         return
       }
 
       // Check if user has a role and redirect appropriately
+      console.log("🔍 Checking profile for user:", user.id)
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .maybeSingle()
 
+      console.log("📋 Profile data:", profile)
+
       if (profile?.role) {
         // User already has a role, redirect to their dashboard
+        console.log("➡️ Redirecting to:", `/${profile.role}`)
         router.push(`/${profile.role}`)
-        router.refresh()
       } else {
         // User doesn't have a role yet, redirect to role selection
+        console.log("➡️ Redirecting to: /role-select")
         router.push("/role-select")
-        router.refresh()
       }
     } catch (err: any) {
+      console.error("❌ Login failed:", err)
       setError(err.message || "Failed to login")
     } finally {
       setLoading(false)
