@@ -133,10 +133,25 @@ Now generate topics for "${requirements.courseTopic}":`
     let sessionTopics: string[] = []
 
     // Parse the AI response
-    const content = text || '[]'
+    let content = text || '[]'
+
     try {
+      // Try to extract JSON from the response (handle code blocks, extra text, etc.)
+      let jsonStr = content.trim()
+
+      // Remove code block markers if present
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
+      }
+
+      // Find JSON array in the response
+      const jsonMatch = jsonStr.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0]
+      }
+
       // Try to parse as JSON
-      sessionTopics = JSON.parse(content)
+      sessionTopics = JSON.parse(jsonStr)
 
       // Validate that we got an array
       if (!Array.isArray(sessionTopics)) {
@@ -152,9 +167,12 @@ Now generate topics for "${requirements.courseTopic}":`
         }
         sessionTopics = sessionTopics.slice(0, requirements.totalClasses)
       }
+
+      console.log('Successfully generated session topics:', sessionTopics)
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError)
-      console.log('AI Response:', content)
+      console.log('AI Response content:', content)
+      console.log('Attempted to parse:', content)
       // Fall back to numbered sessions
       sessionTopics = Array.from({ length: requirements.totalClasses }, (_, i) =>
         `${requirements.courseTopic} - Part ${i + 1}`
