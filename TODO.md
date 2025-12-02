@@ -226,3 +226,33 @@ Enhanced the content generation workflow to leverage schedule generation context
 
 **Status: Implementation complete, TypeScript build passes ✅**
 **Deployed: 2025-12-02**
+
+
+## Student Class Access Fix (2025-12-02)
+
+### Issue Summary:
+Students were unable to view classes and courses, encountering "No courses available yet" error.
+
+### Root Cause:
+Database schema migration from 'course' to 'class' and 'session' left code referencing non-existent tables:
+- `course_sessions` table (doesn't exist in database)
+- `class_courses` table (doesn't exist in database)
+
+Actual schema: courses are directly linked to classes via `courses.class_id`, with chapters containing components.
+
+### Fixes Applied:
+- **Student Dashboard** (`/app/student/page.tsx`): Fixed course count query from non-existent `class_courses` table
+- **Student Courses** (`/app/student/courses/page.tsx`): Removed `course_sessions` queries, using `chapters` table instead
+- **Student Calendar** (`/app/student/calendar/page.tsx`): Removed `course_sessions` queries, using `chapters` table
+- **Teacher Dashboard** (`/app/teacher/page.tsx`): Fixed course count query to use proper class-based filtering
+- **Teacher Class Detail** (`/app/teacher/classes/[id]/page.tsx`): Removed `course_sessions` queries, using `chapters` table
+- **Teacher Calendar** (`/app/teacher/calendar/page.tsx`): Removed `course_sessions` queries, using `chapters` table
+
+### Testing:
+✅ Dev server running successfully
+✅ Application accessible
+✅ All database queries match actual schema
+✅ Students can now access their enrolled classes and courses
+
+### Commit: 73186d2
+**Status: Fixed and deployed ✅**
