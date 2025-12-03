@@ -12,38 +12,38 @@ CREATE TABLE assignment_questions (
     question_number INTEGER NOT NULL,
     question_type question_type NOT NULL,
     question_text TEXT NOT NULL,
-    question_data JSONB NOT NULL DEFAULT '{}', -- Stores type-specific data (options, blanks, test cases, etc.)
-    answer_data JSONB NOT NULL DEFAULT '{}', -- Stores correct answers and grading criteria
-    estimated_time INTEGER NOT NULL DEFAULT 5, -- Estimated time in minutes
-    rationale TEXT, -- Explanation of why this question is included
+    question_data JSONB NOT NULL DEFAULT '{}',
+    answer_data JSONB NOT NULL DEFAULT '{}',
+    estimated_time INTEGER NOT NULL DEFAULT 5,
+    rationale TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(assignment_id, question_number)
 );
 
--- Assignment iterations table (tracks AI generation process)
+-- Assignment iterations table
 CREATE TABLE assignment_iterations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
     iteration_number INTEGER NOT NULL DEFAULT 1,
-    agent_type VARCHAR(50) NOT NULL, -- 'teacher' or 'student'
-    iteration_type VARCHAR(50) NOT NULL, -- 'generate', 'refine', 'test'
+    agent_type VARCHAR(50) NOT NULL,
+    iteration_type VARCHAR(50) NOT NULL,
     input_prompt TEXT NOT NULL,
     output_data JSONB NOT NULL DEFAULT '{}',
-    feedback TEXT, -- Teacher feedback for refinements
-    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- 'pending', 'completed', 'failed'
+    feedback TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(assignment_id, iteration_number, agent_type)
 );
 
--- Assignment question testing table (student agent test results)
+-- Assignment question testing table
 CREATE TABLE assignment_question_testing (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     assignment_question_id UUID NOT NULL REFERENCES assignment_questions(id) ON DELETE CASCADE,
     test_attempt INTEGER NOT NULL DEFAULT 1,
-    student_response TEXT, -- What the student agent produced
-    response_analysis JSONB DEFAULT '{}', -- Analysis of the response
+    student_response TEXT,
+    response_analysis JSONB DEFAULT '{}',
     matches_criteria BOOLEAN NOT NULL DEFAULT FALSE,
     refinement_notes TEXT,
     refined_answer TEXT,
@@ -51,13 +51,13 @@ CREATE TABLE assignment_question_testing (
     UNIQUE(assignment_question_id, test_attempt)
 );
 
--- Assignment generation runs table (tracks entire generation process)
+-- Assignment generation runs table
 CREATE TABLE assignment_generation_runs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
     session_id UUID NOT NULL REFERENCES course_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- 'pending', 'generating', 'reviewing', 'testing', 'completed', 'failed'
-    target_duration INTEGER NOT NULL DEFAULT 20, -- Target duration in minutes
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    target_duration INTEGER NOT NULL DEFAULT 20,
     current_iteration INTEGER NOT NULL DEFAULT 0,
     total_iterations INTEGER NOT NULL DEFAULT 0,
     teacher_feedback TEXT,
@@ -65,15 +65,15 @@ CREATE TABLE assignment_generation_runs (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Add fields to assignments table for AI generation
+-- Add fields to assignments table
 ALTER TABLE assignments
 ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES course_sessions(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS target_duration INTEGER DEFAULT 20,
-ADD COLUMN IF NOT EXISTS generation_status VARCHAR(20) DEFAULT 'not_started', -- 'not_started', 'in_progress', 'completed', 'published'
+ADD COLUMN IF NOT EXISTS generation_status VARCHAR(20) DEFAULT 'not_started',
 ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS iteration_count INTEGER DEFAULT 0;
 
--- Create indexes for better query performance
+-- Create indexes
 CREATE INDEX idx_assignment_questions_assignment ON assignment_questions(assignment_id);
 CREATE INDEX idx_assignment_questions_session ON assignment_questions(session_id);
 CREATE INDEX idx_assignment_questions_type ON assignment_questions(question_type);
@@ -84,14 +84,12 @@ CREATE INDEX idx_assignment_generation_runs_assignment ON assignment_generation_
 CREATE INDEX idx_assignment_generation_runs_session ON assignment_generation_runs(session_id);
 
 -- RLS Policies
-
--- Enable RLS
 ALTER TABLE assignment_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assignment_iterations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assignment_question_testing ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assignment_generation_runs ENABLE ROW LEVEL SECURITY;
 
--- Teachers can read/write assignments and related data in their classes
+-- Teachers policies
 CREATE POLICY "Teachers can manage assignments in their classes" ON assignment_questions
 FOR ALL USING (
     EXISTS (
@@ -141,7 +139,7 @@ FOR ALL USING (
     )
 );
 
--- Students can read assignments assigned to them
+-- Students policies
 CREATE POLICY "Students can read assignments in their classes" ON assignment_questions
 FOR SELECT USING (
     EXISTS (
@@ -187,7 +185,7 @@ FOR SELECT USING (
     )
 );
 
--- Updated assignments policies to include new fields
+-- Updated assignments policies
 DROP POLICY IF EXISTS "Teachers can manage assignments in their classes" ON assignments;
 CREATE POLICY "Teachers can manage assignments in their classes" ON assignments
 FOR ALL USING (
