@@ -16,24 +16,17 @@ export default function LoginPage() {
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
-    console.log("🚨 [LOGIN] handleLogin called!")
     e.preventDefault()
     setError("")
     setLoading(true)
 
     try {
-      console.log("🔐 [LOGIN] Starting login process...")
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
-        console.error("❌ [LOGIN] Login error:", error)
-        throw error
-      }
-
-      console.log("✅ [LOGIN] Login successful")
+      if (error) throw error
 
       // Get the current authenticated user
       const {
@@ -41,36 +34,23 @@ export default function LoginPage() {
       } = await supabase.auth.getUser()
 
       if (!user) {
-        console.error("❌ [LOGIN] No user found after login")
         setError("Failed to get user after login")
         return
       }
 
-      console.log("👤 [LOGIN] User ID:", user.id)
-
       // Check if user has a role
-      console.log("🔍 [LOGIN] Checking profile...")
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .maybeSingle()
 
-      if (profileError) {
-        console.error("❌ [LOGIN] Profile error:", profileError)
-        throw profileError
-      }
-
-      console.log("📋 [LOGIN] Profile:", profile)
+      if (profileError) throw profileError
 
       // Use window.location.href instead of router.push to avoid middleware issues
       const redirectUrl = profile?.role ? `/${profile.role}` : "/role-select"
-      console.log("➡️ [LOGIN] Redirecting to:", redirectUrl)
-
-      // Force page reload navigation
       window.location.href = redirectUrl
     } catch (err: any) {
-      console.error("❌ [LOGIN] Login failed:", err)
       setError(err.message || "Failed to login")
     } finally {
       setLoading(false)
