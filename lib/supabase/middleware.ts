@@ -62,10 +62,13 @@ export async function updateSession(request: NextRequest) {
       .eq('id', user.id)
       .maybeSingle()
 
+    console.log('[MIDDLEWARE] Checking role for user:', user.id, 'Profile:', profile)
+
     const url = request.nextUrl.clone()
 
     // If no role yet, force the user through /role-select
     if (!profile || !profile.role) {
+      console.log('[MIDDLEWARE] No profile or role, redirecting to /role-select')
       if (pathname !== '/role-select' && !pathname.startsWith('/auth')) {
         url.pathname = '/role-select'
         return NextResponse.redirect(url)
@@ -73,15 +76,18 @@ export async function updateSession(request: NextRequest) {
     } else {
       // Role is fixed; prevent crossing between teacher and student areas
       if (pathname.startsWith('/teacher') && profile.role !== 'teacher') {
+        console.log('[MIDDLEWARE] Role mismatch: pathname is /teacher but role is', profile.role, 'redirecting to /student')
         url.pathname = '/student'
         return NextResponse.redirect(url)
       }
       // Allow teachers to preview student course pages, but prevent students from accessing teacher pages
       const isTeacherPreviewingCourse = pathname.startsWith('/student/courses/') && profile.role === 'teacher'
       if (pathname.startsWith('/student') && profile.role !== 'student' && !isTeacherPreviewingCourse) {
+        console.log('[MIDDLEWARE] Role mismatch: pathname is /student but role is', profile.role, 'redirecting to /teacher')
         url.pathname = '/teacher'
         return NextResponse.redirect(url)
       }
+      console.log('[MIDDLEWARE] Allowing access to', pathname, 'for role:', profile.role)
     }
   }
 
