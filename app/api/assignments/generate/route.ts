@@ -180,6 +180,18 @@ export async function POST(request: NextRequest) {
 
       const generatedData = JSON.parse(jsonMatch[0])
 
+      // Log AI response for debugging
+      console.log('AI Response:', JSON.stringify(generatedData, null, 2))
+
+      // Validate AI response
+      if (!generatedData || !generatedData.questions || !Array.isArray(generatedData.questions)) {
+        throw new Error('Invalid AI response: missing questions array')
+      }
+
+      if (generatedData.questions.length === 0) {
+        throw new Error('AI returned empty questions array')
+      }
+
       // Delete any existing questions for this assignment (in case of retry)
       await supabase
         .from('assignment_questions')
