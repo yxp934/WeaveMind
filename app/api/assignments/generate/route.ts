@@ -179,6 +179,12 @@ export async function POST(request: NextRequest) {
 
       const generatedData = JSON.parse(jsonMatch[0])
 
+      // Delete any existing questions for this assignment (in case of retry)
+      await supabase
+        .from('assignment_questions')
+        .delete()
+        .eq('assignment_id', assignment.id)
+
       // Save questions to database
       const questionsToInsert = generatedData.questions.map((q: any) => ({
         assignment_id: assignment.id,
@@ -199,7 +205,7 @@ export async function POST(request: NextRequest) {
       if (questionsError) {
         console.error('Error saving questions:', questionsError)
         return NextResponse.json(
-          { error: 'Failed to save questions' },
+          { error: 'Failed to save questions', details: questionsError.message },
           { status: 500 }
         )
       }
