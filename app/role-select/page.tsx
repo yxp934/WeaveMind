@@ -23,7 +23,7 @@ export default function RoleSelectPage() {
         } = await supabase.auth.getUser()
 
         if (!user) {
-          router.push("/auth/login")
+          window.location.href = "/auth/login"
           return
         }
 
@@ -36,11 +36,11 @@ export default function RoleSelectPage() {
         if (!isMounted) return
 
         if (profile && profile.role === "teacher") {
-          router.replace("/teacher")
+          window.location.href = "/teacher"
           return
         }
         if (profile && profile.role === "student") {
-          router.replace("/student")
+          window.location.href = "/student"
           return
         }
       } catch (err: any) {
@@ -72,7 +72,7 @@ export default function RoleSelectPage() {
 
       if (!user) {
         console.log("⚠️ [ROLE-SELECT] No user found, redirecting to login")
-        router.push("/auth/login")
+        window.location.href = "/auth/login"
         return
       }
 
@@ -91,8 +91,7 @@ export default function RoleSelectPage() {
       if (existing && existing.role && existing.role !== role) {
         console.log("⚠️ [ROLE-SELECT] Role already set to:", existing.role)
         setError("Your role has already been set and cannot be changed.")
-        if (existing.role === "teacher") router.push("/teacher")
-        else if (existing.role === "student") router.push("/student")
+        window.location.href = existing.role === "teacher" ? "/teacher" : "/student"
         return
       }
 
@@ -122,7 +121,7 @@ export default function RoleSelectPage() {
       }
 
       console.log("➡️ [ROLE-SELECT] Redirecting to:", `/${role}`)
-      router.push(`/${role}`)
+      window.location.href = `/${role}`
     } catch (err: any) {
       console.error("❌ [ROLE-SELECT] Error selecting role:", err)
       setError(err.message || "Failed to set role")

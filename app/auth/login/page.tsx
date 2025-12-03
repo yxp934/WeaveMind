@@ -17,19 +17,12 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     console.log("🚨 [LOGIN] handleLogin called!")
-    window.alert("🚨 handleLogin called! Check console for details.")
     e.preventDefault()
-    console.log("🚨 [LOGIN] preventDefault executed")
     setError("")
-    console.log("🚨 [LOGIN] error cleared")
     setLoading(true)
-    console.log("🚨 [LOGIN] loading set to true")
 
     try {
       console.log("🔐 [LOGIN] Starting login process...")
-      console.log("📧 [LOGIN] Email:", email)
-      console.log("🔑 [LOGIN] Password length:", password.length)
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -40,7 +33,7 @@ export default function LoginPage() {
         throw error
       }
 
-      console.log("✅ [LOGIN] Login successful, data:", data)
+      console.log("✅ [LOGIN] Login successful")
 
       // Get the current authenticated user
       const {
@@ -55,7 +48,7 @@ export default function LoginPage() {
 
       console.log("👤 [LOGIN] User ID:", user.id)
 
-      // Check if user has a role and redirect appropriately
+      // Check if user has a role
       console.log("🔍 [LOGIN] Checking profile...")
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -69,42 +62,17 @@ export default function LoginPage() {
       }
 
       console.log("📋 [LOGIN] Profile:", profile)
-      console.log("📋 [LOGIN] Profile role:", profile?.role)
 
-      if (profile?.role) {
-        const redirectUrl = `/${profile.role}`
-        console.log("➡️ [LOGIN] Redirecting to:", redirectUrl)
-        console.log("🚨 [LOGIN] About to call router.push()")
-        window.alert(`About to redirect to ${redirectUrl}`)
-        console.log("🚨 [LOGIN] Calling router.push() now")
-        router.push(redirectUrl)
-        console.log("🚨 [LOGIN] router.push() completed")
+      // Use window.location.href instead of router.push to avoid middleware issues
+      const redirectUrl = profile?.role ? `/${profile.role}` : "/role-select"
+      console.log("➡️ [LOGIN] Redirecting to:", redirectUrl)
 
-        // Fallback: force navigation after a delay if router.push doesn't work
-        setTimeout(() => {
-          console.log("🚨 [LOGIN] Fallback: using window.location.href")
-          window.location.href = redirectUrl
-        }, 1000)
-      } else {
-        const redirectUrl = "/role-select"
-        console.log("➡️ [LOGIN] Redirecting to:", redirectUrl)
-        console.log("🚨 [LOGIN] About to call router.push()")
-        window.alert(`About to redirect to ${redirectUrl}`)
-        console.log("🚨 [LOGIN] Calling router.push() now")
-        router.push(redirectUrl)
-        console.log("🚨 [LOGIN] router.push() completed")
-
-        // Fallback: force navigation after a delay if router.push doesn't work
-        setTimeout(() => {
-          console.log("🚨 [LOGIN] Fallback: using window.location.href")
-          window.location.href = redirectUrl
-        }, 1000)
-      }
+      // Force page reload navigation
+      window.location.href = redirectUrl
     } catch (err: any) {
       console.error("❌ [LOGIN] Login failed:", err)
       setError(err.message || "Failed to login")
     } finally {
-      console.log("🏁 [LOGIN] Login process finished, setting loading to false")
       setLoading(false)
     }
   }
