@@ -69,15 +69,36 @@ export default function LoginPage() {
       }
 
       console.log("📋 [LOGIN] Profile:", profile)
+      console.log("📋 [LOGIN] Profile role:", profile?.role)
 
       if (profile?.role) {
-        console.log("➡️ [LOGIN] Redirecting to:", `/${profile.role}`)
-        window.alert(`About to redirect to /${profile.role}`)
-        router.push(`/${profile.role}`)
+        const redirectUrl = `/${profile.role}`
+        console.log("➡️ [LOGIN] Redirecting to:", redirectUrl)
+        console.log("🚨 [LOGIN] About to call router.push()")
+        window.alert(`About to redirect to ${redirectUrl}`)
+        console.log("🚨 [LOGIN] Calling router.push() now")
+        router.push(redirectUrl)
+        console.log("🚨 [LOGIN] router.push() completed")
+
+        // Fallback: force navigation after a delay if router.push doesn't work
+        setTimeout(() => {
+          console.log("🚨 [LOGIN] Fallback: using window.location.href")
+          window.location.href = redirectUrl
+        }, 1000)
       } else {
-        console.log("➡️ [LOGIN] Redirecting to: /role-select")
-        window.alert("About to redirect to /role-select")
-        router.push("/role-select")
+        const redirectUrl = "/role-select"
+        console.log("➡️ [LOGIN] Redirecting to:", redirectUrl)
+        console.log("🚨 [LOGIN] About to call router.push()")
+        window.alert(`About to redirect to ${redirectUrl}`)
+        console.log("🚨 [LOGIN] Calling router.push() now")
+        router.push(redirectUrl)
+        console.log("🚨 [LOGIN] router.push() completed")
+
+        // Fallback: force navigation after a delay if router.push doesn't work
+        setTimeout(() => {
+          console.log("🚨 [LOGIN] Fallback: using window.location.href")
+          window.location.href = redirectUrl
+        }, 1000)
       }
     } catch (err: any) {
       console.error("❌ [LOGIN] Login failed:", err)
