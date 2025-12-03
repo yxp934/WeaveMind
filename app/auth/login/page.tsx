@@ -17,6 +17,7 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     console.log("🚨 [LOGIN] handleLogin called!")
+    window.alert("🚨 handleLogin called! Check console for details.")
     e.preventDefault()
     console.log("🚨 [LOGIN] preventDefault executed")
     setError("")
@@ -71,9 +72,11 @@ export default function LoginPage() {
 
       if (profile?.role) {
         console.log("➡️ [LOGIN] Redirecting to:", `/${profile.role}`)
+        window.alert(`About to redirect to /${profile.role}`)
         router.push(`/${profile.role}`)
       } else {
         console.log("➡️ [LOGIN] Redirecting to: /role-select")
+        window.alert("About to redirect to /role-select")
         router.push("/role-select")
       }
     } catch (err: any) {
