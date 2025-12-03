@@ -37,11 +37,14 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  console.log('[MIDDLEWARE] Path:', pathname, 'User:', user?.id)
+
   // Protected routes: require authentication for teacher and student areas
   if (!user && (
     pathname.startsWith('/teacher') ||
     pathname.startsWith('/student')
   )) {
+    console.log('[MIDDLEWARE] No user, redirecting to /auth/login')
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     return NextResponse.redirect(url)
