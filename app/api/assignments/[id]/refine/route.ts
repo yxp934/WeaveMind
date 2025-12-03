@@ -4,10 +4,16 @@ import { generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { buildAssignmentGenerationPrompt } from '@/lib/ai/prompts'
 
-const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GATEWAY_KEY,
-  baseURL: 'https://ai-gateway.vercel.sh/v1',
-})
+const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
+const MODEL_NAME = 'meituan/longcat-flash-chat'
+
+function ensureGatewayClient() {
+  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
+  if (!gatewayKey) {
+    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
+  }
+  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
+}
 
 export async function POST(
   request: NextRequest,
@@ -143,8 +149,9 @@ export async function POST(
     )
 
     try {
+      const openai = ensureGatewayClient()
       const { text } = await generateText({
-        model: openai('gpt-4-turbo'),
+        model: openai.chat(MODEL_NAME),
         prompt,
         temperature: 0.7,
       })
