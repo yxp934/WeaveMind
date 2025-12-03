@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import { ComponentAIAssistant } from './component-ai-assistant'
 import { logComponentOpen, logComponentComplete } from '@/lib/analytics/learning-events'
 
@@ -43,10 +46,13 @@ export function ComponentDisplay({ component, courseId, chapterId }: ComponentDi
     <div className="border-l-4 border-indigo-200 pl-4">
       {/* Text Component */}
       {component.type === "text" && (
-        <div className="prose max-w-none">
-          <p className="whitespace-pre-wrap text-gray-700">
+        <div className="prose max-w-none text-gray-700">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeSanitize]}
+          >
             {component.content?.text || "No content"}
-          </p>
+          </ReactMarkdown>
         </div>
       )}
 
