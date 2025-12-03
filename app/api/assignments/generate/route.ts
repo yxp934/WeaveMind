@@ -164,6 +164,10 @@ export async function POST(request: NextRequest) {
     // Generate assignment using AI
     const prompt = buildAssignmentGenerationPrompt(context, 1)
 
+    // Log prompt for debugging
+    console.log('Assignment Generation Prompt Length:', prompt.length)
+    console.log('Assignment Generation Prompt Preview:', prompt.substring(0, 500))
+
     try {
       const openai = ensureGatewayClient()
       const { text } = await generateText({
@@ -175,6 +179,7 @@ export async function POST(request: NextRequest) {
       // Parse JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
+        console.error('No JSON match in AI response:', text)
         throw new Error('Invalid response format')
       }
 
