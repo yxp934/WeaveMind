@@ -29,15 +29,35 @@ export default async function StudentDashboard() {
     redirect("/auth/login")
   }
 
-  // Get user's class memberships - with error handling
+  // Get user's class memberships with class details - with error handling
   let classMemberships: any[] = []
+  let classesWithDetails: Array<{
+    id: string
+    class_id: string
+    class_name: string
+    class_description: string | null
+    organization_name: string
+  }> = []
   let coursesCount = 0
   let assignmentsCount = 0
 
   try {
+    // Fetch class memberships with class and organization details
     const { data, error } = await supabase
       .from("class_members")
-      .select("id, class_id, role")
+      .select(`
+        id,
+        class_id,
+        role,
+        classes:class_id (
+          id,
+          name,
+          description,
+          organizations:organization_id (
+            name
+          )
+        )
+      `)
       .eq("user_id", user.id)
       .eq("role", "student")
 
@@ -45,6 +65,15 @@ export default async function StudentDashboard() {
       console.error("Error fetching class memberships:", error)
     } else {
       classMemberships = data || []
+
+      // Transform data to include class details
+      classesWithDetails = classMemberships.map((membership: any) => ({
+        id: membership.id,
+        class_id: membership.class_id,
+        class_name: membership.classes?.name || "Unknown Class",
+        class_description: membership.classes?.description || null,
+        organization_name: membership.classes?.organizations?.name || "Unknown Organization"
+      }))
 
       // Only query if we have class memberships
       if (classMemberships.length > 0) {
@@ -144,13 +173,36 @@ export default async function StudentDashboard() {
               </Link>
             </div>
 
-            {classMemberships.length > 0 ? (
-              <div className="space-y-4">
-                {/* Note: For now showing simple list since we removed the complex join */}
-                <div className="text-gray-600 text-center py-8">
-                  <p>You are enrolled in {classMemberships.length} class(es).</p>
-                  <p className="text-sm mt-2">Visit &quot;My Classes&quot; to view details.</p>
-                </div>
+            {classesWithDetails.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {classesWithDetails.map((classItem) => (
+                  <Link
+                    key={classItem.id}
+                    href={`/student/classes/${classItem.class_id}`}
+                    className="block"
+                  >
+                    <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer border hover:border-blue-300">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                          <GraduationCap className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-gray-900 truncate">
+                            {classItem.class_name}
+                          </h4>
+                          {classItem.class_description && (
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                              {classItem.class_description}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-400 mt-2">
+                            {classItem.organization_name}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  </Link>
+                ))}
               </div>
             ) : (
               <div className="text-center py-12">
