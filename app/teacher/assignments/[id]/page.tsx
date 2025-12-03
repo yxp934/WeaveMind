@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { DeleteAssignmentButton } from "@/components/teacher/delete-assignment-button"
 
 export default async function AssignmentDetailPage({
   params,
@@ -72,9 +73,12 @@ export default async function AssignmentDetailPage({
                 <span>Max Score: {assignment.max_score}</span>
               </div>
             </div>
-            <Link href={`/teacher/assignments/${id}/edit`}>
-              <Button variant="outline">Edit Assignment</Button>
-            </Link>
+            <div className="flex gap-2">
+              <Link href={`/teacher/assignments/${id}/edit`}>
+                <Button variant="outline">Edit Assignment</Button>
+              </Link>
+              <DeleteAssignmentButton assignmentId={id} />
+            </div>
           </div>
         </div>
 
