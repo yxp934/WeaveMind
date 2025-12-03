@@ -1,26 +1,27 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
 import { createOpenAI } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 
+export const runtime = 'edge'
+
 const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const supabase = await createClient()
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
     }
 
     // Parse request body
     const { componentId, courseId, message } = await req.json()
 
     if (!componentId || !courseId || !message) {
-      return NextResponse.json(
-        { error: 'Missing required fields: componentId, courseId, message' },
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: componentId, courseId, message' }),
         { status: 400 }
       )
     }
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (courseError || !course) {
-      return NextResponse.json({ error: 'Course not found or not published' }, { status: 404 })
+      return new Response(JSON.stringify({ error: 'Course not found or not published' }), { status: 404 })
     }
 
     // Verify student is a member of the class
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!membership) {
-      return NextResponse.json({ error: 'Not a member of this class' }, { status: 403 })
+      return new Response(JSON.stringify({ error: 'Not a member of this class' }), { status: 403 })
     }
 
     // Get component details
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (componentError || !component || component.chapter.course_id !== courseId) {
-      return NextResponse.json({ error: 'Component not found' }, { status: 404 })
+      return new Response(JSON.stringify({ error: 'Component not found' }), { status: 404 })
     }
 
     // Get or create conversation
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (createError || !newConversation) {
-        return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
+        return new Response(JSON.stringify({ error: 'Failed to create conversation' }), { status: 500 })
       }
       conversation = newConversation
     }
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
     // Initialize OpenAI client with Vercel AI Gateway
     const gatewayKey = process.env.VERCEL_GATEWAY_KEY
     if (!gatewayKey) {
-      return NextResponse.json({ error: 'AI Gateway not configured' }, { status: 500 })
+      return new Response(JSON.stringify({ error: 'AI Gateway not configured' }), { status: 500 })
     }
 
     const openai = createOpenAI({
@@ -164,8 +165,8 @@ Keep responses focused and educational.`,
     return result.toTextStreamResponse()
   } catch (error: any) {
     console.error('AI chat error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+    return new Response(
+      JSON.stringify({ error: error.message || 'Internal server error' }),
       { status: 500 }
     )
   }
