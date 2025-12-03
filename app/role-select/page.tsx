@@ -65,18 +65,14 @@ export default function RoleSelectPage() {
     setRoleLoading(true)
 
     try {
-      console.log("🔐 [ROLE-SELECT] Selecting role:", role)
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
       if (!user) {
-        console.log("⚠️ [ROLE-SELECT] No user found, redirecting to login")
         window.location.href = "/auth/login"
         return
       }
-
-      console.log("👤 [ROLE-SELECT] User ID:", user.id)
 
       // Attempt to create or update the profile with the chosen role.
       // A database trigger prevents changing role once it has been set.
@@ -86,47 +82,31 @@ export default function RoleSelectPage() {
         .eq("id", user.id)
         .maybeSingle()
 
-      console.log("📋 [ROLE-SELECT] Existing profile:", existing)
-
       if (existing && existing.role && existing.role !== role) {
-        console.log("⚠️ [ROLE-SELECT] Role already set to:", existing.role)
         setError("Your role has already been set and cannot be changed.")
         window.location.href = existing.role === "teacher" ? "/teacher" : "/student"
         return
       }
 
       if (!existing) {
-        console.log("➕ [ROLE-SELECT] Creating new profile...")
         const { error } = await supabase
           .from("profiles")
           .insert({ id: user.id, role })
 
-        if (error) {
-          console.error("❌ [ROLE-SELECT] Insert error:", error)
-          throw error
-        }
-        console.log("✅ [ROLE-SELECT] Profile created")
+        if (error) throw error
       } else if (!existing.role) {
-        console.log("✏️ [ROLE-SELECT] Updating profile...")
         const { error } = await supabase
           .from("profiles")
           .update({ role })
           .eq("id", user.id)
 
-        if (error) {
-          console.error("❌ [ROLE-SELECT] Update error:", error)
-          throw error
-        }
-        console.log("✅ [ROLE-SELECT] Profile updated")
+        if (error) throw error
       }
 
-      console.log("➡️ [ROLE-SELECT] Redirecting to:", `/${role}`)
       window.location.href = `/${role}`
     } catch (err: any) {
-      console.error("❌ [ROLE-SELECT] Error selecting role:", err)
       setError(err.message || "Failed to set role")
     } finally {
-      console.log("🏁 [ROLE-SELECT] Role selection finished")
       setRoleLoading(false)
     }
   }
