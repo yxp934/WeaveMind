@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { BookOpen, Calendar, Clock, Send, Undo2, FileQuestion } from 'lucide-react'
+import { BookOpen, Calendar, Clock, Send, Undo2, FileQuestion, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { SessionContentDialog } from './session-content-dialog'
 import { AssignmentGenerationDialog } from './assignment-generation-dialog'
@@ -42,6 +42,7 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false)
   const [assignmentSession, setAssignmentSession] = useState<Session | null>(null)
   const [postingId, setPostingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const handleGenerateContent = (session: Session) => {
     setSelectedSession(session)
@@ -75,6 +76,34 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
       alert('Failed to update session. Please try again.')
     } finally {
       setPostingId(null)
+    }
+  }
+
+  const handleDeleteContent = async (sessionId: string) => {
+    if (!confirm('Are you sure you want to delete this session\'s content? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      setDeletingId(sessionId)
+      const response = await fetch(`/api/sessions/${sessionId}/delete-content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete session content')
+      }
+
+      // Refresh the page to show updated status
+      window.location.reload()
+    } catch (error) {
+      console.error('Error deleting session content:', error)
+      alert('Failed to delete session content. Please try again.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -199,6 +228,24 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
                         <>
                           <Send className="h-4 w-4 mr-1" />
                           Post Session
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  {hasContent && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteContent(session.id)}
+                      disabled={deletingId === session.id}
+                      className="border-red-300 text-red-700 hover:bg-red-50"
+                    >
+                      {deletingId === session.id ? (
+                        'Deleting...'
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete Content
                         </>
                       )}
                     </Button>
