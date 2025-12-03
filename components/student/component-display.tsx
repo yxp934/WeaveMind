@@ -46,7 +46,8 @@ export function ComponentDisplay({ component, courseId, chapterId }: ComponentDi
     <div className="border-l-4 border-indigo-200 pl-4">
       {/* Text Component */}
       {component.type === "text" && (
-        <div className="prose max-w-none text-gray-700">
+        <div className="prose prose-indigo max-w-none text-gray-700
+                        prose-headings:text-lg prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSanitize]}

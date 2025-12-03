@@ -17,6 +17,7 @@
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.84.0",
+    "@tailwindcss/typography": "^0.5.19",
     "ai": "^5.0.102",
     "bullmq": "^5.65.0",
     "class-variance-authority": "^0.7.1",
