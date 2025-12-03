@@ -149,7 +149,7 @@ export default async function StudentDashboard() {
                 {/* Note: For now showing simple list since we removed the complex join */}
                 <div className="text-gray-600 text-center py-8">
                   <p>You are enrolled in {classMemberships.length} class(es).</p>
-                  <p className="text-sm mt-2">Visit "My Classes" to view details.</p>
+                  <p className="text-sm mt-2">Visit &quot;My Classes&quot; to view details.</p>
                 </div>
               </div>
             ) : (
