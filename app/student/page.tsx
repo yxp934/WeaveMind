@@ -18,37 +18,54 @@ export default async function StudentDashboard() {
     redirect("/auth/login")
   }
 
+  // Get user's profile to check role
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle()
+
+  if (!profile || profile.role !== "student") {
+    redirect("/auth/login")
+  }
+
+  console.log("[STUDENT] Loading dashboard for user:", user.id)
+
   // Get user's class memberships
-  const { data: classMemberships } = await supabase
+  console.log("[STUDENT] Querying class memberships...")
+  const { data: classMemberships, error: classError } = await supabase
     .from("class_members")
-    .select(`
-      *,
-      classes (
-        *,
-        organizations (*)
-      )
-    `)
+    .select("id, class_id, role")
     .eq("user_id", user.id)
     .eq("role", "student")
 
-  // Get enrolled courses count
-  const { count: coursesCount } = await supabase
-    .from("courses")
-    .select("*", { count: "exact", head: true })
-    .in(
-      "class_id",
-      classMemberships?.map((m: any) => m.class_id) || []
-    )
-    .eq("published", true)
+  console.log("[STUDENT] classMemberships:", classMemberships, "error:", classError)
 
-  // Get assignments count
-  const { count: assignmentsCount } = await supabase
-    .from("assignments")
-    .select("*", { count: "exact", head: true })
-    .in(
-      "class_id",
-      classMemberships?.map((m: any) => m.class_id) || []
-    )
+  let coursesCount = 0
+  let assignmentsCount = 0
+
+  if (classMemberships && classMemberships.length > 0) {
+    const classIds = classMemberships.map((m: any) => m.class_id)
+
+    // Get enrolled courses count
+    console.log("[STUDENT] Querying courses...")
+    const { count } = await supabase
+      .from("courses")
+      .select("*", { count: "exact", head: true })
+      .in("class_id", classIds)
+      .eq("published", true)
+    coursesCount = count || 0
+    console.log("[STUDENT] coursesCount:", coursesCount)
+
+    // Get assignments count
+    console.log("[STUDENT] Querying assignments...")
+    const { count: assignments } = await supabase
+      .from("assignments")
+      .select("*", { count: "exact", head: true })
+      .in("class_id", classIds)
+    assignmentsCount = assignments || 0
+    console.log("[STUDENT] assignmentsCount:", assignmentsCount)
+  }
 
   const navItems = [
     { title: "Dashboard", href: "/student", icon: "Home" as const },
