@@ -193,13 +193,8 @@ export function AssignmentGenerationDialog({
       const data = await response.json()
       setTestingResults(data.testingResults)
 
-      if (data.allCorrect) {
-        setStep('completed')
-      } else {
-        // Auto-refine if tests failed
-        setFeedback('Some questions need improvement based on student testing')
-        setStep('review')
-      }
+      // Always return to review step - teacher can choose next action
+      setStep('review')
 
     } catch (err: any) {
       setError(err.message)
@@ -356,7 +351,7 @@ export function AssignmentGenerationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileQuestion className="h-5 w-5" />
@@ -478,6 +473,7 @@ export function AssignmentGenerationDialog({
                 <Button
                   onClick={handleTest}
                   disabled={loading}
+                  variant="outline"
                   className="flex-1"
                 >
                   {loading ? (
@@ -488,7 +484,7 @@ export function AssignmentGenerationDialog({
                   ) : (
                     <>
                       <CheckCircle className="h-4 w-4 mr-2" />
-                      Confirm & Test with Student Agent
+                      Test with Student Agent
                     </>
                   )}
                 </Button>
@@ -509,6 +505,27 @@ export function AssignmentGenerationDialog({
                       <>
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Refine with Feedback
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {/* Show publish button only if all tests passed */}
+                {testingResults.length > 0 && testingResults.every((r: any) => r.isCorrect) && (
+                  <Button
+                    onClick={handlePublish}
+                    disabled={loading}
+                    className="flex-1"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Publishing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Publish Assignment
                       </>
                     )}
                   </Button>
@@ -534,47 +551,7 @@ export function AssignmentGenerationDialog({
               </div>
             </div>
           )}
-
-          {step === 'completed' && (
-            <div className="space-y-6">
-              <div className="text-center py-8">
-                <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Assignment Ready!</h3>
-                <p className="text-gray-600">
-                  Your assignment has been generated, tested, and is ready to publish.
-                </p>
-              </div>
-
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <h4 className="font-medium text-green-900 mb-2">Assignment Summary</h4>
-                <ul className="text-sm text-green-800 space-y-1">
-                  <li>• {questions.length} questions generated</li>
-                  <li>• Total estimated time: {totalEstimatedTime} minutes</li>
-                  <li>• All questions tested with student agent</li>
-                  <li>• Ready for student access</li>
-                </ul>
-              </div>
-            </div>
-          )}
         </div>
-
-        {step === 'completed' && (
-          <DialogFooter>
-            <Button onClick={handlePublish} disabled={loading} className="w-full">
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Publishing...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Publish Assignment to Students
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        )}
       </DialogContent>
     </Dialog>
   )
