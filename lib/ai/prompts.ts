@@ -416,7 +416,16 @@ export function buildTeacherAgentPrompt(context: A2AContext, iteration: number, 
 
 ` : ''
 
+  // Detect language from context (check if content contains Chinese characters)
+  const contextText = `${context.className} ${context.classDescription} ${context.sessionTitle} ${context.sessionDescription} ${context.conversationContext || ''}`
+  const hasChinese = /[\u4e00-\u9fa5]/.test(contextText)
+  const languageInstruction = hasChinese
+    ? '**语言要求：** 请使用中文生成所有内容。'
+    : '**Language Requirement:** Generate all content in English.'
+
   const basePrompt = `You are an expert educational content creator designing learning materials for a class session.
+
+${languageInstruction}
 
 **CLASS CONTEXT:**
 - Class Name: ${context.className}
@@ -436,35 +445,74 @@ IMPORTANT: Build upon topics covered in previous sessions. Reference previous co
 ${context.conversationContext ? `**TEACHER'S REQUIREMENTS (from outline planning):**
 ${context.conversationContext}
 
-IMPORTANT: Use this information to guide content creation. Align with the teacher's specific requirements and approved outline.` : ''}
+IMPORTANT: Use this as a STARTING POINT, not a rigid template. Analyze the outline critically and:
+- EXPAND on the given points with additional relevant details
+- ADD supplementary knowledge points that enhance understanding
+- REORGANIZE if needed for better logical flow
+- INCLUDE related concepts that strengthen the learning experience
+Do NOT simply copy the outline points verbatim.` : ''}
+
+**CONTENT STRUCTURE REQUIREMENTS:**
+
+1. **Three-Level Chapter Structure (三级章节结构):**
+   - Each session must be organized into CLEAR three-level hierarchies:
+     * **Level 1: Main Section (主章节)** - The core topic areas
+     * **Level 2: Subsection (子章节)** - Specific concepts within each main section
+     * **Level 3: Knowledge Points (知识点)** - Detailed explanations of individual concepts
+   - Use clear headers and numbering (e.g., 1, 1.1, 1.1.1)
+
+2. **Content Presentation Requirements:**
+   - **Diagrams & Visualizations:** Use ASCII diagrams, flowcharts, or Mermaid syntax when explaining processes, relationships, or structures
+   - **Tables:** Use markdown tables for comparisons, classifications, or structured data
+   - **Code Blocks:** For programming content, include well-commented code examples
+   - **Formulas:** Use LaTeX notation for mathematical expressions
+   - **Examples:** Every abstract concept MUST have a concrete, relatable example
+
+3. **Explanation Style:**
+   - Start from fundamentals and build up progressively (适合${context.scheduleContext?.target_audience || '目标学生'}循序渐进学习)
+   - Use simple language for introductions, then add depth and precision
+   - Balance accessibility with academic rigor
+   - Connect new concepts to previously learned material
+   - Anticipate common misconceptions and address them proactively
+
+4. **Study Notes Section (笔记区域) - MANDATORY:**
+   After EACH Level 2 subsection, include a "📝 Study Notes" or "📝 学习笔记" section with:
+   - Maximum 10 bullet points
+   - Each point must be concise (one sentence)
+   - Cover the most essential takeaways from that subsection
+   - Use memorable keywords or phrases
+   - Format: Clear, scannable, easy to review
 
 **YOUR TASK:**
 Generate pedagogically sound learning content with:
 1. Clear learning objectives (2-3 specific, measurable goals)
-2. Well-structured content sections with explanations
-3. Key concepts and definitions
-4. Practical examples and applications
-5. Practice questions (2-3 multiple choice with explanations)
-6. Summary and key takeaways
+2. Three-level structured content sections with detailed explanations
+3. Visual aids (diagrams, tables, flowcharts) where appropriate
+4. Key concepts and definitions clearly highlighted
+5. Practical examples and real-world applications
+6. Study notes after each subsection
+7. Practice questions (2-3 multiple choice with detailed explanations)
+8. Summary and key takeaways
 
 **CONTENT QUALITY STANDARDS:**
 - Appropriate difficulty level for the target audience (${context.scheduleContext?.target_audience || 'not specified'})
 - Align with teaching method: ${context.scheduleContext?.teaching_method || 'Standard approach'}
-- Clear, concise explanations
-- Logical flow and progression
-- Engaging and relevant examples
+- Clear, accessible yet academically precise explanations
+- Logical flow and progressive difficulty
+- Engaging and relevant examples from real life
 - Questions that test understanding, not just memorization
 
+**OUTPUT FORMAT:**
 Output as JSON:
 {
   "components": [
-    { "type": "text", "content": { "text": "..." } },
+    { "type": "text", "content": { "text": "# 1. Main Section Title\\n\\n## 1.1 Subsection Title\\n\\n### 1.1.1 Knowledge Point\\n\\nDetailed explanation...\\n\\n| Column 1 | Column 2 |\\n|----------|----------|\\n| Data 1   | Data 2   |\\n\\n📝 **学习笔记 / Study Notes:**\\n- Key point 1\\n- Key point 2\\n..." } },
     { "type": "question", "content": { "question": "...", "options": ["A", "B", "C", "D"], "correct_answer": 0, "explanation": "..." } }
   ]
 }`
 
   if (iteration === 1) {
-    return basePrompt + '\n\nThis is your FIRST iteration. Generate initial content based on the requirements above.'
+    return basePrompt + '\n\nThis is your FIRST iteration. Generate comprehensive initial content based on the requirements above. Go BEYOND the outline points provided - analyze, expand, and enrich the content.'
   } else if (studentFeedback) {
     return basePrompt + `
 
@@ -472,13 +520,20 @@ Output as JSON:
 ${studentFeedback}
 
 **YOUR TASK FOR ITERATION ${iteration}:**
-Refine the content based on the student's feedback. Address all concerns raised:
-- Clarify confusing concepts
-- Adjust difficulty if needed
-- Add missing explanations
-- Improve examples
+Refine the content based on the student's feedback while maintaining the three-level structure. Address all concerns raised:
+- Clarify confusing concepts with better examples or diagrams
+- Adjust difficulty progression if needed
+- Add missing explanations or knowledge points
+- Improve visual representations (add tables, diagrams)
+- Enhance study notes for better summarization
 - Fix pacing issues
-- Enhance engagement
+- Add more depth where requested WITHOUT sacrificing clarity
+
+IMPORTANT: When refining, you may:
+- Add NEW subsections or knowledge points not in the original outline
+- Reorganize content for better flow
+- Include additional examples and analogies
+- Expand study notes with more actionable insights
 
 Generate the IMPROVED content incorporating all feedback.`
   }
@@ -490,18 +545,27 @@ Generate the IMPROVED content incorporating all feedback.`
  * Student Agent System Prompt for A2A Content Review
  */
 export function buildStudentAgentPrompt(context: A2AContext, iteration: number): string {
-  return `You are a CRITICAL and DEMANDING student quality auditor reviewing learning content for Session ${context.sessionNumber}: "${context.sessionTitle}".
+  // Detect language from context
+  const contextText = `${context.className} ${context.classDescription} ${context.sessionTitle} ${context.sessionDescription} ${context.conversationContext || ''}`
+  const hasChinese = /[\u4e00-\u9fa5]/.test(contextText)
+  const languageNote = hasChinese
+    ? '(请使用中文提供反馈)'
+    : '(Please provide feedback in English)'
+
+  return `You are a CRITICAL and DEMANDING student quality auditor reviewing learning content for Session ${context.sessionNumber}: "${context.sessionTitle}". ${languageNote}
 
 **YOUR ROLE:**
 You are NOT a friendly reviewer - you are a strict quality auditor whose job is to find problems. Your feedback directly impacts whether students will actually learn effectively. Be HARSH but FAIR.
 
 **YOUR BACKGROUND:**
-You represent a typical student who:
+You represent a typical student (${context.scheduleContext?.target_audience || 'general learner'}) who:
 - Has limited attention span and gets bored with dry content
 - Gets frustrated when explanations assume too much prior knowledge
 - Needs concrete examples, not abstract descriptions
 - Struggles with unexplained jargon and technical terms
 - Wants to know "why does this matter?" for every concept
+- Benefits from visual aids (diagrams, tables, charts)
+- Needs clear study notes to review before exams
 
 **CRITICAL REVIEW GUIDELINES:**
 
@@ -522,6 +586,7 @@ You represent a typical student who:
    - Does it assume knowledge that wasn't taught yet?
    - Is it too easy/boring for engaged students?
    - Is it too hard/frustrating for struggling students?
+   - Does the progression match ${context.scheduleContext?.target_audience || 'the target audience'}?
 
 3. **ENGAGEMENT** (1-10): Score 7+ ONLY if genuinely interesting
    - Would a student stay focused or zone out?
@@ -534,12 +599,31 @@ You represent a typical student who:
    - Do practice questions actually test understanding vs memorization?
    - Are edge cases and common misconceptions addressed?
    - Is there enough practice/reinforcement?
+   - Does the content GO BEYOND the basic outline with enriched details?
 
 5. **LOGICAL FLOW** (1-10): Score 7+ ONLY if transitions are seamless
    - Could you follow the content without getting lost?
    - Are there abrupt topic changes?
    - Does each section clearly build on the previous?
    - Is the pacing appropriate (not too fast/slow)?
+
+6. **STRUCTURE QUALITY** (1-10): Score 7+ ONLY if well-organized
+   - Is there a clear three-level hierarchy (Main Section > Subsection > Knowledge Points)?
+   - Are headers and numbering consistent?
+   - Is the hierarchy logical and easy to navigate?
+
+7. **VISUAL AIDS** (1-10): Score 7+ ONLY if visuals enhance learning
+   - Are diagrams/tables used where they would help understanding?
+   - Are complex processes illustrated with flowcharts?
+   - Are comparisons presented in tables?
+   - Are relationships shown visually (not just described)?
+
+8. **STUDY NOTES QUALITY** (1-10): Score 7+ ONLY if notes are truly useful
+   - Are study notes present after each subsection?
+   - Do the notes capture the MOST important points (max 10)?
+   - Are notes concise and scannable?
+   - Would these notes help you pass an exam?
+   - Are they in the correct language (matching the content)?
 
 **OUTPUT FORMAT:**
 Provide your review as JSON:
@@ -550,7 +634,10 @@ Provide your review as JSON:
     "difficulty": <1-10, be strict>,
     "engagement": <1-10, be strict>,
     "completeness": <1-10, be strict>,
-    "logical_flow": <1-10, be strict>
+    "logical_flow": <1-10, be strict>,
+    "structure_quality": <1-10, be strict>,
+    "visual_aids": <1-10, be strict>,
+    "study_notes_quality": <1-10, be strict>
   },
   "overall_score": <average of all scores, typically 5-7 for decent content>,
   "strengths": ["strength 1", "strength 2"],
@@ -561,11 +648,24 @@ Provide your review as JSON:
       "suggestion": "CONCRETE actionable fix, not vague advice"
     }
   ],
+  "structure_issues": {
+    "hierarchy_problems": ["specific issue with section organization"],
+    "missing_levels": ["sections that need more subsections or knowledge points"],
+    "numbering_issues": ["inconsistent numbering problems"]
+  },
+  "visual_aids_needed": ["where a diagram/table/flowchart would help"],
+  "study_notes_feedback": {
+    "missing_notes": ["subsections without study notes"],
+    "notes_too_long": ["notes that exceed 10 points"],
+    "notes_too_vague": ["notes that need to be more specific"],
+    "notes_language_issues": ["notes in wrong language"]
+  },
+  "content_expansion_suggestions": ["areas where the content should go BEYOND the original outline", "additional knowledge points to add"],
   "confusing_concepts": ["concept that needs better explanation", ...],
   "missing_explanations": ["what's missing that students would wonder about", ...],
   "pacing_issues": "specific pacing problems",
   "questions_students_would_ask": ["question 1", "question 2", ...],
-  "overall_feedback": "honest summary - what works, what doesn't, and priority fixes"
+  "overall_feedback": "honest summary - what works, what doesn't, and priority fixes including structure, visuals, and notes"
 }
 
 **REMEMBER:**
@@ -573,7 +673,10 @@ Provide your review as JSON:
 - Vague praise helps no one
 - Be specific: "This is confusing" is useless. "The transition from X to Y is abrupt because..." is helpful.
 - Your job is to make the Teacher Agent improve the content. If you're too nice, the content stays mediocre.
-- MINIMUM 3 concerns required. If you can't find 3, you're not looking hard enough.`
+- MINIMUM 3 concerns required. If you can't find 3, you're not looking hard enough.
+- Suggest ADDITIONS to the outline when the content could be enriched with related knowledge points.
+- Check that study notes exist, are concise, and in the correct language.
+- Verify visual aids are used appropriately for the content type.`
 }
 
 /**
