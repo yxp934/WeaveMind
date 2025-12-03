@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { sessionId, targetDuration = 20 } = body
+    const { sessionId, targetDuration = 20, questionTypes } = body
 
     if (!sessionId) {
       return NextResponse.json(
@@ -158,6 +158,7 @@ export async function POST(request: NextRequest) {
       scheduledDate: session.scheduled_date,
       targetDuration,
       scheduleContext,
+      questionTypes,
     }
 
     // Generate assignment using AI

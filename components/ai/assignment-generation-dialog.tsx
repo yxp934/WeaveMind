@@ -475,6 +475,24 @@ export function AssignmentGenerationDialog({
               )}
 
               <div className="flex gap-2">
+                <Button
+                  onClick={handleTest}
+                  disabled={loading}
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Testing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Confirm & Test with Student Agent
+                    </>
+                  )}
+                </Button>
+
                 {feedback && (
                   <Button
                     onClick={handleRefine}
@@ -490,28 +508,11 @@ export function AssignmentGenerationDialog({
                     ) : (
                       <>
                         <RefreshCw className="h-4 w-4 mr-2" />
-                        Refine Assignment
+                        Refine with Feedback
                       </>
                     )}
                   </Button>
                 )}
-                <Button
-                  onClick={handleTest}
-                  disabled={loading}
-                  className="flex-1"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Testing...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Test with Student Agent
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
           )}

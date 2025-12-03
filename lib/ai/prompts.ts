@@ -622,6 +622,12 @@ export interface AssignmentGenerationContext {
   targetDuration: number // in minutes
   previousSessionsSummary?: string
   scheduleContext?: any
+  questionTypes?: {
+    mcq: boolean
+    fill_blank: boolean
+    code: boolean
+    linking: boolean
+  }
 }
 
 /**
@@ -659,14 +665,11 @@ ${context.previousSessionsSummary}
 
 IMPORTANT: Build upon previous knowledge while introducing new concepts from this session.` : ''}
 
-**YOUR TASK:**
-Create a comprehensive assignment with diverse question types covering ALL points from this session. The assignment should reach approximately ${context.targetDuration} minutes.
-
 **QUESTION TYPES TO INCLUDE:**
-1. **Multiple Choice Questions (MCQ)** - Test conceptual understanding and application
-2. **Fill in the Blanks** - Check key term retention and comprehension
-3. **Code Questions** - For programming/technical topics (if applicable)
-4. **Linking Questions** - Match concepts, definitions, or related items
+${context.questionTypes?.mcq ? '1. **Multiple Choice Questions (MCQ)** - Test conceptual understanding and application\n' : ''}${context.questionTypes?.fill_blank ? '2. **Fill in the Blanks** - Check key term retention and comprehension\n' : ''}${context.questionTypes?.code ? '3. **Code Questions** - For programming/technical topics (if applicable)\n' : ''}${context.questionTypes?.linking ? '4. **Linking Questions** - Match concepts, definitions, or related items' : ''}
+
+**YOUR TASK:**
+Create a comprehensive assignment using ONLY the enabled question types above. Cover ALL points from this session. The assignment should reach approximately ${context.targetDuration} minutes.
 
 **GENERATION PROTOCOL:**
 For EACH question, provide:

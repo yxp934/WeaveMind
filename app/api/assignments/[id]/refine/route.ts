@@ -139,6 +139,12 @@ export async function POST(
       scheduledDate: assignment.session.scheduled_date,
       targetDuration: assignment.target_duration,
       scheduleContext,
+      questionTypes: {
+        mcq: true,
+        fill_blank: true,
+        code: true,
+        linking: true,
+      },
     }
 
     // Generate refined assignment
