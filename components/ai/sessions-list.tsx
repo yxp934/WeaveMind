@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { BookOpen, Calendar, Clock, Send, Undo2 } from 'lucide-react'
+import { BookOpen, Calendar, Clock, Send, Undo2, FileQuestion } from 'lucide-react'
 import Link from 'next/link'
 import { SessionContentDialog } from './session-content-dialog'
+import { AssignmentGenerationDialog } from './assignment-generation-dialog'
 
 interface Session {
   id: string
@@ -32,11 +33,18 @@ interface SessionsListProps {
 export function SessionsList({ sessions, classId, className }: SessionsListProps) {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false)
+  const [assignmentSession, setAssignmentSession] = useState<Session | null>(null)
   const [postingId, setPostingId] = useState<string | null>(null)
 
   const handleGenerateContent = (session: Session) => {
     setSelectedSession(session)
     setDialogOpen(true)
+  }
+
+  const handleGenerateAssignment = (session: Session) => {
+    setAssignmentSession(session)
+    setAssignmentDialogOpen(true)
   }
 
   const handlePostSession = async (sessionId: string, post: boolean) => {
@@ -147,6 +155,17 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
                   )}
                   {hasContent && (
                     <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleGenerateAssignment(session)}
+                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      <FileQuestion className="h-4 w-4 mr-1" />
+                      Generate Assignment
+                    </Button>
+                  )}
+                  {hasContent && (
+                    <Button
                       variant={session.posted ? "outline" : "default"}
                       size="sm"
                       onClick={() => handlePostSession(session.id, !session.posted)}
@@ -180,6 +199,16 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           session={selectedSession}
+          classId={classId}
+          className={className}
+        />
+      )}
+
+      {assignmentSession && (
+        <AssignmentGenerationDialog
+          open={assignmentDialogOpen}
+          onOpenChange={setAssignmentDialogOpen}
+          session={assignmentSession}
           classId={classId}
           className={className}
         />

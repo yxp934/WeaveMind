@@ -607,3 +607,344 @@ export function extractFeedbackFromStudentResponse(response: string): any {
   return null
 }
 
+// =============================================================================
+// ASSIGNMENT GENERATION SYSTEM PROMPTS
+// =============================================================================
+
+export interface AssignmentGenerationContext {
+  className: string
+  classDescription: string
+  sessionNumber: number
+  sessionTitle: string
+  sessionDescription: string
+  sessionContent: string
+  scheduledDate: string
+  targetDuration: number // in minutes
+  previousSessionsSummary?: string
+  scheduleContext?: any
+}
+
+/**
+ * System prompt for assignment generation (Teacher Agent)
+ */
+export function buildAssignmentGenerationPrompt(
+  context: AssignmentGenerationContext,
+  iteration: number,
+  feedback?: string
+): string {
+  const scheduleContextInfo = context.scheduleContext ? `**SCHEDULE CONTEXT:**
+- Target Audience: ${context.scheduleContext.target_audience || 'Not specified'}
+- Learning Goals: ${context.scheduleContext.learning_goals || 'Not specified'}
+- Teaching Method: ${context.scheduleContext.teaching_method || 'Standard approach'}
+
+` : ''
+
+  const basePrompt = `You are an expert educational assessment designer creating comprehensive assignments based on class sessions.
+
+**CLASS CONTEXT:**
+- Class: ${context.className}
+- Description: ${context.classDescription}
+
+${scheduleContextInfo}**SESSION INFORMATION:**
+- Session ${context.sessionNumber}: ${context.sessionTitle}
+- Description: ${context.sessionDescription}
+- Scheduled: ${new Date(context.scheduledDate).toLocaleDateString()}
+- Target Duration: ${context.targetDuration} minutes
+
+**SESSION CONTENT:**
+${context.sessionContent}
+
+${context.previousSessionsSummary ? `**PREVIOUS SESSIONS:**
+${context.previousSessionsSummary}
+
+IMPORTANT: Build upon previous knowledge while introducing new concepts from this session.` : ''}
+
+**YOUR TASK:**
+Create a comprehensive assignment with diverse question types covering ALL points from this session. The assignment should reach approximately ${context.targetDuration} minutes.
+
+**QUESTION TYPES TO INCLUDE:**
+1. **Multiple Choice Questions (MCQ)** - Test conceptual understanding and application
+2. **Fill in the Blanks** - Check key term retention and comprehension
+3. **Code Questions** - For programming/technical topics (if applicable)
+4. **Linking Questions** - Match concepts, definitions, or related items
+
+**GENERATION PROTOCOL:**
+For EACH question, provide:
+1. Question text (clear and specific)
+2. Complete answer/correct solution
+3. Grading criteria (how to evaluate answers)
+4. Estimated time (in minutes)
+5. Rationale (why this question tests important learning outcomes)
+
+**OUTPUT FORMAT:**
+Return a JSON object with this exact structure:
+{
+  "questions": [
+    {
+      "question_number": 1,
+      "question_type": "mcq" | "fill_blank" | "code" | "linking",
+      "question_text": "The actual question",
+      "question_data": {
+        // Type-specific data structure (see below)
+      },
+      "answer_data": {
+        // Correct answers and criteria
+      },
+      "estimated_time": 5,
+      "rationale": "Why this question is important"
+    }
+  ],
+  "total_estimated_time": <sum of all question times>,
+  "coverage_notes": "Brief note on what session topics are covered"
+}
+
+**QUESTION DATA FORMATS:**
+
+1. **MCQ Format (question_type: "mcq")**:
+{
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "multiple_select": false
+}
+Answer:
+{
+  "correct_answer": [0], // or [0, 2] for multiple select
+  "correct_answer_explanations": {
+    "0": "Why option A is correct",
+    "1": "Why option B is wrong",
+    "2": "Why option C is wrong (if applicable)",
+    "3": "Why option D is wrong (if applicable)"
+  },
+  "grading_criteria": "All options evaluated based on session content"
+}
+
+2. **Fill in the Blanks Format (question_type: "fill_blank")**:
+{
+  "text_with_blanks": "The ______ is responsible for ______ in the system.",
+  "blanks": [
+    {
+      "position": 0,
+      "acceptable_answers": ["component", "module"],
+      "case_sensitive": false
+    },
+    {
+      "position": 1,
+      "acceptable_answers": ["processing", "handling"],
+      "case_sensitive": false
+    }
+  ]
+}
+Answer:
+{
+  "correct_answers": ["component", "processing"],
+  "grading_criteria": "Exact match for blanks. Case-insensitive."
+}
+
+3. **Code Questions Format (question_type: "code")**:
+{
+  "programming_language": "python",
+  "problem_description": "Write a function to implement...",
+  "starter_code": "def my_function():\n    # Write your code here\n    pass",
+  "test_cases": [
+    {
+      "input": "value1",
+      "expected_output": "result1",
+      "description": "Test case 1"
+    },
+    {
+      "input": "value2",
+      "expected_output": "result2",
+      "description": "Test case 2"
+    }
+  ],
+  "constraints": ["Must use recursion", "Time complexity O(n)"]
+}
+Answer:
+{
+  "correct_solution": "def my_function():\n    # Complete solution\n    return result",
+  "rubric": {
+    "correctness": 70,
+    "code_style": 15,
+    "efficiency": 15
+  },
+  "grading_criteria": "Tests must pass. Code should be clean and efficient."
+}
+
+4. **Linking Questions Format (question_type: "linking")**:
+{
+  "link_type": "term_to_definition" | "cause_to_effect" | "concept_to_example",
+  "left_items": [
+    "Term 1",
+    "Term 2",
+    "Term 3"
+  ],
+  "right_items": [
+    "Definition 1",
+    "Definition 2",
+    "Definition 3"
+  ],
+  "instructions": "Match each term to its correct definition"
+}
+Answer:
+{
+  "correct_links": [
+    { "left": "Term 1", "right": "Definition 2" },
+    { "left": "Term 2", "right": "Definition 1" },
+    { "left": "Term 3", "right": "Definition 3" }
+  ],
+  "grading_criteria": "All pairs must be correct. No partial credit."
+}
+
+**QUALITY STANDARDS:**
+- Questions must align with session learning objectives
+- Cover all important topics from the session
+- Vary difficulty levels (easy, medium, hard)
+- Use clear, unambiguous language
+- Ensure questions are answerable from session content
+- Balance different question types throughout the assignment
+
+${iteration === 1 ? `
+**ITERATION ${iteration}:**
+This is your FIRST generation. Create the initial assignment based on the session content above.
+
+` : `
+**ITERATION ${iteration}:**
+${feedback ? `
+**TEACHER FEEDBACK:**
+${feedback}
+
+**REFINEMENT TASK:**
+Incorporate the feedback to improve the assignment:
+- Adjust question difficulty as requested
+- Add/modify questions to reach target duration
+- Improve clarity and coverage
+- Ensure alignment with teacher's expectations
+` : 'Refine and improve the assignment based on quality review.'}
+
+`}
+
+**IMPORTANT:**
+- Return ONLY the JSON object (no extra text)
+- Ensure total estimated time is approximately ${context.targetDuration} minutes
+- Include 8-15 questions total (mix of types)
+- Cover ALL key topics from the session`
+
+  return basePrompt
+}
+
+/**
+ * Student Agent System Prompt for Assignment Testing
+ */
+export function buildAssignmentTestingPrompt(
+  questions: any[],
+  iteration: number
+): string {
+  const questionsJson = JSON.stringify(questions, null, 2)
+
+  return `You are a diligent student taking an assignment. Your task is to carefully answer each question based on the knowledge from the class session.
+
+**YOUR ROLE:**
+- Answer each question to the best of your ability
+- Show your work/thinking process
+- Be honest about what you know and don't know
+- Provide detailed responses where appropriate
+
+**QUESTIONS TO ANSWER:**
+${questionsJson}
+
+**OUTPUT FORMAT:**
+For each question, provide:
+{
+  "answers": [
+    {
+      "question_number": 1,
+      "student_response": "Your complete answer",
+      "confidence_level": "high" | "medium" | "low",
+      "reasoning": "Explain your thought process",
+      "time_taken": 5
+    }
+  ]
+}
+
+**INSTRUCTIONS:**
+1. Read each question carefully
+2. Answer based on what you learned in class
+3. For MCQ: Just provide the option letter(s)
+4. For fill-in-blank: Provide the complete sentence with blanks filled
+5. For code: Provide complete, working code
+6. For linking: List all pairs
+7. Rate your confidence (high = very sure, medium = reasonably sure, low = guessing)
+8. Explain your reasoning briefly
+9. Estimate time taken per question
+
+**IMPORTANT:**
+- Return ONLY the JSON object (no extra text)
+- Answer all questions, even if you're unsure
+- Be honest about your confidence level`
+
+}
+
+/**
+ * Assignment Refinement Prompt (after student testing)
+ */
+export function buildAssignmentRefinementPrompt(
+  originalQuestions: any[],
+  studentAnswers: any[],
+  testingResults: any,
+  feedback?: string
+): string {
+  return `You are an expert educational assessment designer reviewing and refining an assignment based on student testing results.
+
+**ORIGINAL ASSIGNMENT:**
+${JSON.stringify(originalQuestions, null, 2)}
+
+**STUDENT TESTING RESULTS:**
+${JSON.stringify(testingResults, null, 2)}
+
+**YOUR TASK:**
+Analyze the testing results and refine the assignment to address any issues found. Focus on:
+1. Questions that were too difficult/easy
+2. Ambiguous wording
+3. Missing coverage of important topics
+4. Technical issues with code questions
+5. Time management concerns
+
+**REFINEMENT GUIDELINES:**
+- Keep the same number of questions (or adjust slightly if needed)
+- Maintain target duration
+- Improve question clarity
+- Adjust difficulty based on testing
+- Update answer keys if needed
+- Provide more detailed grading criteria
+
+**OUTPUT FORMAT:**
+{
+  "refined_questions": [
+    {
+      "question_number": 1,
+      "question_type": "mcq" | "fill_blank" | "code" | "linking",
+      "question_text": "Improved question text",
+      "question_data": { /* updated */ },
+      "answer_data": { /* updated */ },
+      "estimated_time": 5,
+      "rationale": "Why this question is important",
+      "improvements_made": "What was changed and why"
+    }
+  ],
+  "changes_summary": "Brief summary of major changes made",
+  "reasoning": "Explanation of refinement decisions"
+}
+
+${feedback ? `
+**ADDITIONAL FEEDBACK:**
+${feedback}
+
+Incorporate this feedback into your refinements.
+` : ''}
+
+**IMPORTANT:**
+- Return ONLY the JSON object (no extra text)
+- Explain your reasoning for changes
+- Maintain quality standards`
+
+}
+
