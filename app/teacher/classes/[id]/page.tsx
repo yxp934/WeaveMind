@@ -9,6 +9,7 @@ import { Users, BookOpen, FileText, Key, ArrowLeft, Plus } from "lucide-react"
 import { ClassScheduleAssistantWrapper } from "@/components/ai/class-schedule-assistant-wrapper"
 import { SessionsList } from "@/components/ai/sessions-list"
 import { DeleteClassButton } from "@/components/teacher/delete-class-button"
+import { CreateAssignmentButton } from "@/components/teacher/create-assignment-button"
 
 export default async function ClassDetailPage({
   params,
@@ -176,12 +177,7 @@ export default async function ClassDetailPage({
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-900">Assignments</h3>
-              <Link href={`/teacher/classes/${id}/assignments/new`}>
-                <Button className="inline-flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Create Assignment
-                </Button>
-              </Link>
+              <CreateAssignmentButton classId={id} className={classData.name} />
             </div>
 
             {assignments && assignments.length > 0 ? (
@@ -208,12 +204,7 @@ export default async function ClassDetailPage({
               <div className="text-center py-12">
                 <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500 mb-4">No assignments yet</p>
-                <Link href={`/teacher/classes/${id}/assignments/new`}>
-                  <Button className="inline-flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    Create Your First Assignment
-                  </Button>
-                </Link>
+                <CreateAssignmentButton classId={id} className={classData.name} />
               </div>
             )}
           </div>

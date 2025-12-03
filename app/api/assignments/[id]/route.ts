@@ -63,13 +63,37 @@ export async function GET(
       .eq('assignment_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
+
+    // Get writing assignment details if applicable
+    let writingAssignment = null
+    if (assignment.assignment_subtype === 'writing') {
+      const { data } = await supabase
+        .from('writing_assignments')
+        .select('*')
+        .eq('assignment_id', id)
+        .single()
+      writingAssignment = data
+    }
+
+    // Get research assignment details if applicable
+    let researchAssignment = null
+    if (assignment.assignment_subtype === 'research') {
+      const { data } = await supabase
+        .from('research_assignments')
+        .select('*')
+        .eq('assignment_id', id)
+        .single()
+      researchAssignment = data
+    }
 
     return NextResponse.json({
       assignment,
       questions: questions || [],
       iterations: iterations || [],
       generationRun,
+      writingAssignment,
+      researchAssignment,
     })
 
   } catch (error: any) {
