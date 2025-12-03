@@ -22,6 +22,12 @@ interface Session {
     id: string
     title: string
   } | null
+  assignments?: Array<{
+    id: string
+    title: string
+    generation_status: string
+    created_at: string
+  }>
 }
 
 interface SessionsListProps {
@@ -88,7 +94,9 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
         {sessions.map((session) => {
           const sessionDate = session.scheduled_date ? new Date(session.scheduled_date) : null
           const hasContent = session.content_generated || session.chapter_id
-          
+          const hasAssignment = session.assignments && session.assignments.length > 0
+          const assignment = hasAssignment && session.assignments ? session.assignments[0] : null
+
           return (
             <div key={session.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start gap-4">
@@ -106,6 +114,14 @@ export function SessionsList({ sessions, classId, className }: SessionsListProps
                       <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
                         No Content
                       </span>
+                    )}
+                    {hasAssignment && assignment && (
+                      <Link href={`/teacher/assignments/${assignment.id}`}>
+                        <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full flex items-center gap-1 hover:bg-purple-200 cursor-pointer">
+                          <FileQuestion className="h-3 w-3" />
+                          Assignment Created
+                        </span>
+                      </Link>
                     )}
                     {session.posted && (
                       <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full flex items-center gap-1">

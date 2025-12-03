@@ -61,7 +61,8 @@ export default async function ClassDetailPage({
     .from("course_sessions")
     .select(`
       *,
-      chapter:chapters(id, title)
+      chapter:chapters(id, title),
+      assignments(id, title, generation_status, created_at)
     `)
     .eq("class_id", id)
     .order("scheduled_date", { ascending: true })
