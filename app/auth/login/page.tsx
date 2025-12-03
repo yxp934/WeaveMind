@@ -49,7 +49,15 @@ export default function LoginPage() {
 
       // Use window.location.href instead of router.push to avoid middleware issues
       const redirectUrl = profile?.role ? `/${profile.role}` : "/role-select"
+      console.log("Redirecting to:", redirectUrl)
       window.location.href = redirectUrl
+
+      // Show loading indicator in case redirect is slow
+      setTimeout(() => {
+        const loading = document.createElement('div')
+        loading.innerHTML = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:24px;z-index:9999;">Redirecting...</div>'
+        document.body.appendChild(loading)
+      }, 500)
     } catch (err: any) {
       setError(err.message || "Failed to login")
     } finally {
