@@ -16,12 +16,19 @@ export default function LoginPage() {
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
+    console.log("🚨 [LOGIN] handleLogin called!")
     e.preventDefault()
+    console.log("🚨 [LOGIN] preventDefault executed")
     setError("")
+    console.log("🚨 [LOGIN] error cleared")
     setLoading(true)
+    console.log("🚨 [LOGIN] loading set to true")
 
     try {
       console.log("🔐 [LOGIN] Starting login process...")
+      console.log("📧 [LOGIN] Email:", email)
+      console.log("🔑 [LOGIN] Password length:", password.length)
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -32,7 +39,7 @@ export default function LoginPage() {
         throw error
       }
 
-      console.log("✅ [LOGIN] Login successful")
+      console.log("✅ [LOGIN] Login successful, data:", data)
 
       // Get the current authenticated user
       const {
