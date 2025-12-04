@@ -1,29 +1,50 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import Navigation from '@/components/landing/Navigation';
+import Hero from '@/components/landing/Hero';
+import HowItWorks from '@/components/landing/HowItWorks';
+import Benefits from '@/components/landing/Benefits';
+import CTA from '@/components/landing/CTA';
+
 export default function Home() {
+  const [scrollProgress, setScrollProgress] = useState(0);
+
+  useEffect(() => {
+    const updateScrollProgress = () => {
+      const currentProgress = window.scrollY;
+      const scrollHeight = document.body.scrollHeight - window.innerHeight;
+      if (scrollHeight) {
+        setScrollProgress((currentProgress / scrollHeight) * 100);
+      }
+    };
+
+    // Update progress on scroll
+    window.addEventListener('scroll', updateScrollProgress);
+    // Initial update
+    updateScrollProgress();
+
+    return () => {
+      window.removeEventListener('scroll', updateScrollProgress);
+    };
+  }, []);
+
+  // Update CSS custom properties based on scroll progress
+  useEffect(() => {
+    const hue = Math.min(280 + scrollProgress * 0.5, 320);
+    const lightness = Math.max(85 - scrollProgress * 0.2, 70);
+    document.documentElement.style.setProperty('--color-primary', `hsl(${hue}, 85%, 60%)`);
+    document.documentElement.style.setProperty('--color-light', `hsl(${hue}, 85%, ${lightness}%)`);
+  }, [scrollProgress]);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="text-center">
-        <h1 className="text-6xl font-bold text-gray-900 mb-4">
-          WeaveMind
-        </h1>
-        <p className="text-2xl text-gray-600 mb-8">
-          因材织学 - AI-Driven Learning Management System
-        </p>
-        <div className="space-x-4">
-          <a
-            href="/auth/login"
-            className="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-          >
-            Login
-          </a>
-          <a
-            href="/auth/signup"
-            className="inline-block px-6 py-3 bg-white text-indigo-600 border-2 border-indigo-600 rounded-lg hover:bg-indigo-50 transition"
-          >
-            Sign Up
-          </a>
-        </div>
-      </div>
+    <div className="relative min-h-screen">
+      <Navigation />
+      <Hero />
+      <HowItWorks />
+      <Benefits />
+      <CTA />
     </div>
   );
 }
-
