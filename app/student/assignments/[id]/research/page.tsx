@@ -1,6 +1,9 @@
 'use client'
 
 import { use, useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -72,6 +75,7 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
   const [showSubmitDialog, setShowSubmitDialog] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchAssignmentAndSubmission()
@@ -86,7 +90,9 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
 
   useEffect(() => {
     // Scroll to bottom of chat when new messages arrive
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
   }, [currentConversation?.messages])
 
   const fetchAssignmentAndSubmission = async () => {
@@ -603,7 +609,7 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
 
                   {currentConversation && (
                     <>
-                      <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                      <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
                         {currentConversation.messages.map((message, idx) => (
                           <div
                             key={idx}
@@ -624,7 +630,15 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
                                   <User className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                 )}
                                 <div className="flex-1">
-                                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                                  {message.role === 'user' ? (
+                                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                                  ) : (
+                                    <div className="text-sm prose prose-sm max-w-none prose-headings:text-base prose-p:text-sm">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                                        {message.content}
+                                      </ReactMarkdown>
+                                    </div>
+                                  )}
                                   <p className="text-xs opacity-70 mt-1">
                                     {new Date(message.timestamp).toLocaleTimeString()}
                                   </p>

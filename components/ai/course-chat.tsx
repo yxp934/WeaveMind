@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +21,7 @@ interface CourseChatProps {
 
 export function CourseChat({ onRequirementsComplete }: CourseChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'initial',
@@ -31,7 +35,9 @@ export function CourseChat({ onRequirementsComplete }: CourseChatProps) {
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   // Check if we have enough requirements to generate outline
@@ -126,7 +132,7 @@ export function CourseChat({ onRequirementsComplete }: CourseChatProps) {
       </CardHeader>
       
       <CardContent>
-        <div className="space-y-4 h-[500px] overflow-y-auto p-4 bg-gray-50 rounded-lg">
+        <div ref={messagesContainerRef} className="space-y-4 h-[500px] overflow-y-auto p-4 bg-gray-50 rounded-lg">
           {messages.map((message) => (
             <div
               key={message.id}
@@ -141,7 +147,15 @@ export function CourseChat({ onRequirementsComplete }: CourseChatProps) {
                     : 'bg-white border border-gray-200'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                {message.role === 'user' ? (
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                  <div className="text-sm prose prose-sm max-w-none prose-headings:text-base prose-p:text-sm">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           ))}

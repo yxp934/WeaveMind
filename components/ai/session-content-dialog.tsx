@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,6 +54,7 @@ export function SessionContentDialog({
 }: SessionContentDialogProps) {
   const router = useRouter()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [input, setInput] = useState('')
@@ -229,7 +233,9 @@ Note: No schedule context found. Please manually describe the content you want f
   }
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   // Check for outline confirmation in messages
@@ -530,11 +536,19 @@ Note: No schedule context found. Please manually describe the content you want f
           {/* Chat Messages - Hide during A2A */}
           {!a2aActive && (
             <>
-              <div className="h-[400px] overflow-y-auto p-4 bg-gray-50 rounded-lg space-y-3">
+              <div ref={messagesContainerRef} className="h-[400px] overflow-y-auto p-4 bg-gray-50 rounded-lg space-y-3">
                 {messages.map((message) => (
                   <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200'}`}>
-                      <p className="text-sm whitespace-pre-wrap">{message.content.replace('[OUTLINE_CONFIRMED]', '')}</p>
+                      {message.role === 'user' ? (
+                        <p className="text-sm whitespace-pre-wrap">{message.content.replace('[OUTLINE_CONFIRMED]', '')}</p>
+                      ) : (
+                        <div className="text-sm prose prose-sm max-w-none prose-headings:text-base prose-p:text-sm">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                            {message.content.replace('[OUTLINE_CONFIRMED]', '')}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,6 +38,7 @@ export function ScheduleChat({
   onScheduleGenerated
 }: ScheduleChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<Message[]>([
     { id: 'initial', role: 'assistant', content: SCHEDULE_INITIAL_MESSAGE }
   ])
@@ -46,7 +50,9 @@ export function ScheduleChat({
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   // Parse buttons from AI response
@@ -267,11 +273,19 @@ export function ScheduleChat({
         </p>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4 h-[400px] overflow-y-auto p-4 bg-gray-50 rounded-lg mb-4">
+        <div ref={messagesContainerRef} className="space-y-4 h-[400px] overflow-y-auto p-4 bg-gray-50 rounded-lg mb-4">
           {messages.map((message) => (
             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200'}`}>
-                <p className="text-sm whitespace-pre-wrap">{message.content.replace('[SCHEDULE_READY]', '')}</p>
+                {message.role === 'user' ? (
+                  <p className="text-sm whitespace-pre-wrap">{message.content.replace('[SCHEDULE_READY]', '')}</p>
+                ) : (
+                  <div className="text-sm prose prose-sm max-w-none prose-headings:text-base prose-p:text-sm">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                      {message.content.replace('[SCHEDULE_READY]', '')}
+                    </ReactMarkdown>
+                  </div>
+                )}
 
                 {/* Render interactive buttons */}
                 {message.buttons && message.buttons.length > 0 && (
