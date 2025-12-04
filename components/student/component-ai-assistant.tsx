@@ -24,10 +24,13 @@ export function ComponentAIAssistant({ componentId, courseId, componentData }: C
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -136,7 +139,7 @@ export function ComponentAIAssistant({ componentId, courseId, componentData }: C
       </div>
 
       {/* Messages */}
-      <div className="h-96 overflow-y-auto p-4 space-y-4">
+      <div ref={messagesContainerRef} className="h-96 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-gray-500 py-8">
             <p className="mb-2">👋 Hi! I&apos;m your AI learning assistant.</p>
