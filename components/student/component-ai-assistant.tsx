@@ -14,9 +14,10 @@ interface Message {
 interface ComponentAIAssistantProps {
   componentId: string
   courseId: string
+  componentData?: any
 }
 
-export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssistantProps) {
+export function ComponentAIAssistant({ componentId, courseId, componentData }: ComponentAIAssistantProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -57,6 +58,7 @@ export function ComponentAIAssistant({ componentId, courseId }: ComponentAIAssis
           componentId,
           courseId,
           message: questionText,
+          componentData,
         }),
       })
 

@@ -8,7 +8,7 @@ const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
 export async function POST(req: Request) {
   try {
     // Parse request body
-    const { componentId, courseId, message } = await req.json()
+    const { componentId, courseId, message, componentData } = await req.json()
 
     if (!componentId || !courseId || !message) {
       return new Response(
@@ -17,20 +17,55 @@ export async function POST(req: Request) {
       )
     }
 
-    // Build system prompt with component and course context
+    // Use provided component data or fallback
+    let componentContent = 'No component content available'
+    let chapterTitle = 'Unknown Chapter'
+    let courseTitle = 'Unknown Course'
+    let className = 'Unknown Class'
+
+    if (componentData) {
+      const { type, content, chapter, course } = componentData
+
+      // Extract chapter and course info
+      if (chapter) {
+        chapterTitle = chapter.title || chapterTitle
+        if (course) {
+          courseTitle = course.title || courseTitle
+          if (course.classes) {
+            className = course.classes.name || className
+          }
+        }
+      }
+
+      // Format component content based on type
+      componentContent = formatComponentContent(type, content)
+    }
+
+    // Build enhanced system prompt with full context
     const systemPrompt = `You are a helpful AI tutor assisting a student learning from an online course.
 
+=== COURSE INFORMATION ===
+Course: ${courseTitle}
+Class: ${className}
+
+=== CHAPTER INFORMATION ===
+Chapter: ${chapterTitle}
+
+=== CURRENT COMPONENT ===
 Component ID: ${componentId}
-Course ID: ${courseId}
+Component Content:
+${componentContent}
 
-Your role:
-- Answer the student's questions clearly and concisely
-- Provide educational guidance and explanations
+=== YOUR ROLE ===
+- Answer the student's questions based on the component content above
+- Provide clear and concise explanations related to this specific component
+- Guide the student to understand the chapter and course material better
 - Encourage critical thinking and deeper understanding
-- Be patient and supportive
-- Keep responses focused and educational
+- Be patient, supportive, and educational
+- If the question is outside the scope of this component, gently guide the student back to the topic
+- Reference specific parts of the component content when answering
 
-Provide helpful responses that guide the student to understand the content better.`
+Provide helpful responses that help the student master this component and the broader learning objectives.`
 
     // Initialize OpenAI client with Vercel AI Gateway
     const gatewayKey = process.env.VERCEL_GATEWAY_KEY
@@ -59,5 +94,52 @@ Provide helpful responses that guide the student to understand the content bette
       JSON.stringify({ error: error.message || 'Failed to process chat' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
+  }
+}
+
+function formatComponentContent(type: string, content: any): string {
+  if (!content) return 'No content available'
+
+  switch (type) {
+    case 'text':
+      return content.text || 'No text content available'
+
+    case 'question':
+      let questionStr = `Question: ${content.question || 'No question'}\n`
+      if (content.options && Array.isArray(content.options)) {
+        questionStr += `Options:\n${content.options.map((opt: string, idx: number) => `  ${idx + 1}. ${opt}`).join('\n')}\n`
+      }
+      if (content.correctAnswer !== undefined) {
+        questionStr += `Correct Answer: ${content.correctAnswer}`
+      }
+      return questionStr
+
+    case 'image':
+      let imageStr = `Image: ${content.url || 'No URL'}\n`
+      if (content.caption) {
+        imageStr += `Caption: ${content.caption}`
+      }
+      return imageStr
+
+    case 'video':
+      let videoStr = `Video Title: ${content.title || 'No title'}\n`
+      videoStr += `Video URL: ${content.url || 'No URL'}\n`
+      if (content.description) {
+        videoStr += `Description: ${content.description}`
+      }
+      return videoStr
+
+    case 'interactive':
+      let interactiveStr = `Interactive Component: ${content.title || 'No title'}\n`
+      if (content.description) {
+        interactiveStr += `Description: ${content.description}\n`
+      }
+      if (content.instructions) {
+        interactiveStr += `Instructions: ${content.instructions}`
+      }
+      return interactiveStr
+
+    default:
+      return JSON.stringify(content, null, 2)
   }
 }

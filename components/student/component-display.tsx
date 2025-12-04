@@ -132,7 +132,11 @@ export function ComponentDisplay({ component, courseId, chapterId }: ComponentDi
       )}
 
       {/* AI Assistant for this component */}
-      <ComponentAIAssistant componentId={component.id} courseId={courseId} />
+      <ComponentAIAssistant
+        componentId={component.id}
+        courseId={courseId}
+        componentData={component}
+      />
     </div>
   )
 }
