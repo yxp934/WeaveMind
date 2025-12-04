@@ -92,16 +92,18 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
     try {
       const updateData: any = {
         feedback,
-        updated_at: new Date().toISOString(),
       }
 
-      // Set score field (different tables use different field names)
+      // Set score field and grading timestamp based on table type
       if (submissionTable === "submissions") {
+        // Traditional submissions table uses 'grade' and 'graded_at'
         updateData.grade = score
         updateData.graded_at = new Date().toISOString()
       } else {
+        // Writing/Research submissions use 'score', 'status', and 'graded_at'
         updateData.score = score
         updateData.status = 'graded'
+        updateData.graded_at = new Date().toISOString()
       }
 
       const { error: updateError } = await supabase
