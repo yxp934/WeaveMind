@@ -16,7 +16,18 @@ import {
   Loader2,
   AlertCircle,
   History,
+  CheckCircle2,
 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface ResearchAssignment {
   id: string
@@ -53,10 +64,13 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [chatLoading, setChatLoading] = useState(false)
   const [error, setError] = useState('')
   const [wordCount, setWordCount] = useState(0)
   const [newMessage, setNewMessage] = useState('')
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false)
+  const [submitSuccess, setSubmitSuccess] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -205,6 +219,7 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
         body: JSON.stringify({
           content,
           researchNotes: currentConversation ? JSON.stringify(currentConversation.messages) : null,
+          submit: false,
         }),
       })
 
@@ -217,11 +232,46 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
       setSubmission(data.submission)
 
       // Show success message
-      alert('Submission saved successfully!')
+      setSubmitSuccess(true)
+      setTimeout(() => setSubmitSuccess(false), 3000)
     } catch (err: any) {
       setError(err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    setError('')
+
+    try {
+      const response = await fetch(`/api/assignments/${id}/submissions/research`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          researchNotes: currentConversation ? JSON.stringify(currentConversation.messages) : null,
+          submit: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to submit assignment')
+      }
+
+      const data = await response.json()
+      setSubmission(data.submission)
+      setSubmitSuccess(true)
+      setShowSubmitDialog(false)
+
+      // Show success message
+      setTimeout(() => setSubmitSuccess(false), 3000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -272,8 +322,26 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-red-800">错误</h3>
+              <p className="text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {submitSuccess && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-green-800">操作成功</h3>
+              <p className="text-green-700 mt-1">
+                {submission?.status === 'submitted'
+                  ? '作业已成功提交！'
+                  : '作业已保存为草稿！'}
+              </p>
+            </div>
           </div>
         )}
 
@@ -286,7 +354,7 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
                   <div className="flex-1">
                     <CardTitle className="text-lg">Assignment Details</CardTitle>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {assignment.due_date && (
                       <Badge variant={new Date(assignment.due_date) < new Date() ? "destructive" : "secondary"}>
                         Due: {new Date(assignment.due_date).toLocaleDateString()}
@@ -295,6 +363,28 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
                     <Badge variant="outline">
                       Max Score: {assignment.max_score}
                     </Badge>
+                    {submission?.status && (
+                      <Badge
+                        variant={submission.status === 'submitted' ? 'default' : 'secondary'}
+                        className={
+                          submission.status === 'submitted'
+                            ? 'bg-green-600 hover:bg-green-700'
+                            : ''
+                        }
+                      >
+                        {submission.status === 'submitted' ? (
+                          <>
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            已提交
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-3 w-3 mr-1" />
+                            草稿
+                          </>
+                        )}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -350,13 +440,73 @@ export default function ResearchAssignmentPage({ params }: { params: Promise<{ i
                 <Textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  className="min-h-[400px]"
+                  className="min-h-[400px] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   placeholder="Write your research paper here..."
+                  disabled={submission?.status === 'submitted'}
                 />
-                <Button onClick={handleSave} disabled={saving || !content.trim()}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Draft'}
-                </Button>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || submitting || !content.trim() || submission?.status === 'submitted'}
+                    variant="outline"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {saving ? 'Saving...' : 'Save Draft'}
+                  </Button>
+                  <Button
+                    onClick={() => setShowSubmitDialog(true)}
+                    disabled={saving || submitting || !content.trim() || submission?.status === 'submitted'}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    {submitting ? 'Submitting...' : 'Submit Assignment'}
+                  </Button>
+                </div>
+
+                {/* Submit Confirmation Dialog */}
+                <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-amber-600" />
+                        确认提交作业
+                      </AlertDialogTitle>
+                      <AlertDialogDescription asChild>
+                        <div className="space-y-3">
+                          <p className="text-gray-700">
+                            您即将提交此作业。提交后，您将<strong>无法修改作业内容</strong>。
+                          </p>
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-sm text-amber-800">
+                              <strong>警告：</strong>提交完成后，您的作业将被锁定，只有教师可以查看和评分。
+                              如果需要修改，请确保在提交前完成所有更改。
+                            </p>
+                          </div>
+                        </div>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={submitting}>取消</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleSubmit}
+                        disabled={submitting}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        {submitting ? (
+                          <>
+                            <span className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
+                            提交中...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="h-4 w-4 mr-2" />
+                            确认提交
+                          </>
+                        )}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardContent>
             </Card>
           </div>

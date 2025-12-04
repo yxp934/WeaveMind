@@ -15,7 +15,7 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { content, researchNotes } = body
+    const { content, researchNotes, submit } = body
 
     if (!content) {
       return NextResponse.json(
@@ -46,28 +46,40 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
-    // Count words
-    const wordCount = content.trim().split(/\s+/).length
-
     // Check if submission already exists
     const { data: existingSubmission } = await supabase
       .from('research_submissions')
-      .select('id')
+      .select('id, status')
       .eq('assignment_id', id)
       .eq('student_id', user.id)
       .maybeSingle()
 
     let submission
     if (existingSubmission) {
+      // Check if already submitted
+      if (existingSubmission.status === 'submitted' && !submit) {
+        return NextResponse.json(
+          { error: 'Submission has already been submitted. Cannot modify.' },
+          { status: 400 }
+        )
+      }
+
       // Update existing submission
+      const updateData: any = {
+        content,
+        research_notes: researchNotes || null,
+        word_count: content.trim().split(/\s+/).length,
+        submitted_at: new Date().toISOString(),
+        status: submit ? 'submitted' : 'draft',
+      }
+
+      if (submit) {
+        updateData.final_submitted_at = new Date().toISOString()
+      }
+
       const { data, error } = await supabase
         .from('research_submissions')
-        .update({
-          content,
-          research_notes: researchNotes || null,
-          word_count: wordCount,
-          submitted_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', existingSubmission.id)
         .select()
         .single()
@@ -82,15 +94,22 @@ export async function POST(
       submission = data
     } else {
       // Create new submission
+      const insertData: any = {
+        assignment_id: id,
+        student_id: user.id,
+        content,
+        research_notes: researchNotes || null,
+        word_count: content.trim().split(/\s+/).length,
+        status: submit ? 'submitted' : 'draft',
+      }
+
+      if (submit) {
+        insertData.final_submitted_at = new Date().toISOString()
+      }
+
       const { data, error } = await supabase
         .from('research_submissions')
-        .insert({
-          assignment_id: id,
-          student_id: user.id,
-          content,
-          research_notes: researchNotes || null,
-          word_count: wordCount,
-        })
+        .insert(insertData)
         .select()
         .single()
 
