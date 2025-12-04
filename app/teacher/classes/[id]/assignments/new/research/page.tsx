@@ -34,15 +34,26 @@ export default function NewResearchAssignmentPage({ params }: { params: Promise<
     setError("")
 
     try {
+      // Convert snake_case to camelCase for API
+      const apiData = {
+        classId,
+        title: formData.title,
+        description: formData.description,
+        instructions: formData.instructions,
+        dueDate: formData.due_date || null,
+        maxScore: formData.max_score || 100,
+        gradingCriteria: formData.grading_criteria || null,
+        wordLimit: formData.word_limit || null,
+        researchGuidelines: formData.research_guidelines || null,
+        aiAssistanceAllowed: formData.ai_assistance_allowed,
+      }
+
       const response = await fetch('/api/assignments/research/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          classId,
-          ...formData,
-        }),
+        body: JSON.stringify(apiData),
       })
 
       const data = await response.json()
