@@ -20,18 +20,35 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
   const [assignment, setAssignment] = useState<any>(null)
   const [score, setScore] = useState<number>(0)
   const [feedback, setFeedback] = useState("")
+  const [submissionTable, setSubmissionTable] = useState<string>("")
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get submission details
-        const { data: submissionData, error: submissionError } = await supabase
-          .from("submissions")
-          .select("*")
-          .eq("id", id)
-          .single()
+        let submissionData = null
+        let tableName = ""
 
-        if (submissionError) throw submissionError
+        // Try to find the submission in all three tables
+        const tables = ["submissions", "writing_submissions", "research_submissions"]
+
+        for (const table of tables) {
+          const { data, error } = await supabase
+            .from(table)
+            .select("*")
+            .eq("id", id)
+            .single()
+
+          if (!error && data) {
+            submissionData = data
+            tableName = table
+            setSubmissionTable(table)
+            break
+          }
+        }
+
+        if (!submissionData) {
+          throw new Error("Submission not found in any table")
+        }
 
         // Parse content if it's a JSON string
         if (submissionData.content && typeof submissionData.content === 'string') {
@@ -43,7 +60,7 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
         }
 
         setSubmission(submissionData)
-        setScore(submissionData.grade || 0)
+        setScore(submissionData.score || submissionData.grade || 0)
         setFeedback(submissionData.feedback || "")
 
         // Get assignment details
@@ -73,13 +90,23 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
     setError("")
 
     try {
+      const updateData: any = {
+        feedback,
+        updated_at: new Date().toISOString(),
+      }
+
+      // Set score field (different tables use different field names)
+      if (submissionTable === "submissions") {
+        updateData.grade = score
+        updateData.graded_at = new Date().toISOString()
+      } else {
+        updateData.score = score
+        updateData.status = 'graded'
+      }
+
       const { error: updateError } = await supabase
-        .from("submissions")
-        .update({
-          grade: score,
-          feedback,
-          graded_at: new Date().toISOString(),
-        })
+        .from(submissionTable)
+        .update(updateData)
         .eq("id", id)
 
       if (updateError) throw updateError
@@ -137,24 +164,45 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
           <h3 className="text-xl font-bold mb-4">Student Submission</h3>
           <div className="mb-4">
             <p className="text-sm text-gray-500 mb-2">
-              Submitted: {new Date(submission.submitted_at).toLocaleString()}
+              Submitted: {new Date(
+                submission.final_submitted_at || submission.submitted_at
+              ).toLocaleString()}
             </p>
             <p className="text-sm text-gray-500 mb-4">
               Student ID: {submission.student_id}
             </p>
+            {submissionTable !== "submissions" && submission.status && (
+              <div className="mb-2">
+                <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                  Status: {submission.status}
+                </span>
+              </div>
+            )}
+            {submission.word_count && (
+              <p className="text-sm text-gray-500 mb-2">
+                Word Count: {submission.word_count}
+              </p>
+            )}
           </div>
 
           <div className="bg-gray-50 rounded-lg p-4">
             <h4 className="font-semibold mb-2">Submission Content</h4>
-            {submission.content?.text && (
-              <p className="whitespace-pre-wrap text-gray-700">{submission.content.text}</p>
+            {submission.content && typeof submission.content === 'object' && submission.content.text && (
+              <div>
+                {submission.content.text.split('\n').map((line: string, idx: number) => (
+                  <p key={idx} className="whitespace-pre-wrap text-gray-700 mb-2">{line}</p>
+                ))}
+              </div>
+            )}
+            {submission.content && typeof submission.content === 'string' && (
+              <p className="whitespace-pre-wrap text-gray-700">{submission.content}</p>
             )}
             {submission.content?.url && (
               <div>
                 <p className="text-sm text-gray-600 mb-2">File URL:</p>
-                <a 
-                  href={submission.content.url} 
-                  target="_blank" 
+                <a
+                  href={submission.content.url}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-indigo-600 hover:underline"
                 >
@@ -162,10 +210,24 @@ export default function SubmissionGradingPage({ params }: { params: Promise<{ id
                 </a>
               </div>
             )}
-            {!submission.content?.text && !submission.content?.url && (
+            {!submission.content && !submission.content?.url && !submission.content?.text && (
               <p className="text-gray-500">No content submitted</p>
             )}
           </div>
+
+          {/* Research AI Conversations */}
+          {submissionTable === "research_submissions" && submission.research_notes && (
+            <div className="bg-gray-50 rounded-lg p-4 mt-4">
+              <h4 className="font-semibold mb-2">AI Conversation History</h4>
+              <div className="text-sm text-gray-600">
+                {submission.research_notes && typeof submission.research_notes === 'string' ? (
+                  <pre className="whitespace-pre-wrap">{submission.research_notes}</pre>
+                ) : (
+                  <p className="text-gray-500">No conversation history</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Grading Form */}
