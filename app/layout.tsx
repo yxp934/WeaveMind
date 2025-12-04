@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
+import { Slackey } from "next/font/google";
 import "./globals.css";
+
+const slackey = Slackey({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-slackey",
+});
 
 export const metadata: Metadata = {
   title: "WeaveMind - AI-Driven Learning Management System",
@@ -13,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className={`antialiased ${slackey.variable}`}>
         {children}
       </body>
     </html>

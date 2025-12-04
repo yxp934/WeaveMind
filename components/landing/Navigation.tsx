@@ -28,6 +28,20 @@ export function Navigation() {
           <div className="text-3xl">
             <RetroText text="WeaveMind" />
           </div>
+          <div className="flex items-center gap-4">
+            <a
+              href="/auth/login"
+              className="px-4 py-2 text-gray-600 hover:text-[var(--color-primary)] transition font-medium"
+            >
+              Login
+            </a>
+            <a
+              href="/auth/signup"
+              className="px-6 py-2 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90 transition font-medium"
+            >
+              Start Free Trial
+            </a>
+          </div>
         </div>
       </div>
     </motion.nav>
