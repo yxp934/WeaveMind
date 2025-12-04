@@ -76,7 +76,7 @@ export async function POST(
     if (sessionId) {
       // Get existing conversation
       const { data } = await supabase
-        .from('student_ai_conversations')
+        .from('research_ai_conversations')
         .select('*')
         .eq('id', sessionId)
         .eq('student_id', user.id)
@@ -90,7 +90,7 @@ export async function POST(
     } else {
       // Create new conversation
       const { data: newConversation } = await supabase
-        .from('student_ai_conversations')
+        .from('research_ai_conversations')
         .insert({
           research_assignment_id: assignment.research_assignments[0].id,
           student_id: user.id,
@@ -144,7 +144,7 @@ Keep responses concise and focused on helping the student understand the topic b
 
       // Update conversation in database
       const { data: updatedConversation, error: updateError } = await supabase
-        .from('student_ai_conversations')
+        .from('research_ai_conversations')
         .update({
           messages: updatedMessages,
           updated_at: new Date().toISOString(),
@@ -228,7 +228,7 @@ export async function GET(
 
     // Get all conversations for this student and assignment
     const { data: conversations, error } = await supabase
-      .from('student_ai_conversations')
+      .from('research_ai_conversations')
       .select('*')
       .eq('research_assignment_id', assignment.id)
       .eq('student_id', user.id)
