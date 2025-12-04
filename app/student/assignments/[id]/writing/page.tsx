@@ -233,6 +233,8 @@ export default function WritingAssignmentPage({ params }: { params: Promise<{ id
               <p className="text-green-700 mt-1">
                 {submission?.status === 'submitted'
                   ? '作业已成功提交！'
+                  : submission?.status === 'graded'
+                  ? '教师已完成评分！'
                   : '作业已保存为草稿！'}
               </p>
             </div>
@@ -257,9 +259,15 @@ export default function WritingAssignmentPage({ params }: { params: Promise<{ id
                   </Badge>
                   {submission?.status && (
                     <Badge
-                      variant={submission.status === 'submitted' ? 'default' : 'secondary'}
+                      variant={
+                        submission.status === 'submitted' || submission.status === 'graded'
+                          ? 'default'
+                          : 'secondary'
+                      }
                       className={
                         submission.status === 'submitted'
+                          ? 'bg-blue-600 hover:bg-blue-700'
+                          : submission.status === 'graded'
                           ? 'bg-green-600 hover:bg-green-700'
                           : ''
                       }
@@ -268,6 +276,11 @@ export default function WritingAssignmentPage({ params }: { params: Promise<{ id
                         <>
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           已提交
+                        </>
+                      ) : submission.status === 'graded' ? (
+                        <>
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          已评分
                         </>
                       ) : (
                         <>
@@ -359,14 +372,14 @@ export default function WritingAssignmentPage({ params }: { params: Promise<{ id
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   rows={20}
                   placeholder="Type your response here..."
-                  disabled={submission?.status === 'submitted'}
+                  disabled={submission?.status === 'submitted' || submission?.status === 'graded'}
                 />
               </div>
 
               <div className="flex gap-3">
                 <Button
                   onClick={handleSave}
-                  disabled={saving || submitting || !content.trim() || submission?.status === 'submitted'}
+                  disabled={saving || submitting || !content.trim() || submission?.status === 'submitted' || submission?.status === 'graded'}
                   variant="outline"
                 >
                   <Save className="h-4 w-4 mr-2" />
@@ -374,7 +387,7 @@ export default function WritingAssignmentPage({ params }: { params: Promise<{ id
                 </Button>
                 <Button
                   onClick={() => setShowSubmitDialog(true)}
-                  disabled={saving || submitting || !content.trim() || submission?.status === 'submitted'}
+                  disabled={saving || submitting || !content.trim() || submission?.status === 'submitted' || submission?.status === 'graded'}
                   className="bg-blue-600 hover:bg-blue-700"
                 >
                   <Send className="h-4 w-4 mr-2" />
@@ -426,6 +439,41 @@ export default function WritingAssignmentPage({ params }: { params: Promise<{ id
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+
+              {/* Teacher Feedback */}
+              {(submission?.status === 'graded' || submission?.feedback) && (
+                <Card className="mt-6 border-green-200 bg-green-50">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-green-800">
+                      <CheckCircle2 className="h-5 w-5" />
+                      教师评分与反馈
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {submission?.score !== null && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-green-800">评分:</span>
+                        <Badge className="bg-green-600 text-white text-lg px-3 py-1">
+                          {submission.score} / {assignment.max_score}
+                        </Badge>
+                      </div>
+                    )}
+                    {submission?.graded_at && (
+                      <div className="text-sm text-green-700">
+                        评分时间: {new Date(submission.graded_at).toLocaleString()}
+                      </div>
+                    )}
+                    {submission?.feedback && (
+                      <div>
+                        <h4 className="font-semibold text-green-800 mb-2">教师反馈:</h4>
+                        <div className="p-3 bg-white border border-green-200 rounded-lg">
+                          <p className="text-gray-700 whitespace-pre-wrap">{submission.feedback}</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </CardContent>
           </Card>
         </div>
