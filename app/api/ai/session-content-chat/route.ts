@@ -173,8 +173,37 @@ NOTE: This session should build upon previous sessions and avoid repeating conte
       baseURL: 'https://ai-gateway.vercel.sh/v1',
     })
 
+    // Get compression context for enhanced conversation
+    let compressionContextInfo = ''
+    try {
+      const { compressionContextService } = await import('@/lib/compression-context')
+      const compressionContext = await compressionContextService.getCompressionContext(classId)
+
+      if (compressionContext) {
+        compressionContextInfo = `
+
+=== COURSE COMPRESSION CONTEXT ===
+Compressed Summary: ${compressionContext.compressed_summary || 'N/A'}
+Key Concepts: ${(compressionContext.key_concepts || []).join(', ') || 'N/A'}
+Learning Objectives: ${(compressionContext.learning_objectives || []).join(', ') || 'N/A'}
+Teaching Method: ${compressionContext.teaching_method || 'Standard approach'}
+Target Audience: ${compressionContext.target_audience || 'General learners'}
+Difficulty Level: ${compressionContext.difficulty_level || 'Not specified'}
+Prerequisites: ${(compressionContext.prerequisites || []).join(', ') || 'None'}
+Total Duration: ${compressionContext.total_duration_minutes || 0} minutes
+Quality Score: ${compressionContext.quality_score || 0}/1.0
+Version: ${compressionContext.version || 1}
+
+Sessions Context: ${JSON.stringify(compressionContext.session_contexts || [])}
+`
+      }
+    } catch (compressionError) {
+      console.error('Failed to load compression context:', compressionError)
+      // Continue without compression context
+    }
+
     // Enhanced system prompt with context
-    const enhancedSystemPrompt = SYSTEM_PROMPT + contextInfo
+    const enhancedSystemPrompt = SYSTEM_PROMPT + compressionContextInfo + contextInfo
 
     // Stream the response
     const result = await streamText({

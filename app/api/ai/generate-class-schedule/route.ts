@@ -792,6 +792,30 @@ export async function POST(req: Request) {
       // Don't fail the request, just log it
     }
 
+    // Extract and save compression context
+    try {
+      // Get organization_id from class
+      const { data: classInfo } = await supabase
+        .from('classes')
+        .select('organization_id')
+        .eq('id', classId)
+        .single()
+
+      if (classInfo) {
+        const { compressionContextService } = await import('@/lib/compression-context')
+        await compressionContextService.extractFromScheduleGeneration(
+          classId,
+          classInfo.organization_id,
+          scheduleContext,
+          requirements.courseOverview
+        )
+        console.log('Compression context extracted and saved successfully')
+      }
+    } catch (compressionError) {
+      console.error('Failed to extract compression context:', compressionError)
+      // Don't fail the request, just log it
+    }
+
     return NextResponse.json({
       success: true,
       sessions: sessions,

@@ -103,15 +103,45 @@ export async function POST(req: Request) {
     // Update session to mark content as generated
     await supabase
       .from('course_sessions')
-      .update({ 
+      .update({
         content_generated: true,
         chapter_id: chapter.id,
         updated_at: new Date().toISOString()
       })
       .eq('id', sessionId)
 
-    return NextResponse.json({ 
-      success: true, 
+    // Extract and save compression context for session generation
+    if (classId) {
+      try {
+        // Get organization_id from class
+        const { data: classInfo } = await supabase
+          .from('classes')
+          .select('organization_id')
+          .eq('id', classId)
+          .single()
+
+        if (classInfo) {
+          const { compressionContextService } = await import('@/lib/compression-context')
+          await compressionContextService.extractFromSessionGeneration(
+            classId,
+            classInfo.organization_id,
+            {
+              session_number: session.session_number,
+              session_id: sessionId,
+              title: sessionTitle
+            },
+            components
+          )
+          console.log('Compression context extracted from session generation')
+        }
+      } catch (compressionError) {
+        console.error('Failed to extract compression context from session:', compressionError)
+        // Don't fail the request, just log it
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
       chapter_id: chapter.id,
       components_count: components.length
     })
