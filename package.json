@@ -26,6 +26,7 @@
     "framer-motion": "^12.23.25",
     "ioredis": "^5.8.2",
     "lucide-react": "^0.555.0",
+    "motion": "^12.23.25",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

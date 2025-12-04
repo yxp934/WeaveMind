@@ -1,181 +1,172 @@
 'use client';
 
-import React from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp, Clock, Users, Award, BookOpen, Zap } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useInView } from 'react-intersection-observer';
+import { Clock, TrendingUp, Users, Heart, BarChart3, Zap } from 'lucide-react';
+import { RetroText } from './RetroText';
 
-const stats = [
+const benefits = [
   {
     icon: Clock,
-    value: '10x',
-    label: 'Faster Course Creation',
-    description: 'Generate complete lessons in minutes, not hours'
+    stat: '95%',
+    label: 'Time Saved',
+    description: 'Reduce preparation time from hours to minutes',
   },
   {
     icon: TrendingUp,
-    value: '85%',
-    label: 'Student Engagement',
-    description: 'Interactive components boost participation'
+    stat: '87%',
+    label: 'Better Engagement',
+    description: 'Students show increased interest',
   },
   {
     icon: Users,
-    value: '50K+',
-    label: 'Active Teachers',
-    description: 'Educators trust WeaveMind worldwide'
+    stat: '10K+',
+    label: 'Teachers',
+    description: 'Educators trust our platform',
   },
   {
-    icon: Award,
-    value: '95%',
-    label: 'Satisfaction Rate',
-    description: 'Teachers love the ease and quality'
+    icon: BarChart3,
+    stat: '40%',
+    label: 'Grade Improvement',
+    description: 'Average increase in performance',
   },
   {
-    icon: BookOpen,
-    value: '1M+',
-    label: 'Courses Created',
-    description: 'Vast library of AI-generated content'
+    icon: Heart,
+    stat: '98%',
+    label: 'Satisfaction',
+    description: 'Teachers report better balance',
   },
   {
     icon: Zap,
-    value: '24/7',
-    label: 'AI Assistant',
-    description: 'Round-the-clock educational support'
-  }
+    stat: '3s',
+    label: 'Generation Time',
+    description: 'From idea to complete materials',
+  },
 ];
 
-const additionalStats = [
-  { value: '200+', label: 'Schools' },
-  { value: '4.9/5', label: 'User Rating' },
-  { value: '50+', label: 'Subjects' },
-  { value: '30+', label: 'Countries' }
-];
+export function Benefits() {
+  const [ref, inView] = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+  });
 
-function StatCard({ icon: Icon, value, label, description, delay = 0 }: any) {
   return (
-    <motion.div
-      className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:border-white/40 transition-all"
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.6, delay }}
-      whileHover={{ scale: 1.05, y: -5 }}
-    >
+    <section id="benefits" className="relative py-24 bg-gradient-to-b from-[var(--color-light)] to-white overflow-hidden">
+      {/* Animated Background Orb */}
       <motion.div
-        className="w-16 h-16 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 flex items-center justify-center mb-6"
-        whileHover={{ rotate: 360 }}
-        transition={{ duration: 0.5 }}
-      >
-        <Icon className="w-8 h-8 text-white" />
-      </motion.div>
+        animate={{
+          scale: [1, 1.2, 1],
+          opacity: [0.05, 0.08, 0.05],
+        }}
+        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-[var(--color-primary)] blur-3xl"
+      />
 
-      <motion.div
-        className="text-5xl font-bold text-white mb-2"
-        initial={{ opacity: 0, scale: 0 }}
-        whileInView={{ opacity: 1, scale: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6, delay: delay + 0.3 }}
-      >
-        {value}
-      </motion.div>
-
-      <h3 className="text-xl font-semibold text-white mb-2">
-        {label}
-      </h3>
-      <p className="text-gray-300">
-        {description}
-      </p>
-    </motion.div>
-  );
-}
-
-export default function Benefits() {
-  return (
-    <section id="benefits" className="py-24 bg-gray-900 relative overflow-hidden">
-      {/* Animated background spheres */}
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
         <motion.div
-          className="absolute top-20 left-10 w-72 h-72 bg-purple-600/20 rounded-full blur-3xl"
-          animate={{
-            x: [0, 50, 0],
-            y: [0, 50, 0],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            repeatType: 'reverse'
-          }}
-        />
-        <motion.div
-          className="absolute bottom-20 right-10 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"
-          animate={{
-            x: [0, -50, 0],
-            y: [0, -30, 0],
-          }}
-          transition={{
-            duration: 25,
-            repeat: Infinity,
-            repeatType: 'reverse'
-          }}
-        />
-      </div>
-
-      <div className="container mx-auto px-6 relative z-10">
-        <motion.div
-          className="text-center mb-16"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
+          ref={ref}
+          initial={{ opacity: 0, y: 30 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-4 mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Empowering Educators Worldwide
+          <h2 className="text-4xl sm:text-5xl">
+            <RetroText text="Measurable Impact" />
           </h2>
-          <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-            Join thousands of teachers who are transforming education with AI
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Real results from educators who have transformed their teaching with AI
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {stats.map((stat, index) => (
-            <StatCard
-              key={index}
-              icon={stat.icon}
-              value={stat.value}
-              label={stat.label}
-              description={stat.description}
-              delay={index * 0.1}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {benefits.map((benefit, index) => (
+            <BenefitCard key={index} benefit={benefit} index={index} inView={inView} />
           ))}
         </div>
 
-        {/* Additional stats */}
+        {/* Additional Info */}
         <motion.div
-          className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 rounded-2xl p-8 border border-white/20 backdrop-blur-lg"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5, delay: 0.6 }}
+          className="mt-20 p-12 rounded-xl bg-white border border-gray-200"
         >
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {additionalStats.map((item, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, scale: 0 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
-              >
-                <div className="text-3xl md:text-4xl font-bold text-white mb-2">
-                  {item.value}
-                </div>
-                <div className="text-gray-300">
-                  {item.label}
-                </div>
-              </motion.div>
-            ))}
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-6">
+              <h3 className="text-3xl text-gray-900">Why Teachers Love WeaveMind</h3>
+              <ul className="space-y-4">
+                {[
+                  'Personalized content for every student level',
+                  'Seamless integration with existing tools',
+                  'Continuous learning and improvement',
+                  'Dedicated support from education experts',
+                ].map((item, index) => (
+                  <motion.li
+                    key={index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={inView ? { opacity: 1, x: 0 } : {}}
+                    transition={{ duration: 0.4, delay: 0.8 + index * 0.1 }}
+                    className="flex items-start gap-3"
+                  >
+                    <div className="size-6 rounded-full bg-[var(--color-primary)] flex items-center justify-center shrink-0 mt-0.5">
+                      <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-gray-600">{item}</span>
+                  </motion.li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { value: '500K+', label: 'Lessons Created' },
+                { value: '2M+', label: 'Students Impacted' },
+                { value: '150+', label: 'Countries' },
+                { value: '24/7', label: 'Support Available' },
+              ].map((stat, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={inView ? { opacity: 1, scale: 1 } : {}}
+                  transition={{ duration: 0.4, delay: 1 + index * 0.1 }}
+                  className="p-6 rounded-lg bg-[var(--color-light)] border border-gray-200 text-center space-y-2"
+                >
+                  <div className="text-3xl text-[var(--color-primary)]">
+                    {stat.value}
+                  </div>
+                  <div className="text-sm text-gray-600">{stat.label}</div>
+                </motion.div>
+              ))}
+            </div>
           </div>
         </motion.div>
       </div>
     </section>
+  );
+}
+
+function BenefitCard({ benefit, index, inView }: { benefit: typeof benefits[0]; index: number; inView: boolean }) {
+  const Icon = benefit.icon;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay: index * 0.1 }}
+      className="p-8 rounded-xl border border-gray-200 bg-white hover:border-[var(--color-primary)] transition-all duration-300 space-y-4"
+    >
+      <div className="flex items-start justify-between">
+        <Icon className="size-8 text-[var(--color-primary)]" />
+        <div className="text-right">
+          <div className="text-4xl text-[var(--color-primary)]">
+            {benefit.stat}
+          </div>
+          <div className="text-sm text-gray-500 mt-1">{benefit.label}</div>
+        </div>
+      </div>
+      <p className="text-gray-600">{benefit.description}</p>
+    </motion.div>
   );
 }

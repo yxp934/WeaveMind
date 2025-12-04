@@ -1,53 +1,35 @@
-'use client';
-
-import React from 'react';
-import { motion } from 'framer-motion';
-
 interface RetroTextProps {
-  children: React.ReactNode;
-  className?: string;
-  color?: string;
-  fontSize?: string;
+  text: string;
 }
 
-export default function RetroText({
-  children,
-  className = '',
-  color = '#9333EA',
-  fontSize = 'text-6xl'
-}: RetroTextProps) {
+export function RetroText({ text }: RetroTextProps) {
   return (
-    <div className={`relative inline-block ${fontSize} font-black ${className}`}>
-      {/* Background layers for retro effect */}
-      <motion.div
-        className="absolute inset-0 blur-md opacity-30"
-        style={{ color }}
-        initial={{ x: -10, y: -10 }}
-        animate={{ x: 0, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        {children}
-      </motion.div>
+    <div className="relative inline-block" style={{ minHeight: '1.2em' }}>
+      {/* Layer 1 - Semi-transparent */}
+      <div className="absolute left-[calc(50%-0.04px)] top-[calc(50%-0.5px)] translate-x-[-50%] translate-y-[-50%] opacity-50">
+        <div className="flex flex-col font-['Slackey:Regular',sans-serif] justify-center leading-[0] not-italic text-[#3fa11b] text-center text-nowrap">
+          <p className="leading-[normal] whitespace-pre">{text}</p>
+        </div>
+      </div>
 
-      <motion.div
-        className="absolute inset-0 blur-sm opacity-50"
-        style={{ color }}
-        initial={{ x: -5, y: -5 }}
-        animate={{ x: 0, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-      >
-        {children}
-      </motion.div>
+      {/* Layer 2 - Full opacity, same color */}
+      <div className="absolute left-[calc(50%-0.04px)] top-[calc(50%-0.5px)] translate-x-[-50%] translate-y-[-50%]">
+        <div className="flex flex-col font-['Slackey:Regular',sans-serif] justify-center leading-[0] not-italic text-[#3fa11b] text-center text-nowrap">
+          <p className="leading-[normal] whitespace-pre">{text}</p>
+        </div>
+      </div>
 
-      {/* Main text */}
-      <motion.div
-        className="relative z-10"
-        initial={{ x: 0, y: 0 }}
-        animate={{ x: 0, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        {children}
-      </motion.div>
+      {/* Layer 3 - Darker shade */}
+      <div className="absolute left-[calc(50%-0.04px)] top-[calc(50%-0.5px)] translate-x-[-50%] translate-y-[-50%]">
+        <div className="flex flex-col font-['Slackey:Regular',sans-serif] justify-center leading-[0] not-italic text-[#1f5a0f] text-center text-nowrap">
+          <p className="leading-[normal] whitespace-pre">{text}</p>
+        </div>
+      </div>
+
+      {/* Invisible text to maintain layout space */}
+      <div className="invisible flex flex-col font-['Slackey:Regular',sans-serif] justify-center leading-[0] not-italic text-center text-nowrap">
+        <p className="leading-[normal] whitespace-pre">{text}</p>
+      </div>
     </div>
   );
 }

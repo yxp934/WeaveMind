@@ -1,100 +1,92 @@
 'use client';
 
-import React from 'react';
-import { motion } from 'framer-motion';
-import { BookOpen, Users, Zap, Target } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useInView } from 'react-intersection-observer';
+import { MessageSquare, Sparkles, Download, CheckCircle } from 'lucide-react';
+import { RetroText } from './RetroText';
 
 const steps = [
   {
-    icon: BookOpen,
-    title: 'Create Your Course',
-    description: 'Enter your course topic and target grade level. Our AI understands your curriculum needs.',
-    color: 'from-purple-500 to-purple-600'
+    icon: MessageSquare,
+    title: 'Discuss Your Needs',
+    description: 'Have a natural conversation with AI about your teaching goals and student requirements.',
   },
   {
-    icon: Users,
+    icon: Sparkles,
     title: 'AI Generates Content',
-    description: 'Advanced AI agents create comprehensive lessons, interactive components, and assessments.',
-    color: 'from-blue-500 to-blue-600'
+    description: 'Watch as AI creates slides, schedules, and assignments tailored to your specifications in seconds.',
   },
   {
-    icon: Zap,
+    icon: CheckCircle,
     title: 'Review & Customize',
-    description: 'Fine-tune the generated content with our intuitive editor. Add your personal touch.',
-    color: 'from-indigo-500 to-indigo-600'
+    description: 'Review the generated content and make adjustments. AI learns from your preferences.',
   },
   {
-    icon: Target,
-    title: 'Launch & Monitor',
-    description: 'Publish your course and track student progress with real-time analytics.',
-    color: 'from-pink-500 to-pink-600'
-  }
+    icon: Download,
+    title: 'Deploy & Teach',
+    description: 'Export your materials in any format and share with students. Focus on teaching.',
+  },
 ];
 
-function StepCard({ step, index }: any) {
+export function HowItWorks() {
+  const [ref, inView] = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
+  });
+
   return (
-    <motion.div
-      className="relative"
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.6, delay: index * 0.2 }}
-    >
-      {/* Step number */}
-      <div className="absolute -top-4 -left-4 w-12 h-12 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg z-10">
-        {index + 1}
-      </div>
-
-      <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow h-full">
+    <section id="how-it-works" className="relative py-24 bg-white">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <motion.div
-          className={`w-16 h-16 rounded-xl bg-gradient-to-r ${step.color} flex items-center justify-center mb-6`}
-          whileHover={{ scale: 1.1, rotate: 5 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+          ref={ref}
+          initial={{ opacity: 0, y: 30 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-4 mb-20"
         >
-          <step.icon className="w-8 h-8 text-white" />
-        </motion.div>
-
-        <h3 className="text-2xl font-bold text-gray-900 mb-4">
-          {step.title}
-        </h3>
-        <p className="text-gray-600 leading-relaxed">
-          {step.description}
-        </p>
-      </div>
-
-      {/* Connector line */}
-      {index < steps.length - 1 && (
-        <div className="hidden lg:block absolute top-6 left-full w-full h-0.5 bg-gradient-to-r from-purple-300 to-transparent z-0" />
-      )}
-    </motion.div>
-  );
-}
-
-export default function HowItWorks() {
-  return (
-    <section id="how-it-works" className="py-24 bg-gradient-to-b from-white to-gray-50">
-      <div className="container mx-auto px-6">
-        <motion.div
-          className="text-center mb-16"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-        >
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            How WeaveMind Works
+          <h2 className="text-4xl sm:text-5xl">
+            <RetroText text="How It Works" />
           </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Transform your teaching with AI-powered course creation in just four simple steps
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            From conversation to complete curriculum in four simple steps
           </p>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {steps.map((step, index) => (
-            <StepCard key={index} step={step} index={index} />
+            <StepCard key={index} step={step} index={index} inView={inView} />
           ))}
         </div>
       </div>
     </section>
+  );
+}
+
+function StepCard({ step, index, inView }: { step: typeof steps[0]; index: number; inView: boolean }) {
+  const Icon = step.icon;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay: index * 0.15 }}
+      className="relative"
+    >
+      <div className="relative p-8 rounded-xl border border-gray-200 bg-white space-y-4">
+        {/* Step Number */}
+        <div className="absolute -top-4 -left-4 size-12 rounded-full bg-white border-2 border-[var(--color-primary)] flex items-center justify-center">
+          <span className="text-xl text-[var(--color-primary)]">{index + 1}</span>
+        </div>
+
+        {/* Icon */}
+        <div className="inline-flex p-3 rounded-lg bg-[var(--color-primary)]">
+          <Icon className="size-6 text-white" />
+        </div>
+
+        {/* Content */}
+        <h3 className="text-xl text-gray-900">{step.title}</h3>
+        <p className="text-gray-600 leading-relaxed">{step.description}</p>
+      </div>
+    </motion.div>
   );
 }

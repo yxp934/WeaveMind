@@ -1,174 +1,261 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useState, useEffect } from 'react';
+import { MessageCircle, Wand2, CheckCircle2, ArrowRight } from 'lucide-react';
+import { RetroText } from './RetroText';
 
 interface AIShowcaseProps {
-  isVisible: boolean;
   onNext: () => void;
 }
 
-export default function AIShowcase({ isVisible, onNext }: AIShowcaseProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [displayText, setDisplayText] = useState('');
-  const [showStats, setShowStats] = useState(false);
-
-  const steps = [
-    {
-      prompt: 'Create an interactive lesson about photosynthesis for 7th grade students',
-      response: 'Generated: "The Journey of Photosynthesis - An Interactive Adventure" with 5 engaging chapters, quiz questions, and visual diagrams. Average engagement time: 18 minutes per student.'
-    },
-    {
-      prompt: 'Add a practice problem set for advanced algebra',
-      response: 'Created: 15 adaptive practice problems with step-by-step solutions and hints. 89% of students completed all problems with improved understanding.'
-    },
-    {
-      prompt: 'Generate a final assessment for the unit on ecosystems',
-      response: 'Designed: Comprehensive assessment with 20 questions, real-world scenarios, and automated grading. Average score improvement: 23% over traditional tests.'
-    }
-  ];
+export function AIShowcase({ onNext }: AIShowcaseProps) {
+  const [displayedText, setDisplayedText] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const fullText = "I'll create a 15-slide presentation covering light reaction, dark reaction, and real-world applications. Including animations, diagrams, and quiz questions. Ready in 3 seconds...";
 
   useEffect(() => {
-    if (isVisible && currentStep === 0) {
-      setDisplayText('');
-      setShowStats(false);
-      const text = steps[0].response;
-      let i = 0;
-      const interval = setInterval(() => {
-        if (i < text.length) {
-          setDisplayText(text.slice(0, i + 1));
-          i++;
-        } else {
-          clearInterval(interval);
-          setTimeout(() => setShowStats(true), 500);
-        }
-      }, 30);
-      return () => clearInterval(interval);
-    }
-  }, [isVisible, currentStep]);
+    let currentIndex = 0;
+    const typingInterval = setInterval(() => {
+      if (currentIndex <= fullText.length) {
+        setDisplayedText(fullText.slice(0, currentIndex));
+        currentIndex++;
+      } else {
+        clearInterval(typingInterval);
+        setTimeout(() => setShowSuccess(true), 500);
+      }
+    }, 30); // Adjust speed here (lower = faster)
 
-  // Reset typing animation when step changes
-  useEffect(() => {
-    if (currentStep > 0) {
-      setDisplayText('');
-      setShowStats(false);
-      const text = steps[currentStep].response;
-      let i = 0;
-      const interval = setInterval(() => {
-        if (i < text.length) {
-          setDisplayText(text.slice(0, i + 1));
-          i++;
-        } else {
-          clearInterval(interval);
-          setTimeout(() => setShowStats(true), 500);
-        }
-      }, 30);
-      return () => clearInterval(interval);
-    }
-  }, [currentStep]);
-
-  const handleNext = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(prev => prev + 1);
-      setDisplayText('');
-      setShowStats(false);
-    } else {
-      onNext();
-    }
-  };
+    return () => clearInterval(typingInterval);
+  }, []);
 
   return (
-    <AnimatePresence>
-      {isVisible && (
+    <section className="relative min-h-screen flex items-center justify-center py-24 bg-gradient-to-b from-white to-[var(--color-light)] overflow-hidden">
+      {/* Animated Background Orb */}
+      <motion.div
+        animate={{
+          x: [0, 50, 0],
+          y: [0, -50, 0],
+          scale: [1, 1.2, 1],
+        }}
+        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[var(--color-primary)] opacity-5 blur-3xl"
+      />
+
+      <div className="relative max-w-7xl mx-auto px-6 lg:px-8 w-full">
         <motion.div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-4 mb-16"
         >
+          <h2 className="text-4xl sm:text-5xl">
+            <RetroText text="Watch AI Create in Real-Time" />
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            See how AI collaborates with teachers to generate complete lessons in seconds
+          </p>
+        </motion.div>
+
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          {/* AI Conversation Demo */}
           <motion.div
-            className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
-            initial={{ scale: 0.9, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.9, y: 20 }}
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="space-y-4"
           >
-            <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-3 h-3 rounded-full bg-red-400"></div>
-                  <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-                  <div className="w-3 h-3 rounded-full bg-green-400"></div>
+            <div className="space-y-4 p-6 rounded-xl bg-white border border-gray-200">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="flex items-start gap-4"
+              >
+                <div className="size-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                  <MessageCircle className="size-5 text-gray-600" />
                 </div>
-                <span className="text-sm opacity-80">AI Course Generation Demo</span>
-              </div>
-              <div className="bg-white/20 rounded-lg p-4">
-                <p className="text-sm font-medium mb-2">Teacher Prompt:</p>
-                <p className="text-lg">{steps[currentStep].prompt}</p>
-              </div>
+                <div className="flex-1 space-y-2">
+                  <div className="text-sm text-gray-500">Teacher</div>
+                  <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                    I need a slideshow about photosynthesis for 9th graders. Make it engaging with visuals.
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.3 }}
+                className="flex items-start gap-4"
+              >
+                <div className="size-10 rounded-full bg-[var(--color-primary)] flex items-center justify-center shrink-0">
+                  <Wand2 className="size-5 text-white" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div className="text-sm text-gray-500">EduAI</div>
+                  <div className="p-4 rounded-lg bg-[var(--color-light)] border border-[var(--color-primary)]/20 min-h-[100px]">
+                    {displayedText}
+                    {displayedText.length < fullText.length && (
+                      <motion.span
+                        animate={{ opacity: [1, 0] }}
+                        transition={{ duration: 0.5, repeat: Infinity }}
+                        className="inline-block w-0.5 h-4 bg-[var(--color-primary)] ml-1"
+                      />
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+
+              {showSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="flex items-center gap-3 p-4 rounded-lg bg-green-50 border border-green-200"
+                >
+                  <CheckCircle2 className="size-5 text-green-600" />
+                  <span className="text-green-700">Presentation created successfully!</span>
+                </motion.div>
+              )}
             </div>
 
-            <div className="p-8">
-              <div className="mb-6">
-                <div className="flex items-center space-x-2 mb-4">
-                  <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></div>
-                  <p className="text-sm font-medium text-gray-600">AI is generating your content...</p>
-                </div>
-
-                <motion.div
-                  className="bg-gray-50 rounded-lg p-6 min-h-[200px]"
-                  key={currentStep}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
-                  <p className="text-gray-800 text-lg leading-relaxed">
-                    {displayText}
-                    <motion.span
-                      className="inline-block ml-1 w-0.5 h-6 bg-purple-600"
-                      animate={{ opacity: [0, 1, 0] }}
-                      transition={{ duration: 1, repeat: Infinity }}
-                    />
-                  </p>
-                </motion.div>
-              </div>
-
-              <AnimatePresence>
-                {showStats && (
+            {showSuccess && (
+              <div className="grid grid-cols-3 gap-4">
+                {['15 Slides', '8 Diagrams', '5 Quizzes'].map((item, index) => (
                   <motion.div
-                    className="grid grid-cols-3 gap-4 mb-6"
+                    key={index}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                    className="p-4 rounded-lg bg-white border border-gray-200 text-center"
                   >
-                    <div className="bg-purple-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-purple-600">89%</p>
-                      <p className="text-sm text-gray-600">Engagement Rate</p>
+                    <div className="text-2xl text-[var(--color-primary)]">
+                      {item.split(' ')[0]}
                     </div>
-                    <div className="bg-blue-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-blue-600">23%</p>
-                      <p className="text-sm text-gray-600">Score Improvement</p>
-                    </div>
-                    <div className="bg-green-50 rounded-lg p-4 text-center">
-                      <p className="text-2xl font-bold text-green-600">18min</p>
-                      <p className="text-sm text-gray-600">Avg. Completion</p>
-                    </div>
+                    <div className="text-xs text-gray-500 mt-1">{item.split(' ')[1]}</div>
                   </motion.div>
-                )}
-              </AnimatePresence>
-
-              <motion.button
-                onClick={handleNext}
-                className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-lg font-medium hover:shadow-lg transition"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <span>{currentStep < steps.length - 1 ? 'Next Example' : 'See How It Works'}</span>
-                <ChevronRight className="w-5 h-5" />
-              </motion.button>
-            </div>
+                ))}
+              </div>
+            )}
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+
+          {/* Generated Content Preview */}
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="space-y-6"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+              className="relative aspect-video rounded-xl bg-white border border-gray-200 overflow-hidden"
+            >
+              {/* Slide Preview */}
+              <div className="absolute inset-0 p-8 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="inline-flex px-3 py-1 rounded-full bg-gray-100 text-xs text-gray-600">Slide 1 of 15</div>
+                  <h3 className="text-3xl">
+                    <RetroText text="Photosynthesis" />
+                  </h3>
+                  <p className="text-gray-600">Converting light energy into chemical energy</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="aspect-square rounded-lg bg-green-50 border border-green-200 flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <div className="size-12 mx-auto rounded-full bg-green-200" />
+                      <div className="text-xs text-gray-600">Light Reaction</div>
+                    </div>
+                  </div>
+                  <div className="aspect-square rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <div className="size-12 mx-auto rounded-full bg-blue-200" />
+                      <div className="text-xs text-gray-600">Dark Reaction</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {showSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                className="grid grid-cols-2 gap-4"
+              >
+                <div className="p-4 rounded-lg bg-white border border-gray-200 space-y-2">
+                  <div className="text-sm text-gray-600">Schedule</div>
+                  <div className="space-y-2">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '75%' }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                      className="h-2 bg-[var(--color-primary)]/20 rounded-full"
+                    />
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '50%' }}
+                      transition={{ duration: 0.5, delay: 0.4 }}
+                      className="h-2 bg-[var(--color-primary)]/20 rounded-full"
+                    />
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '66%' }}
+                      transition={{ duration: 0.5, delay: 0.5 }}
+                      className="h-2 bg-[var(--color-primary)]/20 rounded-full"
+                    />
+                  </div>
+                </div>
+                <div className="p-4 rounded-lg bg-white border border-gray-200 space-y-2">
+                  <div className="text-sm text-gray-600">Assignments</div>
+                  <div className="space-y-2">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '66%' }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                      className="h-2 bg-[var(--color-primary)]/20 rounded-full"
+                    />
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '75%' }}
+                      transition={{ duration: 0.5, delay: 0.4 }}
+                      className="h-2 bg-[var(--color-primary)]/20 rounded-full"
+                    />
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '50%' }}
+                      transition={{ duration: 0.5, delay: 0.5 }}
+                      className="h-2 bg-[var(--color-primary)]/20 rounded-full"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
+        </div>
+
+        {/* Next Button */}
+        {showSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.6 }}
+            className="flex justify-center mt-12"
+          >
+            <button
+              onClick={onNext}
+              className="group px-8 py-4 rounded-lg bg-[var(--color-primary)] hover:opacity-90 transition-all flex items-center gap-2"
+            >
+              <RetroText text="Next" />
+              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform text-white" />
+            </button>
+          </motion.div>
+        )}
+      </div>
+    </section>
   );
 }
