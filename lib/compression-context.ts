@@ -222,7 +222,7 @@ export class CompressionContextService {
           extraction_type: 'schedule_generation',
           source_type: 'schedule',
           extracted_content: scheduleContext,
-          metadata: { conversation_context }
+          metadata: { conversationContext }
         })
       }
 
@@ -252,9 +252,13 @@ export class CompressionContextService {
       // Extract concepts from generated components
       const concepts = this.extractConceptsFromComponents(generatedComponents)
 
-      // Update context
+      // Update context - convert JSONB to array, merge, then convert back
+      const existingConcepts = Array.isArray(context.key_concepts) ? context.key_concepts as string[] : []
+      const allConcepts = [...existingConcepts, ...concepts]
+      const uniqueConcepts = Array.from(new Set(allConcepts))
+
       const updatedInfo = {
-        key_concepts: [...new Set([...context.key_concepts, ...concepts])],
+        key_concepts: uniqueConcepts,
         session_contexts: [
           ...(context.session_contexts || []),
           {
@@ -309,7 +313,7 @@ export class CompressionContextService {
       }
     })
 
-    return [...new Set(concepts)] // Remove duplicates
+    return Array.from(new Set(concepts)) // Remove duplicates
   }
 
   /**
