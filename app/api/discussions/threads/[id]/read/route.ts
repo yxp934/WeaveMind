@@ -12,9 +12,9 @@ export async function POST(
   try {
     const { id: threadId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!user) {
+    if (authError || !user) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
         error: 'Unauthorized',

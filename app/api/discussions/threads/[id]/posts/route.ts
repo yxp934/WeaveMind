@@ -2,29 +2,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import type {
-  UpdatePostRequest,
+  CreatePostRequest,
   ApiResponse,
-  PostWithMeta
+  PostWithMeta,
+  PaginationParams,
+  PostFilters,
+  SortParams
 } from '@/types/discussion'
 
 // Validation schemas
-const updatePostSchema = z.object({
-  content: z.string().min(1, 'Content is required').optional(),
-  post_type: z.enum(['text', 'markdown', 'code']).optional(),
+const createPostSchema = z.object({
+  parent_post_id: z.string().uuid().optional(),
+  title: z.string().max(255, 'Title too long').optional(),
+  content: z.string().min(1, 'Content is required'),
+  post_type: z.enum(['text', 'markdown', 'code']).default('text'),
   attachments: z.array(z.any()).optional(),
 })
 
-// PUT /api/discussions/posts/[id] - Update a post
-export async function PUT(
+const getPostsSchema = z.object({
+  limit: z.string().optional().transform(val => val ? parseInt(val) : 20),
+  offset: z.string().optional().transform(val => val ? parseInt(val) : 0),
+  page: z.string().optional().transform(val => val ? parseInt(val) : 1),
+  depth: z.string().optional().transform(val => val ? parseInt(val) : undefined),
+  user_id: z.string().uuid().optional(),
+  sortBy: z.enum(['created_at', 'updated_at']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
+})
+
+// POST /api/discussions/threads/[id]/posts - Create a new post
+export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params
+    const { id: threadId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!user) {
+    if (authError || !user) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
         error: 'Unauthorized',
@@ -32,69 +47,100 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const validatedData = updatePostSchema.parse(body)
+    const validatedData = createPostSchema.parse(body)
 
-    // Get the post
-    const { data: post, error: fetchError } = await supabase
-      .from('discussion_posts')
-      .select(`
-        *,
-        thread:discussion_threads!discussion_posts_thread_id_fkey(
-          id,
-          class_id,
-          is_locked
-        )
-      `)
-      .eq('id', id)
+    // Get the discussion thread
+    const { data: thread, error: threadError } = await supabase
+      .from('discussion_threads')
+      .select('*')
+      .eq('id', threadId)
       .eq('is_deleted', false)
       .single()
 
-    if (fetchError || !post) {
+    if (threadError || !thread) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
-        error: 'Post not found',
+        error: 'Discussion thread not found',
       }, { status: 404 })
     }
 
     // Check if thread is locked
-    if (post.thread.is_locked) {
+    if (thread.is_locked) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
-        error: 'Cannot edit posts in a locked discussion thread',
+        error: 'Cannot post to a locked discussion thread',
       }, { status: 403 })
     }
 
-    // Check permissions - only the author can edit their post
-    if (post.user_id !== user.id) {
-      // Also allow teachers to edit posts
-      const { data: classMember } = await supabase
-        .from('class_members')
-        .select('role')
-        .eq('class_id', post.thread.class_id)
-        .eq('user_id', user.id)
+    // Check if user has access to this class
+    const { data: classMember } = await supabase
+      .from('class_members')
+      .select('role')
+      .eq('class_id', thread.class_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!classMember) {
+      return NextResponse.json<ApiResponse<never>>({
+        success: false,
+        error: 'Access denied',
+      }, { status: 403 })
+    }
+
+    // If this is a reply, validate parent post and depth
+    let depth = 0
+    if (validatedData.parent_post_id) {
+      const { data: parentPost } = await supabase
+        .from('discussion_posts')
+        .select('depth')
+        .eq('id', validatedData.parent_post_id)
+        .eq('thread_id', threadId)
+        .eq('is_deleted', false)
         .single()
 
-      if (!classMember || classMember.role !== 'teacher') {
+      if (!parentPost) {
         return NextResponse.json<ApiResponse<never>>({
           success: false,
-          error: 'Insufficient permissions. Only the author or teachers can edit this post.',
-        }, { status: 403 })
+          error: 'Parent post not found',
+        }, { status: 404 })
+      }
+
+      depth = parentPost.depth + 1
+
+      if (depth > 10) {
+        return NextResponse.json<ApiResponse<never>>({
+          success: false,
+          error: 'Maximum reply depth (10) exceeded',
+        }, { status: 400 })
+      }
+    } else {
+      // For root posts, title is required
+      if (!validatedData.title) {
+        return NextResponse.json<ApiResponse<never>>({
+          success: false,
+          error: 'Title is required for root posts',
+        }, { status: 400 })
       }
     }
 
-    // Prepare update data
-    const updateData: any = {
-      ...validatedData,
-      is_edited: true,
-      edit_count: post.edit_count + 1,
-      updated_at: new Date().toISOString(),
-    }
-
-    // Update the post
-    const { data: updatedPost, error } = await supabase
+    // Create the post
+    const { data: post, error } = await supabase
       .from('discussion_posts')
-      .update(updateData)
-      .eq('id', id)
+      .insert({
+        thread_id: threadId,
+        parent_post_id: validatedData.parent_post_id,
+        user_id: user.id,
+        title: validatedData.title,
+        content: validatedData.content,
+        post_type: validatedData.post_type,
+        attachments: validatedData.attachments || [],
+        depth,
+        reply_count: 0,
+        like_count: 0,
+        dislike_count: 0,
+        is_edited: false,
+        edit_count: 0,
+      })
       .select(`
         *,
         author:users!discussion_posts_user_id_fkey(
@@ -107,45 +153,59 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error('Error updating post:', error)
+      console.error('Error creating post:', error)
       return NextResponse.json<ApiResponse<never>>({
         success: false,
-        error: 'Failed to update post',
+        error: 'Failed to create post',
         details: error.message,
       }, { status: 500 })
     }
 
-    // Get reaction counts
-    const { data: reactionCounts } = await supabase
-      .from('discussion_posts')
-      .select('like_count, dislike_count')
-      .eq('id', id)
-      .single()
-
-    // Get user's current reaction
-    const { data: userReaction } = await supabase
-      .from('discussion_reactions')
-      .select('reaction_type')
-      .eq('post_id', id)
+    // Auto-join the discussion thread if not already a participant
+    const { data: existingParticipation } = await supabase
+      .from('discussion_participants')
+      .select('id')
+      .eq('thread_id', threadId)
       .eq('user_id', user.id)
       .single()
+
+    if (!existingParticipation) {
+      await supabase
+        .from('discussion_participants')
+        .insert({
+          thread_id: threadId,
+          user_id: user.id,
+          notification_level: 'normal',
+          post_count: 1,
+          first_post_at: new Date().toISOString(),
+          last_post_at: new Date().toISOString(),
+        })
+    }
+
+    // Update thread activity and post count
+    await supabase
+      .from('discussion_threads')
+      .update({
+        last_activity_at: new Date().toISOString(),
+        post_count: thread.post_count + 1,
+      })
+      .eq('id', threadId)
 
     const response: ApiResponse<PostWithMeta> = {
       success: true,
       data: {
-        ...updatedPost,
+        ...post,
         reactions: {
-          like_count: reactionCounts?.like_count || 0,
-          dislike_count: reactionCounts?.dislike_count || 0,
-          user_reaction: userReaction?.reaction_type,
+          like_count: 0,
+          dislike_count: 0,
         },
       },
     }
 
-    return NextResponse.json(response)
+    return NextResponse.json(response, { status: 201 })
 
   } catch (error: any) {
-    console.error('Update post error:', error)
+    console.error('Create post error:', error)
 
     if (error instanceof z.ZodError) {
       return NextResponse.json<ApiResponse<never>>({
@@ -163,147 +223,171 @@ export async function PUT(
   }
 }
 
-// DELETE /api/discussions/posts/[id] - Delete a post
-export async function DELETE(
+// GET /api/discussions/threads/[id]/posts - Get posts for a thread
+export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params
+    const { id: threadId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!user) {
+    if (authError || !user) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
         error: 'Unauthorized',
       }, { status: 401 })
     }
 
-    // Get the post
-    const { data: post, error: fetchError } = await supabase
-      .from('discussion_posts')
-      .select(`
-        *,
-        thread:discussion_threads!discussion_posts_thread_id_fkey(
-          id,
-          class_id,
-          is_locked,
-          created_by,
-          post_count
-        )
-      `)
-      .eq('id', id)
+    const { searchParams } = new URL(request.url)
+    const validatedParams = getPostsSchema.parse(Object.fromEntries(searchParams))
+
+    // Get the discussion thread
+    const { data: thread } = await supabase
+      .from('discussion_threads')
+      .select('class_id')
+      .eq('id', threadId)
       .eq('is_deleted', false)
       .single()
 
-    if (fetchError || !post) {
+    if (!thread) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
-        error: 'Post not found',
+        error: 'Discussion thread not found',
       }, { status: 404 })
     }
 
-    // Check permissions - only the author or teachers can delete
-    const isAuthor = post.user_id === user.id
+    // Check if user has access to this class
     const { data: classMember } = await supabase
       .from('class_members')
       .select('role')
-      .eq('class_id', post.thread.class_id)
+      .eq('class_id', thread.class_id)
       .eq('user_id', user.id)
       .single()
 
-    const isTeacher = classMember?.role === 'teacher'
-    const isThreadCreator = post.thread.created_by === user.id
-
-    if (!isAuthor && !isTeacher && !isThreadCreator) {
+    if (!classMember) {
       return NextResponse.json<ApiResponse<never>>({
         success: false,
-        error: 'Insufficient permissions. Only the author, teachers, or thread creator can delete this post.',
+        error: 'Access denied',
       }, { status: 403 })
     }
 
-    // Check if post has replies
-    const { count: replyCount } = await supabase
+    // Build query
+    let query = supabase
       .from('discussion_posts')
-      .select('*', { count: 'exact', head: true })
-      .eq('parent_post_id', id)
+      .select(`
+        *,
+        author:users!discussion_posts_user_id_fkey(
+          id,
+          username,
+          full_name,
+          avatar_url
+        )
+      `)
+      .eq('thread_id', threadId)
       .eq('is_deleted', false)
 
-    if (replyCount && replyCount > 0) {
-      // If post has replies, just mark as deleted instead of hard delete
-      // to maintain the thread structure
-      const { error } = await supabase
-        .from('discussion_posts')
-        .update({
-          is_deleted: true,
-          updated_at: new Date().toISOString(),
-          content: '[This post has been deleted]',
-          title: '[Deleted]',
-        })
-        .eq('id', id)
-
-      if (error) {
-        console.error('Error soft deleting post:', error)
-        return NextResponse.json<ApiResponse<never>>({
-          success: false,
-          error: 'Failed to delete post',
-          details: error.message,
-        }, { status: 500 })
-      }
-    } else {
-      // If no replies, we can do a hard delete
-      const { error } = await supabase
-        .from('discussion_posts')
-        .delete()
-        .eq('id', id)
-
-      if (error) {
-        console.error('Error deleting post:', error)
-        return NextResponse.json<ApiResponse<never>>({
-          success: false,
-          error: 'Failed to delete post',
-          details: error.message,
-        }, { status: 500 })
-      }
-
-      // Update parent post reply count if this was a reply
-      if (post.parent_post_id) {
-        await supabase
-          .rpc('decrement_post_reply_count', {
-            post_id: post.parent_post_id
-          })
-      }
+    // Apply filters
+    if (validatedParams.depth !== undefined) {
+      query = query.eq('depth', validatedParams.depth)
+    }
+    if (validatedParams.user_id) {
+      query = query.eq('user_id', validatedParams.user_id)
     }
 
-    // Update thread post count
-    await supabase
-      .from('discussion_threads')
-      .update({
-        post_count: Math.max(0, post.thread.post_count - 1),
-      })
-      .eq('id', post.thread_id)
+    // Apply sorting
+    const sortBy = validatedParams.sortBy || 'created_at'
+    const sortOrder = validatedParams.sortOrder || 'asc'
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' })
 
-    // Update participant post count if user is the author
-    if (isAuthor) {
-      await supabase
-        .from('discussion_participants')
-        .update({
-          post_count: Math.max(0, (post.user_participation?.post_count || 1) - 1),
-        })
-        .eq('thread_id', post.thread_id)
-        .eq('user_id', user.id)
+    // Apply pagination
+    const limit = validatedParams.limit || 20
+    const offset = validatedParams.offset || 0
+    query = query.range(offset, offset + limit - 1)
+
+    const { data: posts, error, count } = await query
+
+    if (error) {
+      console.error('Error fetching posts:', error)
+      return NextResponse.json<ApiResponse<never>>({
+        success: false,
+        error: 'Failed to fetch posts',
+        details: error.message,
+      }, { status: 500 })
     }
 
-    const response: ApiResponse<{ id: string }> = {
+    // Get user's reactions for these posts
+    const postIds = posts?.map(p => p.id) || []
+    const { data: reactions } = await supabase
+      .from('discussion_reactions')
+      .select('post_id, reaction_type')
+      .eq('user_id', user.id)
+      .in('post_id', postIds)
+
+    // Get reaction counts for all posts
+    const { data: reactionCounts } = await supabase
+      .from('discussion_posts')
+      .select('id, like_count, dislike_count')
+      .in('id', postIds)
+
+    // Enrich posts with reaction data
+    const enrichedPosts = posts?.map(post => {
+      const userReaction = reactions?.find(r => r.post_id === post.id)
+      const counts = reactionCounts?.find(c => c.id === post.id)
+
+      return {
+        ...post,
+        reactions: {
+          like_count: counts?.like_count || 0,
+          dislike_count: counts?.dislike_count || 0,
+          user_reaction: userReaction?.reaction_type,
+        },
+      }
+    }) || []
+
+    // Build tree structure for nested posts
+    const buildTree = (posts: PostWithMeta[], depth = 0): PostWithMeta[] => {
+      const roots = posts.filter(post => post.depth === depth)
+      return roots.map(post => ({
+        ...post,
+        children: buildTree(posts, depth + 1)
+          .filter(child => child.parent_post_id === post.id),
+      }))
+    }
+
+    const treePosts = buildTree(enrichedPosts)
+
+    const total = count || 0
+    const page = validatedParams.page || 1
+    const totalPages = Math.ceil(total / limit)
+
+    const response: ApiResponse<PostWithMeta[]> = {
       success: true,
-      data: { id },
+      data: treePosts,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
     }
 
     return NextResponse.json(response)
 
   } catch (error: any) {
-    console.error('Delete post error:', error)
+    console.error('Get posts error:', error)
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json<ApiResponse<never>>({
+        success: false,
+        error: 'Validation error',
+        details: error.errors,
+      }, { status: 400 })
+    }
+
     return NextResponse.json<ApiResponse<never>>({
       success: false,
       error: 'Internal server error',
