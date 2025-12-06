@@ -4,10 +4,10 @@ import { compressionContextService } from '@/lib/compression-context'
 
 export async function GET(
   req: Request,
-  { params }: { params: { classId: string } }
+  { params }: { params: Promise<{ classId: string }> }
 ) {
   try {
-    const classId = params.classId
+    const { classId } = await params
 
     if (!classId) {
       return NextResponse.json({ error: 'Class ID is required' }, { status: 400 })
@@ -56,10 +56,10 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { classId: string } }
+  { params }: { params: Promise<{ classId: string }> }
 ) {
   try {
-    const classId = params.classId
+    const { classId } = await params
     const {
       extraction_type,
       source_type,

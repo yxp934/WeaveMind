@@ -98,10 +98,10 @@ interface Alert {
   value: number
   threshold: number
   timestamp: Date
-  acknowledged:: boolean
+  acknowledged: boolean
+  resolved?: boolean
   metadata?: any
- boolean
-  resolved}
+}
 
 export class PerformanceMonitor {
   private supabase = createClient()

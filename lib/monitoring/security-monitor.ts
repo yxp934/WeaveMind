@@ -71,12 +71,12 @@ export class SecurityMonitor {
   // 安全威胁模式
   private static readonly THREAT_PATTERNS = {
     SQL_INJECTION: [
-      /('|(\\)|(\\)|;|--|#|/\\*)/,
+      /('|(\\)|(\\)|;|--|#|\/\\*)/,
       /(union|select|insert|update|delete|drop|create|alter)/i,
       /(script|javascript|vbscript|onload|onerror)/i
     ],
     XSS: [
-      /<script[^>]*>.*?<\\/script>/gi,
+      /<script[^>]*>.*?<\/script>/gi,
       /javascript:/gi,
       /on\\w+\\s*=/gi,
       /<img[^>]*onerror[^>]*>/gi

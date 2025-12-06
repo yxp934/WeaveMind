@@ -155,7 +155,7 @@ export function RealtimeProvider({
   /**
    * 订阅实时数据
    */
-  const subscribe = useCallback(async <T>(
+  const subscribe = useCallback(async <T extends any>(
     config: ConnectionConfig,
     callback: (data: T) => void
   ): Promise<UnsubscribeFunction> => {
