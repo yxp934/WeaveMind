@@ -17,6 +17,32 @@ WeaveMind is an AI-powered Learning Management System (LMS) that enables teacher
 - **AI Assignment Research**: Research assistance for assignment completion
 - **Compression Context System**: Intelligent context compression for better AI interactions
 
+### 🛠️ Advanced AI Tools System (NEW!)
+**15 AI Tools** providing intelligent assistance across all aspects of learning management:
+
+#### Discussion Management Tools (4)
+- **create_discussion_thread**: Create discussion topics with AI-generated guidance questions
+- **suggest_discussion_topics**: Intelligent topic suggestions based on course content
+- **analyze_discussion_engagement**: Engagement analysis with improvement recommendations
+- **moderate_discussion_content**: Smart content moderation and safety filtering
+
+#### Settings Optimization Tools (4)
+- **optimize_user_settings**: Behavior-based user settings optimization
+- **suggest_learning_preferences**: Learning preference recommendations
+- **analyze_usage_patterns**: Deep usage pattern analysis and optimization
+- **recommend_notification_settings**: Smart notification preferences
+
+#### Learning Path Tools (4)
+- **create_learning_pathway**: Personalized learning path generation
+- **optimize_pathway_progress**: Progress analysis and path optimization
+- **suggest_learning_resources**: Intelligent resource recommendations
+- **analyze_learning_efficiency**: Learning efficiency analysis and improvements
+
+#### Personalization Tools (3)
+- **generate_personalized_recommendations**: Comprehensive user profile-based recommendations
+- **adapt_content_difficulty**: Content difficulty adaptation based on user capabilities
+- **create_study_reminders**: Smart study reminders and time management
+
 ### 💬 Discussion System
 - **Discussion Threads**: Organize discussions by general, course, assignment, or announcement types
 - **Nested Replies**: Support for up to 10 levels of nested discussions
