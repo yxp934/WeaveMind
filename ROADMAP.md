@@ -154,3 +154,68 @@
 **Acceptance**
 - Clear plan and early implementation steps for region-aware routing, provider selection, and compliance as the platform scales.
 
+## Phase 10 – Frontend Restructuring & Backend Enhancement (8 weeks)
+
+**Goals**
+- Complete frontend restructuring with AI-dominant interface, onboarding flow, discussion system, notification system, and settings management.
+- Provide complete backend support for all new frontend features with robust architecture.
+
+**Scope**
+
+### 10.1 Data Model Extension (2 weeks, 60 person-hours)
+- Design and implement discussion system tables (discussion_threads, discussion_posts, discussion_participants)
+- Design and implement notification system tables (notifications, notification_preferences)
+- Design and implement settings management tables (user_settings, onboarding_progress)
+- Add self-learner role support (self_learner_pathways, self_learner_favorites)
+- Implement comprehensive RLS policies and security strategies
+- Create database migration scripts and apply to production
+
+### 10.2 API Endpoint Development (3 weeks, 90 person-hours)
+- Develop discussion system APIs (10 endpoints: thread CRUD, post CRUD, participant management)
+- Develop notification system APIs (8 endpoints: notification management, preference settings, batch operations)
+- Develop settings management APIs (4 endpoints: get/update settings, onboarding progress)
+- Develop self-learner APIs (6 endpoints: learning paths, course favorites, public content)
+- Enhance AI chat APIs (unified tool calling, specialized assistant endpoints)
+
+### 10.3 AI Tool System Upgrade (2 weeks, 60 person-hours)
+- Implement discussion management tools (create threads, publish posts, content moderation)
+- Implement notification management tools (send notifications, update preferences)
+- Implement settings management tools (update settings, track onboarding)
+- Implement class management tools (create class, manage members)
+- Establish unified tool registry center
+- Implement tool usage audit logs and rate limiting
+
+### 10.4 Real-time Features Implementation (2 weeks, 50 person-hours)
+- Integrate Supabase Realtime for real-time discussion updates
+- Implement real-time notification push system
+- Optimize connection management and performance
+- Implement offline message queue
+
+### 10.5 Security & Performance Optimization (1 week, 30 person-hours)
+- Implement discussion content moderation
+- Configure AI tool call rate limiting
+- Optimize RLS policies and access control
+- Implement data access auditing
+- Optimize database indexes and implement Redis caching
+
+### 10.6 Frontend Implementation (Parallel, 4 weeks)
+- Implement onboarding flow with role selection (teacher/student/self-learner)
+- Implement discussion system frontend interface
+- Implement notification system frontend interface
+- Implement settings management frontend interface
+- Integrate AI dialog box with tool calling
+- Ensure all navigation and routing work correctly
+
+**Acceptance**
+- All discussion features work properly with real-time updates
+- Notification system provides real-time push notifications
+- Settings management functions completely
+- Self-learner role operates normally
+- AI tool calling is smooth and secure
+- All frontend navigation and routing work correctly
+- API response time < 200ms
+- Real-time feature latency < 500ms
+- Support 1000+ concurrent users
+- RLS policies completely cover all new tables
+- Content moderation is effective
+

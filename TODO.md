@@ -766,3 +766,75 @@ try {
 
 **Status: Ready for Testing** ✅
 
+
+## 通知系统数据模型设计 (2025-12-07)
+
+### 功能概述:
+为WeaveMind LMS设计了完整的通知系统数据模型，支持多种通知类型、交付方式和用户偏好设置。
+
+### 实现内容:
+
+#### 数据库架构设计:
+- **notifications** - 通知主表，支持12种预定义通知类型
+- **notification_preferences** - 用户通知偏好表，支持细粒度设置
+- **notification_queue** - 通知队列表，支持批量处理和重试机制
+- **notification_read_status** - 通知阅读状态详细跟踪
+- **notification_templates** - 可重用通知模板系统
+
+#### 核心功能:
+1. **多类型通知支持**:
+   - course_update, assignment_due, new_discussion, discussion_reply
+   - grade_posted, class_announcement, system_alert, ai_assistance
+   - material_shared, deadline_reminder, feedback_received, peer_message
+
+2. **多渠道交付方式**:
+   - 应用内通知 (in_app)
+   - 邮件通知 (email)
+   - 推送通知 (push)
+   - JSONB配置支持未来扩展
+
+3. **优先级和范围控制**:
+   - 优先级: low, normal, high, urgent
+   - 作用范围: organization, class, individual
+
+4. **用户个性化设置**:
+   - 静默时间和免打扰功能
+   - 按组织和班级独立设置
+   - JSONB格式的灵活配置
+
+#### 技术特性:
+- ✅ **完善的RLS安全策略** - 多租户数据隔离
+- ✅ **优化的索引策略** - 支持快速查询未读通知
+- ✅ **自动清理机制** - 过期通知自动归档
+- ✅ **批量处理功能** - 支持批量创建和队列处理
+- ✅ **实时功能支持** - Supabase Realtime集成
+- ✅ **错误重试机制** - 队列失败自动重试
+- ✅ **统计和分析** - 预构建统计视图
+
+#### 文件创建:
+- `/supabase/migrations/023_notification_system.sql` - 完整的数据库迁移
+- `/NOTIFICATION_SYSTEM_DESIGN.md` - 详细的设计文档
+
+#### 主要函数和触发器:
+- `update_notification_read_status()` - 自动更新阅读状态
+- `cleanup_expired_notifications()` - 清理过期通知
+- `process_notification_batch()` - 批量处理队列
+- `get_user_notification_summary()` - 获取用户通知摘要
+- `create_bulk_notifications()` - 批量创建通知
+
+#### 性能优化:
+- 部分索引减少存储空间
+- 复合索引优化常用查询
+- JSONB字段GIN索引
+- 队列批量处理机制
+
+#### 安全特性:
+- RLS策略确保数据隔离
+- 用户只能访问自己的通知
+- 教师权限范围控制
+- 自动过期和清理机制
+
+**状态: 设计完成 ✅**
+**迁移文件: 023_notification_system.sql**
+**文档: NOTIFICATION_SYSTEM_DESIGN.md**
+
