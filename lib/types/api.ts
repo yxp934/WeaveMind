@@ -227,3 +227,144 @@ export interface FilterOption {
   value: any;
   operator?: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in' | 'between';
 }
+
+// ==================== AI聊天系统类型 ====================
+
+// 用户角色类型
+export type UserRole = 'teacher' | 'student' | 'self_learner';
+
+// 对话消息类型
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  toolsUsed?: string[];
+  metadata?: Record<string, any>;
+}
+
+// 对话上下文
+export interface ChatContext {
+  courseId?: string;
+  classId?: string;
+  organizationId?: string;
+  userRole: UserRole;
+  conversationHistory?: ChatMessage[];
+}
+
+// 聊天请求接口
+export interface ChatRequest {
+  message: string;
+  context?: ChatContext;
+  tools?: string[];
+}
+
+// 聊天响应数据
+export interface ChatResponseData {
+  message: string;
+  toolsUsed?: string[];
+  metadata?: Record<string, any>;
+}
+
+// 标准API响应格式（扩展）
+export interface StandardApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  metadata?: {
+    timestamp: string;
+    requestId?: string;
+  };
+}
+
+// ==================== 讨论助手类型 ====================
+
+// 讨论助手操作类型
+export type DiscussionAction = 'suggest_topics' | 'analyze_engagement' | 'suggest_replies' | 'moderate_discussion';
+
+// 讨论助手请求接口
+export interface DiscussionAssistantRequest {
+  action: DiscussionAction;
+  courseId?: string;
+  classId?: string;
+  threadId?: string;
+  context: {
+    userRole: UserRole;
+    organizationId: string;
+  };
+  parameters?: Record<string, any>;
+}
+
+// 讨论助手响应数据
+export interface DiscussionAssistantResponseData {
+  suggestions?: string[];
+  analysis?: {
+    engagement_score: number;
+    recommendations: string[];
+    participants: Array<{
+      user_id: string;
+      activity_level: number;
+      role: string;
+    }>;
+  };
+  replies?: Array<{
+    content: string;
+    reasoning: string;
+    tone: string;
+  }>;
+  moderation?: {
+    flagged_content: string[];
+    recommended_actions: string[];
+  };
+}
+
+// ==================== 设置顾问类型 ====================
+
+// 设置顾问操作类型
+export type SettingsAction = 'optimize_learning_path' | 'recommend_notifications' | 'personalize_interface' | 'analyze_usage';
+
+// 学习风格类型
+export type LearningStyle = 'visual' | 'auditory' | 'kinesthetic' | 'reading_writing';
+
+// 设置顾问请求接口
+export interface SettingsAdvisorRequest {
+  action: SettingsAction;
+  userId?: string;
+  context: {
+    userRole: UserRole;
+    organizationId: string;
+  };
+  preferences?: {
+    learningStyle?: LearningStyle;
+    difficulty?: string;
+    interests?: string[];
+  };
+}
+
+// 设置顾问响应数据
+export interface SettingsAdvisorResponseData {
+  recommendations?: Array<{
+    setting_category: string;
+    setting_key: string;
+    current_value: any;
+    recommended_value: any;
+    reasoning: string;
+    priority: 'low' | 'medium' | 'high';
+  }>;
+  learning_path?: {
+    current_stage: string;
+    next_steps: string[];
+    estimated_completion: string;
+    difficulty_adjustments: string[];
+  };
+  usage_analysis?: {
+    total_sessions: number;
+    average_session_duration: number;
+    most_used_features: string[];
+    learning_velocity: 'slow' | 'normal' | 'fast';
+    recommendations: string[];
+  };
+}

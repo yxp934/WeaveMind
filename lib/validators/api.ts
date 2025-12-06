@@ -50,13 +50,13 @@ export const userSettingSchema = z.object({
 });
 
 // 用户设置更新验证
-export const userSettingUpdateSchema = userSettingSchema.extend({
+export const userSettingUpdateSchema = userSettingSchema.safeExtend({
   scope: settingsScopeSchema,
   data_type: settingDataTypeSchema,
 });
 
 // 设置查询参数验证
-export const settingsQuerySchema = paginationSchema.extend({
+export const settingsQuerySchema = paginationSchema.safeExtend({
   scope: settingsScopeSchema.optional(),
   organization_id: uuidSchema.optional(),
   category: z.string().optional(),
@@ -96,7 +96,7 @@ export const onboardingProgressUpdateSchema = z.object({
 });
 
 // 引导进度查询参数验证
-export const onboardingProgressQuerySchema = paginationSchema.extend({
+export const onboardingProgressQuerySchema = paginationSchema.safeExtend({
   template_id: uuidSchema.optional(),
   status: onboardingStatusSchema.optional(),
 });
@@ -140,7 +140,7 @@ export const selfLearnerPathwayUpdateSchema = z.object({
 });
 
 // 学习路径查询参数验证
-export const selfLearnerPathwaysQuerySchema = paginationSchema.extend({
+export const selfLearnerPathwaysQuerySchema = paginationSchema.safeExtend({
   is_public: z.coerce.boolean().optional(),
   difficulty_level: difficultyLevelSchema.optional(),
   user_id: uuidSchema.optional(),
@@ -164,12 +164,12 @@ export const selfLearnerFavoriteSchema = z.object({
 });
 
 // 收藏创建验证
-export const selfLearnerFavoriteCreateSchema = selfLearnerFavoriteSchema.extend({
+export const selfLearnerFavoriteCreateSchema = selfLearnerFavoriteSchema.safeExtend({
   user_id: uuidSchema.optional(),
 });
 
 // 收藏查询参数验证
-export const selfLearnerFavoritesQuerySchema = paginationSchema.extend({
+export const selfLearnerFavoritesQuerySchema = paginationSchema.safeExtend({
   favorite_type: favoriteTypeSchema.optional(),
 });
 
