@@ -39,26 +39,23 @@ export default function RoleSelectPage() {
   const [loading, setLoading] = useState(false)
 
   const handleRoleSelect = (roleId: string) => {
-    console.log('Selecting role:', roleId, 'Current selected:', selectedRole)
     setSelectedRole(roleId)
   }
 
   const handleContinue = async () => {
-    if (!selectedRole) {
-      console.log('No role selected, cannot continue')
-      return
-    }
+    if (!selectedRole) return
 
-    console.log('Continuing with role:', selectedRole)
     setLoading(true)
 
     try {
-      // Simulate role selection
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Save role selection to localStorage for persistence
+      localStorage.setItem('selectedRole', selectedRole)
+
+      // Short delay for UX
+      await new Promise(resolve => setTimeout(resolve, 500))
 
       // Redirect based on selected role
       const targetPath = selectedRole === "self-learner" ? "/self-learner" : `/${selectedRole}`
-      console.log('Redirecting to:', targetPath)
       router.push(targetPath)
     } catch (error) {
       console.error("Error selecting role:", error)
