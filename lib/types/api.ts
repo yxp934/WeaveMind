@@ -262,6 +262,12 @@ export interface ChatRequest {
 export interface ChatResponseData {
   message: string;
   toolsUsed?: string[];
+  functionResults?: Array<{
+    type: 'class' | 'session' | 'assignment' | 'student' | 'schedule' | 'deadline' | 'progress';
+    data: any;
+    success: boolean;
+    toolName?: string;
+  }>;
   metadata?: Record<string, any>;
 }
 

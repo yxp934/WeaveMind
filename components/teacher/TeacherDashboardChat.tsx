@@ -2,19 +2,248 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Plus, Bot, User, BookOpen, Calendar, FileText, X } from 'lucide-react';
+import { Send, Plus, Bot, User, BookOpen, Calendar, FileText, X, Users, Clock, CheckCircle } from 'lucide-react';
 
 interface Message {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: Date;
+  functionResult?: {
+    type: 'class' | 'session' | 'assignment' | 'student' | 'schedule' | 'deadline' | 'progress';
+    data: any;
+    success: boolean;
+  };
 }
 
 interface TeacherDashboardChatProps {
   classes: Array<{ id: number; title: string }>;
   sessions: Array<{ id: number; title: string }>;
   assignments: Array<{ id: number; title: string }>;
+}
+
+// Function Result Card Component
+interface FunctionResultCardProps {
+  type: Message['functionResult']['type'];
+  data: any;
+  success: boolean;
+}
+
+function FunctionResultCard({ type, data, success }: FunctionResultCardProps) {
+  const getCardColor = () => {
+    switch (type) {
+      case 'class':
+        return 'from-[#B882B1]/10 to-[#B882B1]/5';
+      case 'session':
+        return 'from-[#3FA11B]/10 to-[#3FA11B]/5';
+      case 'assignment':
+        return 'from-[#B882B1]/10 to-[#B882B1]/5';
+      case 'student':
+        return 'from-[#4ECDC4]/10 to-[#4ECDC4]/5';
+      case 'schedule':
+        return 'from-[#3FA11B]/10 to-[#3FA11B]/5';
+      case 'deadline':
+        return 'from-[#FF6B6B]/10 to-[#FF6B6B]/5';
+      case 'progress':
+        return 'from-[#B882B1]/10 to-[#B882B1]/5';
+      default:
+        return 'from-gray-100 to-gray-50';
+    }
+  };
+
+  const getIcon = () => {
+    switch (type) {
+      case 'class':
+        return <BookOpen className="size-4 text-[#B882B1]" />;
+      case 'session':
+        return <Calendar className="size-4 text-[#3FA11B]" />;
+      case 'assignment':
+        return <FileText className="size-4 text-[#B882B1]" />;
+      case 'student':
+        return <Users className="size-4 text-[#4ECDC4]" />;
+      case 'schedule':
+        return <Clock className="size-4 text-[#3FA11B]" />;
+      case 'deadline':
+        return <Calendar className="size-4 text-[#FF6B6B]" />;
+      case 'progress':
+        return <CheckCircle className="size-4 text-[#B882B1]" />;
+      default:
+        return null;
+    }
+  };
+
+  const renderClassData = () => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium text-[#101828] text-[14px]">{data.className}</h4>
+        <span className="text-[12px] font-medium text-[#B882B1]">{data.averageProgress}%</span>
+      </div>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <div className="flex items-center gap-1">
+          <Users className="size-3" />
+          <span>{data.studentCount} students</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Calendar className="size-3" />
+          <span>{data.completedSessions}/{data.totalSessions} sessions</span>
+        </div>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-[#B882B1] rounded-full transition-all"
+          style={{ width: `${data.averageProgress}%` }}
+        />
+      </div>
+    </div>
+  );
+
+  const renderSessionData = () => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-[#101828] text-[14px]">{data.title}</h4>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <div className="flex items-center gap-1">
+          <Calendar className="size-3" />
+          <span>{data.date}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Clock className="size-3" />
+          <span>{data.time}</span>
+        </div>
+      </div>
+      {data.duration && (
+        <p className="text-[12px] text-[#6a7282]">{data.duration} minutes</p>
+      )}
+    </div>
+  );
+
+  const renderAssignmentData = () => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-[#101828] text-[14px]">{data.title}</h4>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <div className="flex items-center gap-1">
+          <Calendar className="size-3" />
+          <span>{data.dueDate}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Users className="size-3" />
+          <span>{data.submissionCount}/{data.totalStudents}</span>
+        </div>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-[#B882B1] rounded-full transition-all"
+          style={{
+            width: `${data.totalStudents > 0 ? (data.submissionCount / data.totalStudents) * 100 : 0}%`
+          }}
+        />
+      </div>
+    </div>
+  );
+
+  const renderStudentData = () => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-[#101828] text-[14px]">{data.name}</h4>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <span>{data.progress}% complete</span>
+        <span>{data.submissions} submissions</span>
+      </div>
+    </div>
+  );
+
+  const renderScheduleData = () => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-[#101828] text-[14px]">{data.title}</h4>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <div className="flex items-center gap-1">
+          <Calendar className="size-3" />
+          <span>{data.date}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Clock className="size-3" />
+          <span>{data.time}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderDeadlineData = () => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-[#101828] text-[14px]">{data.title}</h4>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <div className="flex items-center gap-1">
+          <Calendar className="size-3" />
+          <span>Due: {data.dueDate}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Users className="size-3" />
+          <span>{data.submissionCount}/{data.totalStudents} submitted</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderProgressData = () => (
+    <div className="space-y-2">
+      <h4 className="font-medium text-[#101828] text-[14px]">{data.className}</h4>
+      <div className="flex items-center gap-4 text-[12px] text-[#6a7282]">
+        <div className="flex items-center gap-1">
+          <Users className="size-3" />
+          <span>{data.studentCount} students</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <CheckCircle className="size-3" />
+          <span>{data.averageProgress}% progress</span>
+        </div>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-[#B882B1] rounded-full transition-all"
+          style={{ width: `${data.averageProgress}%` }}
+        />
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (type) {
+      case 'class':
+        return renderClassData();
+      case 'session':
+        return renderSessionData();
+      case 'assignment':
+        return renderAssignmentData();
+      case 'student':
+        return renderStudentData();
+      case 'schedule':
+        return renderScheduleData();
+      case 'deadline':
+        return renderDeadlineData();
+      case 'progress':
+        return renderProgressData();
+      default:
+        return <pre className="text-[12px] text-[#6a7282]">{JSON.stringify(data, null, 2)}</pre>;
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`bg-gradient-to-br ${getCardColor()} border border-gray-200 rounded-xl p-4 mt-2`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="size-8 rounded-lg bg-white/50 flex items-center justify-center">
+          {getIcon()}
+        </div>
+        <div className="flex-1 min-w-0">
+          {renderContent()}
+        </div>
+        {success && (
+          <CheckCircle className="size-5 text-[#3FA11B] flex-shrink-0" />
+        )}
+      </div>
+    </motion.div>
+  );
 }
 
 export function TeacherDashboardChat({ classes, sessions, assignments }: TeacherDashboardChatProps) {
@@ -146,6 +375,9 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           text: data.data?.message || data.data?.response || 'Response received.',
           isUser: false,
           timestamp: new Date(),
+          functionResult: data.data?.functionResults && data.data.functionResults.length > 0
+            ? data.data.functionResults[0] // Use first function result as the main card
+            : undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -208,6 +440,9 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           text: data.data?.message || data.data?.response || 'Response received.',
           isUser: false,
           timestamp: new Date(),
+          functionResult: data.data?.functionResults && data.data.functionResults.length > 0
+            ? data.data.functionResults[0] // Use first function result as the main card
+            : undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -306,6 +541,13 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
                     }`}
                   >
                     <p className="text-[14px] whitespace-pre-wrap">{message.text}</p>
+                    {message.functionResult && (
+                      <FunctionResultCard
+                        type={message.functionResult.type}
+                        data={message.functionResult.data}
+                        success={message.functionResult.success}
+                      />
+                    )}
                     <p className="text-[11px] text-[#6a7282] mt-1">
                       {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>

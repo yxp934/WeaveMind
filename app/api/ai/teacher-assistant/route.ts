@@ -208,9 +208,107 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
     })
 
     // 7. 构建响应数据
+    const toolCalls = await result.toolCalls
+    const toolsUsed = toolCalls?.map(call => call.toolName) || []
+
+    // 提取函数调用结果并转换为卡片数据
+    const functionResults = toolCalls?.map(call => {
+      const toolName = call.toolName
+      const toolResult = call.result
+
+      // 根据工具名称确定卡片类型
+      let cardType: 'class' | 'session' | 'assignment' | 'student' | 'schedule' | 'deadline' | 'progress' = 'progress'
+      let cardData: any = {}
+
+      try {
+        // 解析工具结果数据
+        const resultData = typeof toolResult === 'string' ? JSON.parse(toolResult) : toolResult
+
+        switch (toolName) {
+          case 'getClassProgress':
+          case 'getStudentStatus':
+            cardType = 'class'
+            cardData = {
+              className: resultData.className || resultData.name || 'Class',
+              averageProgress: resultData.averageProgress || resultData.progress || 0,
+              studentCount: resultData.studentCount || 0,
+              completedSessions: resultData.completedSessions || 0,
+              totalSessions: resultData.totalSessions || 0,
+            }
+            break
+
+          case 'getUpcomingDeadlines':
+            cardType = 'deadline'
+            cardData = {
+              assignments: resultData.assignments || [],
+              deadlines: resultData.deadlines || [],
+              count: resultData.count || 0,
+            }
+            break
+
+          case 'getSessionSchedule':
+            cardType = 'schedule'
+            cardData = {
+              sessions: resultData.sessions || [],
+              upcomingCount: resultData.upcomingCount || 0,
+              totalSessions: resultData.totalSessions || 0,
+            }
+            break
+
+          case 'createClass':
+            cardType = 'class'
+            cardData = {
+              className: resultData.className || resultData.name,
+              joinCode: resultData.joinCode,
+              description: resultData.description || '',
+              studentCount: 0,
+              averageProgress: 0,
+              completedSessions: 0,
+              totalSessions: 0,
+            }
+            break
+
+          case 'createSession':
+            cardType = 'session'
+            cardData = {
+              sessionTitle: resultData.sessionTitle || resultData.title,
+              className: resultData.className,
+              scheduledDate: resultData.scheduledDate,
+              duration: resultData.duration || 60,
+            }
+            break
+
+          case 'createAssignment':
+            cardType = 'assignment'
+            cardData = {
+              assignmentTitle: resultData.assignmentTitle || resultData.title,
+              className: resultData.className,
+              dueDate: resultData.dueDate,
+              totalPoints: resultData.totalPoints || 100,
+            }
+            break
+
+          default:
+            cardType = 'progress'
+            cardData = resultData
+        }
+      } catch (error) {
+        console.error('解析工具结果失败:', error)
+        cardData = { error: 'Failed to parse tool result' }
+      }
+
+      return {
+        type: cardType,
+        data: cardData,
+        success: true,
+        toolName
+      }
+    }) || []
+
     const responseData: ChatResponseData = {
       message: await result.text,
-      toolsUsed: (await result.toolCalls)?.map(call => call.toolName) || [],
+      toolsUsed,
+      functionResults,
       metadata: {
         userRole,
         organizationId,
