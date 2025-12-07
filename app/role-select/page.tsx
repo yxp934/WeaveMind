@@ -100,14 +100,12 @@ export default function RoleSelectPage() {
                   </p>
 
                   {/* Selection Indicator */}
-                  <div className={`flex items-center justify-center gap-2 ${
-                    isSelected ? 'text-green-600' : 'text-transparent'
-                  }`}>
-                    <div className={`w-2 h-2 rounded-full ${
-                      isSelected ? 'bg-green-600' : 'bg-transparent'
-                    }`} />
-                    <span className="text-sm">Selected</span>
-                  </div>
+                  {isSelected && (
+                    <div className="flex items-center justify-center gap-2 text-green-600">
+                      <div className="w-2 h-2 rounded-full bg-green-600" />
+                      <span className="text-sm">Selected</span>
+                    </div>
+                  )}
                 </button>
               </div>
             )
