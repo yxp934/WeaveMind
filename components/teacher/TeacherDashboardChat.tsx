@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Plus, Bot, User } from 'lucide-react';
+import { Send, Plus, Bot, User, BookOpen, Calendar, FileText, X } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -23,6 +23,20 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Context menu state
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextTab, setContextTab] = useState<'classes' | 'sessions' | 'assignments'>('classes');
+  const [selectedContext, setSelectedContext] = useState<{
+    classId?: string;
+    sessionId?: string;
+    assignmentId?: string;
+  }>({});
+  const [contextTags, setContextTags] = useState<Array<{
+    id: string;
+    title: string;
+    type: 'class' | 'session' | 'assignment';
+  }>>([]);
+
   const suggestions = [
     "How is Jimmy's assignment progress?",
     "Create a schedule for my Machine Learning class",
@@ -35,31 +49,71 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 模拟AI响应
-  const generateMockResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
+  // 处理上下文添加
+  const handleAddContext = (item: { id: string | number; title: string; type: 'class' | 'session' | 'assignment' }) => {
+    const newTag = {
+      id: `${item.type}-${item.id}`,
+      title: item.title,
+      type: item.type
+    };
 
-    if (lowerMessage.includes('jimmy') || lowerMessage.includes('progress')) {
-      return "Jimmy is making excellent progress! He has completed 85% of his assignments and shows strong understanding of the material. I've noticed he's particularly engaged with the interactive components.";
+    // 检查是否已存在
+    if (!contextTags.some(tag => tag.id === newTag.id)) {
+      setContextTags(prev => [...prev, newTag]);
+
+      // 更新选中的上下文
+      if (item.type === 'class') {
+        setSelectedContext(prev => ({ ...prev, classId: item.id.toString() }));
+      } else if (item.type === 'session') {
+        setSelectedContext(prev => ({ ...prev, sessionId: item.id.toString() }));
+      } else if (item.type === 'assignment') {
+        setSelectedContext(prev => ({ ...prev, assignmentId: item.id.toString() }));
+      }
     }
 
-    if (lowerMessage.includes('schedule') || lowerMessage.includes('machine learning')) {
-      return "I've created a comprehensive schedule for your Machine Learning class. Here's what I suggest:\n\nWeek 1-2: Introduction to ML concepts\nWeek 3-4: Supervised learning algorithms\nWeek 5-6: Unsupervised learning techniques\n\nWould you like me to add specific assignments and dates?";
-    }
+    setShowContextMenu(false);
+  };
 
-    if (lowerMessage.includes('assignment') || lowerMessage.includes('due')) {
-      return "Here are your assignments due this week:\n\n• Database Design Quiz - Due Wednesday\n• Final Project Draft - Due Friday\n• Peer Review Session - Due Sunday\n\nI recommend sending reminders to students who haven't submitted yet.";
-    }
+  // 处理上下文移除
+  const handleRemoveContext = (tag: { id: string; type: 'class' | 'session' | 'assignment' }) => {
+    setContextTags(prev => prev.filter(t => t.id !== tag.id));
 
-    if (lowerMessage.includes('performance') || lowerMessage.includes('overall')) {
-      return "Your overall performance metrics:\n\n📊 Class completion rate: 78%\n📈 Average assignment score: 82%\n👥 Student engagement: High\n⚡ Response time: < 24 hours\n\nYou're doing great! Your students are showing strong progress.";
+    // 更新选中的上下文
+    if (tag.type === 'class') {
+      setSelectedContext(prev => {
+        const newContext = { ...prev };
+        delete newContext.classId;
+        return newContext;
+      });
+    } else if (tag.type === 'session') {
+      setSelectedContext(prev => {
+        const newContext = { ...prev };
+        delete newContext.sessionId;
+        return newContext;
+      });
+    } else if (tag.type === 'assignment') {
+      setSelectedContext(prev => {
+        const newContext = { ...prev };
+        delete newContext.assignmentId;
+        return newContext;
+      });
     }
+  };
 
-    return "I'm here to help you manage your classes and improve student outcomes. You can ask me about student progress, assignment status, class schedules, or any other teaching-related questions. What would you like to know?";
+  // 获取图标
+  const getIcon = (type: 'class' | 'session' | 'assignment') => {
+    switch (type) {
+      case 'class':
+        return <BookOpen className="size-3" />;
+      case 'session':
+        return <Calendar className="size-3" />;
+      case 'assignment':
+        return <FileText className="size-3" />;
+    }
   };
 
   // 发送消息
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
     const userMessage: Message = {
@@ -70,21 +124,52 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageText = inputValue;
     setInputValue('');
     setIsTyping(true);
 
-    // 模拟AI响应延迟
-    setTimeout(() => {
-      const aiResponse: Message = {
+    try {
+      const response = await fetch('/api/ai/teacher-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          context: selectedContext,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: data.data.message || data.data.response,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        // 处理错误
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: '抱歉，我遇到了一个错误。请重试。',
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      // 处理网络错误
+      const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: generateMockResponse(inputValue),
+        text: '网络错误，请检查连接后重试。',
         isUser: false,
         timestamp: new Date(),
       };
-
-      setMessages(prev => [...prev, aiResponse]);
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   // 建议点击处理
@@ -199,6 +284,27 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
         )}
       </div>
 
+      {/* Context Tags Display */}
+      {contextTags.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-3 px-6">
+          {contextTags.map((tag) => (
+            <div
+              key={tag.id}
+              className="inline-flex items-center gap-2 bg-white/40 backdrop-blur-xl border border-gray-200 rounded-full px-3 py-1.5"
+            >
+              {getIcon(tag.type)}
+              <span className="text-[12px] text-[#101828]">{tag.title}</span>
+              <button
+                onClick={() => handleRemoveContext(tag)}
+                className="size-4 rounded-full hover:bg-gray-200 flex items-center justify-center"
+              >
+                <X className="size-3 text-[#6a7282]" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input Area */}
       <div className="border-t border-gray-200 px-6 py-4">
         <div className="flex items-center gap-3">
@@ -215,6 +321,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           </div>
 
           <button
+            onClick={() => setShowContextMenu(!showContextMenu)}
             className="size-9 border border-gray-300 rounded-[8px] flex items-center justify-center hover:border-[#B882B1] transition-colors"
             disabled={isTyping}
           >
@@ -230,6 +337,101 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           </button>
         </div>
       </div>
+
+      {/* Context Menu */}
+      <AnimatePresence>
+        {showContextMenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="absolute bottom-24 right-6 bg-white rounded-xl border border-gray-200 shadow-lg z-50 w-[320px]"
+          >
+            {/* Category Tabs */}
+            <div className="flex border-b border-gray-200">
+              <button
+                onClick={() => setContextTab('classes')}
+                className={`flex-1 px-4 py-3 text-[12px] flex items-center justify-center gap-2 ${
+                  contextTab === 'classes'
+                    ? 'bg-[#f3e8f4] text-[#B882B1] border-b-2 border-[#B882B1]'
+                    : 'text-gray-500'
+                }`}
+              >
+                <BookOpen className="size-4" />
+                Classes
+              </button>
+              <button
+                onClick={() => setContextTab('sessions')}
+                className={`flex-1 px-4 py-3 text-[12px] flex items-center justify-center gap-2 ${
+                  contextTab === 'sessions'
+                    ? 'bg-[#E8F5E9] text-[#3FA11B] border-b-2 border-[#3FA11B]'
+                    : 'text-gray-500'
+                }`}
+              >
+                <Calendar className="size-4" />
+                Sessions
+              </button>
+              <button
+                onClick={() => setContextTab('assignments')}
+                className={`flex-1 px-4 py-3 text-[12px] flex items-center justify-center gap-2 ${
+                  contextTab === 'assignments'
+                    ? 'bg-[#f3e8f4] text-[#B882B1] border-b-2 border-[#B882B1]'
+                    : 'text-gray-500'
+                }`}
+              >
+                <FileText className="size-4" />
+                Assignments
+              </button>
+            </div>
+
+            {/* List Items */}
+            <div className="max-h-[200px] overflow-y-auto p-2">
+              {contextTab === 'classes' && classes.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleAddContext({ ...item, type: 'class' as const })}
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 flex items-center gap-3 group"
+                >
+                  <div className="size-8 rounded-lg flex items-center justify-center bg-[#f3e8f4]">
+                    <BookOpen className="size-4 text-[#B882B1]" />
+                  </div>
+                  <span className="flex-1 text-[13px] text-[#101828] truncate">{item.title}</span>
+                  <Plus className="size-4 text-[#6a7282] opacity-0 group-hover:opacity-100" />
+                </button>
+              ))}
+
+              {contextTab === 'sessions' && sessions.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleAddContext({ ...item, type: 'session' as const })}
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 flex items-center gap-3 group"
+                >
+                  <div className="size-8 rounded-lg flex items-center justify-center bg-[#E8F5E9]">
+                    <Calendar className="size-4 text-[#3FA11B]" />
+                  </div>
+                  <span className="flex-1 text-[13px] text-[#101828] truncate">{item.title}</span>
+                  <Plus className="size-4 text-[#6a7282] opacity-0 group-hover:opacity-100" />
+                </button>
+              ))}
+
+              {contextTab === 'assignments' && assignments.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleAddContext({ ...item, type: 'assignment' as const })}
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 flex items-center gap-3 group"
+                >
+                  <div className="size-8 rounded-lg flex items-center justify-center bg-[#f3e8f4]">
+                    <FileText className="size-4 text-[#B882B1]" />
+                  </div>
+                  <span className="flex-1 text-[13px] text-[#101828] truncate">{item.title}</span>
+                  <Plus className="size-4 text-[#6a7282] opacity-0 group-hover:opacity-100" />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
