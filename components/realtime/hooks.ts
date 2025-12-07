@@ -269,3 +269,30 @@ export function useRealtimePublish() {
 
   return { publish };
 }
+
+// 通用实时Hook
+export function useRealtime(table: string, options: {
+  onUpdate?: (payload: any) => void;
+  onInsert?: (payload: any) => void;
+  onDelete?: (payload: any) => void;
+  filter?: string;
+}) {
+  const [isConnected, setIsConnected] = useState(false);
+  const [data, setData] = useState<any[]>([]);
+  const subscriptionRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    // TODO: 实现通用实时订阅逻辑
+    setIsConnected(true);
+
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+      setIsConnected(false);
+    };
+  }, [table, options.filter]);
+
+  return { data, isConnected };
+}

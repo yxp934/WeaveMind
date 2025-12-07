@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card"
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatCard } from "@/components/dashboard/stat-card"
-import { Building2, Users, BookOpen, BarChart3 } from "lucide-react"
+import { Building2, Users, BookOpen, BarChart3, Plus, Sparkles } from "lucide-react"
+import { motion } from "framer-motion"
 
 export default async function TeacherDashboard() {
   const supabase = await createClient()
@@ -79,107 +80,265 @@ export default async function TeacherDashboard() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <DashboardHeader
-          title="Dashboard"
-          subtitle="Manage your organizations, classes, and courses"
+          title="Welcome to WeaveMind"
+          subtitle="Your intelligent learning management platform"
           userEmail={user.email || ""}
         />
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-8">
+          {/* Welcome Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="mb-8"
+          >
+            <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-8 text-white relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-green-600/90 to-green-700/90" />
+              <div className="relative z-10 flex items-center justify-between">
+                <div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    Ready to transform education with AI?
+                  </h2>
+                  <p className="text-green-100 text-lg">
+                    Create engaging courses, manage classes, and track student progress with intelligent tools.
+                  </p>
+                </div>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Link href="/teacher/courses/new-ai">
+                    <Button className="bg-white text-green-600 hover:bg-green-50 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Create AI Course
+                    </Button>
+                  </Link>
+                </motion.div>
+              </div>
+              {/* Decorative elements */}
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
+              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-white/5 rounded-full" />
+            </div>
+          </motion.div>
+
           {/* Statistics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <StatCard
-              title="Organizations"
-              value={orgMemberships?.length || 0}
-              change={5}
-              icon={Building2}
-              iconColor="text-purple-600"
-              iconBgColor="bg-purple-100"
-            />
-            <StatCard
-              title="Classes"
-              value={classesCount || 0}
-              change={12}
-              icon={Users}
-              iconColor="text-blue-600"
-              iconBgColor="bg-blue-100"
-            />
-            <StatCard
-              title="Courses"
-              value={coursesCount || 0}
-              change={8}
-              icon={BookOpen}
-              iconColor="text-green-600"
-              iconBgColor="bg-green-100"
-            />
-            <Link href="/teacher/analytics">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+          >
+            <motion.div
+              whileHover={{ scale: 1.02, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
               <StatCard
-                title="Total Students"
-                value={studentsCount || 0}
-                change={15}
-                icon={BarChart3}
-                iconColor="text-orange-600"
-                iconBgColor="bg-orange-100"
+                title="Organizations"
+                value={orgMemberships?.length || 0}
+                change={5}
+                icon={Building2}
+                iconColor="text-purple-600"
+                iconBgColor="bg-purple-100"
               />
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.02, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <StatCard
+                title="Classes"
+                value={classesCount || 0}
+                change={12}
+                icon={Users}
+                iconColor="text-blue-600"
+                iconBgColor="bg-blue-100"
+              />
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.02, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <StatCard
+                title="Courses"
+                value={coursesCount || 0}
+                change={8}
+                icon={BookOpen}
+                iconColor="text-green-600"
+                iconBgColor="bg-green-100"
+              />
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.02, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <Link href="/teacher/analytics">
+                <StatCard
+                  title="Total Students"
+                  value={studentsCount || 0}
+                  change={15}
+                  icon={BarChart3}
+                  iconColor="text-orange-600"
+                  iconBgColor="bg-orange-100"
+                />
+              </Link>
+            </motion.div>
+          </motion.div>
+
+          {/* Quick Actions */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
+          >
+            <Link href="/teacher/organizations/new">
+              <motion.div
+                whileHover={{ scale: 1.02, y: -4 }}
+                className="bg-white rounded-xl p-6 border border-gray-200 hover:border-green-300 hover:shadow-lg transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-green-100 rounded-lg">
+                    <Plus className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Create Organization</h3>
+                    <p className="text-sm text-gray-600">Start your educational journey</p>
+                  </div>
+                </div>
+              </motion.div>
             </Link>
-          </div>
+
+            <Link href="/teacher/classes/new">
+              <motion.div
+                whileHover={{ scale: 1.02, y: -4 }}
+                className="bg-white rounded-xl p-6 border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-100 rounded-lg">
+                    <Users className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Create Class</h3>
+                    <p className="text-sm text-gray-600">Organize your students</p>
+                  </div>
+                </div>
+              </motion.div>
+            </Link>
+
+            <Link href="/teacher/courses/new-ai">
+              <motion.div
+                whileHover={{ scale: 1.02, y: -4 }}
+                className="bg-white rounded-xl p-6 border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-purple-100 rounded-lg">
+                    <Sparkles className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">AI Course Creation</h3>
+                    <p className="text-sm text-gray-600">Generate content with AI</p>
+                  </div>
+                </div>
+              </motion.div>
+            </Link>
+          </motion.div>
 
           {/* Organizations List */}
-          <Card className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900">My Organizations</h3>
-              <Link href="/teacher/organizations/new">
-                <Button>Create Organization</Button>
-              </Link>
-            </div>
-
-            {orgMemberships && orgMemberships.length > 0 ? (
-              <div className="space-y-4">
-                {orgMemberships.map((membership: any) => (
-                  <div
-                    key={membership.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 hover:shadow-md transition-all"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-100">
-                            <Building2 className="h-6 w-6 text-indigo-600" />
-                          </div>
-                          <div>
-                            <h4 className="font-semibold text-lg text-gray-900">
-                              {membership.organizations.name}
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              Role: <span className="font-medium capitalize">{membership.role}</span>
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <Link href={`/teacher/organizations/${membership.organization_id}`}>
-                        <Button variant="outline">Manage</Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                  <Building2 className="h-8 w-8 text-gray-400" />
-                </div>
-                <p className="text-gray-600 font-medium mb-2">
-                  You haven&apos;t created any organizations yet
-                </p>
-                <p className="text-sm text-gray-500 mb-6">
-                  Create your first organization to start managing classes and courses
-                </p>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+          >
+            <Card className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-gray-900">My Organizations</h3>
                 <Link href="/teacher/organizations/new">
-                  <Button>Create Your First Organization</Button>
+                  <Button className="bg-green-600 hover:bg-green-700">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Organization
+                  </Button>
                 </Link>
               </div>
-            )}
-          </Card>
+
+              {orgMemberships && orgMemberships.length > 0 ? (
+                <div className="space-y-4">
+                  {orgMemberships.map((membership: any, index: number) => (
+                    <motion.div
+                      key={membership.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.5, delay: index * 0.1 }}
+                      className="border border-gray-200 rounded-lg p-6 hover:border-green-300 hover:shadow-md transition-all"
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-4">
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-green-100 to-green-200"
+                            >
+                              <Building2 className="h-7 w-7 text-green-600" />
+                            </motion.div>
+                            <div>
+                              <h4 className="font-semibold text-lg text-gray-900 mb-1">
+                                {membership.organizations.name}
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                Role: <span className="font-medium capitalize text-green-600">{membership.role}</span>
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Created {new Date(membership.organizations.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <motion.div
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                        >
+                          <Link href={`/teacher/organizations/${membership.organization_id}`}>
+                            <Button variant="outline" className="border-green-200 text-green-600 hover:bg-green-50">
+                              Manage
+                            </Button>
+                          </Link>
+                        </motion.div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center py-16"
+                >
+                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-green-100 to-green-200 mb-6">
+                    <Building2 className="h-10 w-10 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Start your educational journey
+                  </h3>
+                  <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                    Create your first organization to start managing classes, courses, and students with AI-powered tools
+                  </p>
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Link href="/teacher/organizations/new">
+                      <Button className="bg-green-600 hover:bg-green-700 text-lg px-8 py-3">
+                        <Plus className="h-5 w-5 mr-2" />
+                        Create Your First Organization
+                      </Button>
+                    </Link>
+                  </motion.div>
+                </motion.div>
+              )}
+            </Card>
+          </motion.div>
         </main>
       </div>
     </div>
