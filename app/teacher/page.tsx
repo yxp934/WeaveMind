@@ -17,6 +17,7 @@ export default function TeacherDashboard() {
         if (error) {
           console.error('Auth error:', error);
           setError(error.message);
+          setLoading(false);
           return;
         }
 
