@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings,
@@ -29,692 +29,1003 @@ import {
   Sparkles,
   Check,
   AlertCircle,
-  Info
+  Info,
+  Upload,
+  Eye,
+  EyeOff,
+  Trash2,
+  ChevronDown
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { apiClient } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
+import { RetroTitle } from '@/components/teacher/RetroTitle';
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from 'next/navigation';
 
-// 设置项类型
-interface UserSettings {
-  user_id: string;
-  theme: 'light' | 'dark' | 'auto';
-  language: string;
-  timezone: string;
-  email_frequency: 'immediate' | 'daily' | 'weekly' | 'never';
-  ai_assistance_enabled: boolean;
-  auto_save_enabled: boolean;
-  email_notifications: boolean;
-  push_notifications: boolean;
-  discussion_notifications: boolean;
-  assignment_notifications: boolean;
-  grade_notifications: boolean;
-}
+type SettingsCategory = 'profile' | 'account' | 'teaching' | 'ai' | 'notifications' | 'appearance';
 
-// 组织设置类型
-interface OrganizationSettings {
-  organization_id: string;
-  name: string;
-  description: string;
-  website?: string;
-  ai_optimization_enabled: boolean;
-  auto_grading_enabled: boolean;
-  discussion_moderation_enabled: boolean;
-}
+interface SettingsProps {}
 
-export default function TeacherSettingsPage() {
-  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
-  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
-  const [activeTab, setActiveTab] = useState('profile');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [hasChanges, setHasChanges] = useState(false);
+export default function TeacherSettingsPage({}: SettingsProps) {
+  const router = useRouter();
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>('profile');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // AI优化建议
-  const [aiSuggestions, setAiSuggestions] = useState([
-    {
-      id: 1,
-      type: 'optimization',
-      title: '启用AI辅助教学',
-      description: '开启AI助手可以帮助您更高效地管理课堂和个性化教学',
-      action: 'enable_ai',
-      impact: 'high'
-    },
-    {
-      id: 2,
-      type: 'notification',
-      title: '优化通知设置',
-      description: '建议开启作业和讨论通知，及时了解学生学习动态',
-      action: 'optimize_notifications',
-      impact: 'medium'
-    },
-    {
-      id: 3,
-      type: 'productivity',
-      title: '启用自动保存',
-      description: '开启自动保存可以防止意外丢失教学内容',
-      action: 'enable_auto_save',
-      impact: 'low'
+  // Profile Settings State
+  const [profileData, setProfileData] = useState({
+    fullName: 'Dr. Sarah Chen',
+    email: 'sarah.chen@university.edu',
+    phone: '+1 (555) 123-4567',
+    organization: 'Stanford University',
+    department: 'Computer Science',
+    title: 'Professor',
+    bio: 'Passionate about AI and Machine Learning education. 10+ years of teaching experience.'
+  });
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
+  // Account Settings State
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
+  const [connectedAccounts, setConnectedAccounts] = useState({
+    google: true,
+    microsoft: false
+  });
+
+  // Teaching Preferences State
+  const [teachingPrefs, setTeachingPrefs] = useState({
+    defaultDuration: '1h',
+    gradingScale: 'percentage',
+    lateSubmission: 'deduction',
+    classCapacity: '30'
+  });
+
+  // AI Assistant State
+  const [aiPrefs, setAiPrefs] = useState({
+    enableSuggestions: true,
+    autoGenerateContent: false,
+    contextMemory: '7days',
+    responseStyle: 'professional',
+    autoOutline: true
+  });
+
+  // Notifications State
+  const [notifPrefs, setNotifPrefs] = useState({
+    emailNotifications: true,
+    pushNotifications: true,
+    sessionReminder: '30min',
+    assignmentDue: true,
+    studentSubmission: true,
+    lateSubmission: true,
+    gradeReminder: true
+  });
+
+  // Appearance State
+  const [appearancePrefs, setAppearancePrefs] = useState({
+    language: 'en',
+    timezone: 'America/Los_Angeles',
+    dateFormat: 'MM/DD/YYYY',
+    timeFormat: '12h',
+    weekStart: 'sunday'
+  });
+
+  const categories = [
+    { id: 'profile' as const, label: 'Profile', icon: User, color: '#B882B1' },
+    { id: 'account' as const, label: 'Account', icon: Shield, color: '#3FA11B' },
+    { id: 'teaching' as const, label: 'Teaching', icon: BookOpen, color: '#B882B1' },
+    { id: 'ai' as const, label: 'AI Assistant', icon: Bot, color: '#3FA11B' },
+    { id: 'notifications' as const, label: 'Notifications', icon: Bell, color: '#B882B1' },
+    { id: 'appearance' as const, label: 'Appearance', icon: Globe, color: '#3FA11B' }
+  ];
+
+  const currentCategory = categories.find(c => c.id === activeCategory)!;
+
+  const handleCategoryChange = (newCategory: SettingsCategory) => {
+    if (hasUnsavedChanges) {
+      const confirmed = window.confirm('You have unsaved changes. Do you want to discard them?');
+      if (!confirmed) return;
+      setHasUnsavedChanges(false);
     }
-  ]);
+    setActiveCategory(newCategory);
+  };
 
-  // 加载设置
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileImage(reader.result as string);
+        setHasUnsavedChanges(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
-  const loadSettings = async () => {
+  const handleSave = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      const userId = 'current-user-id'; // 需要从认证上下文获取
-
-      // 加载用户设置
-      const userData = await apiClient.settings.getSettings(userId).catch(() => null);
-      const orgData = null; // TODO: 实现组织设置获取
-
-      if (userData && userData.length > 0) {
-        setUserSettings(userData[0]);
-      } else {
-        // 默认设置
-        setUserSettings({
-          user_id: userId,
-          theme: 'auto',
-          language: 'zh-CN',
-          timezone: 'Asia/Shanghai',
-          email_frequency: 'daily',
-          ai_assistance_enabled: false,
-          auto_save_enabled: true,
-          email_notifications: true,
-          push_notifications: true,
-          discussion_notifications: true,
-          assignment_notifications: true,
-          grade_notifications: true
-        });
-      }
-
-      if (orgData) {
-        setOrganizationSettings(orgData);
-      }
-
+      // Simulate save
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setHasUnsavedChanges(false);
+      alert('Settings saved successfully!');
     } catch (error) {
-      console.error('Error loading settings:', error);
+      alert('Failed to save settings');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 保存设置
-  const saveSettings = async () => {
-    if (!userSettings) return;
-
-    try {
-      setIsSaving(true);
-      setSaveStatus('saving');
-
-      // TODO: 实现设置保存功能
-      // await apiClient.settings.updateSetting(userSettings.user_id, {
-      //   setting_category: 'user_preferences',
-      //   setting_key: 'theme',
-      //   setting_value: userSettings.theme,
-      //   data_type: 'string'
-      // });
-
-      setSaveStatus('saved');
-      setHasChanges(false);
-
-      // 3秒后重置状态
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } finally {
-      setIsSaving(false);
-    }
+  const handleDeleteAccount = () => {
+    setShowDeleteDialog(false);
+    alert('Account deletion cancelled');
   };
 
-  // 更新用户设置
-  const updateUserSetting = <K extends keyof UserSettings>(
-    key: K,
-    value: UserSettings[K]
-  ) => {
-    if (!userSettings) return;
+  const ToggleSwitch = ({ enabled, onChange, color }: { enabled: boolean; onChange: () => void; color: string }) => (
+    <motion.button
+      whileTap={{ scale: 0.95 }}
+      onClick={onChange}
+      className="relative w-14 h-7 rounded-full transition-colors"
+      style={{ backgroundColor: enabled ? color : '#d1d5db' }}
+    >
+      <motion.div
+        className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md"
+        animate={{ x: enabled ? 28 : 0 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+      />
+    </motion.button>
+  );
 
-    setUserSettings(prev => prev ? { ...prev, [key]: value } : null);
-    setHasChanges(true);
-  };
+  const InputField = ({ label, value, onChange, type = 'text', placeholder, color }: any) => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all"
+        style={{ '--tw-border-opacity': '1' } as any}
+        onFocus={(e) => e.target.style.borderColor = color}
+        onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
+      />
+    </div>
+  );
 
-  // 更新组织设置
-  const updateOrgSetting = <K extends keyof OrganizationSettings>(
-    key: K,
-    value: OrganizationSettings[K]
-  ) => {
-    if (!organizationSettings) return;
-
-    setOrganizationSettings(prev => prev ? { ...prev, [key]: value } : null);
-    setHasChanges(true);
-  };
-
-  // 执行AI建议
-  const applyAiSuggestion = (action: string) => {
-    switch (action) {
-      case 'enable_ai':
-        updateUserSetting('ai_assistance_enabled', true);
-        break;
-      case 'optimize_notifications':
-        updateUserSetting('discussion_notifications', true);
-        updateUserSetting('assignment_notifications', true);
-        updateUserSetting('grade_notifications', true);
-        break;
-      case 'enable_auto_save':
-        updateUserSetting('auto_save_enabled', true);
-        break;
-    }
-  };
-
-  // 获取影响级别颜色
-  const getImpactColor = (impact: string) => {
-    const colors = {
-      high: 'bg-red-100 text-red-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      low: 'bg-green-100 text-green-800'
-    };
-    return colors[impact as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
-
-  const tabs = [
-    { id: 'profile', label: '个人资料', icon: User },
-    { id: 'notifications', label: '通知设置', icon: Bell },
-    { id: 'appearance', label: '外观设置', icon: Palette },
-    { id: 'ai', label: 'AI助手', icon: Bot },
-    { id: 'organization', label: '组织设置', icon: Shield },
-    { id: 'ai-recommendations', label: 'AI优化建议', icon: Sparkles }
-  ];
-
-  const languages = [
-    { value: 'zh-CN', label: '简体中文' },
-    { value: 'zh-TW', label: '繁体中文' },
-    { value: 'en-US', label: 'English' },
-    { value: 'ja-JP', label: '日本語' },
-    { value: 'ko-KR', label: '한국어' }
-  ];
-
-  const timezones = [
-    { value: 'Asia/Shanghai', label: '北京时间 (UTC+8)' },
-    { value: 'Asia/Tokyo', label: '东京时间 (UTC+9)' },
-    { value: 'America/New_York', label: '纽约时间 (UTC-5)' },
-    { value: 'Europe/London', label: '伦敦时间 (UTC+0)' }
-  ];
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">加载设置中...</p>
-        </div>
-      </div>
-    );
-  }
+  const SelectField = ({ label, value, onChange, options, color }: any) => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+      <select
+        value={value}
+        onChange={onChange}
+        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all cursor-pointer"
+        onFocus={(e) => e.target.style.borderColor = color}
+        onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
+      >
+        {options.map((option: any) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 页面头部 */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">设置管理</h1>
-              <p className="mt-2 text-gray-600">个性化您的教学体验和管理偏好</p>
+    <div className="min-h-screen bg-[#fafafa]">
+      {/* Top Navigation */}
+      <div className="bg-white border-b border-gray-200 px-8 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-[#B882B1] text-[32px] cursor-pointer hover:opacity-80 transition-opacity font-bold" onClick={() => router.push('/teacher')}>
+              WeaveMind
             </div>
-            <div className="flex items-center space-x-3">
-              {hasChanges && (
-                <Badge variant="outline" className="text-orange-600 border-orange-200">
-                  有未保存的更改
-                </Badge>
-              )}
-              <Button
-                onClick={saveSettings}
-                disabled={!hasChanges || isSaving}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {isSaving ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : saveStatus === 'saved' ? (
-                  <Check className="w-4 h-4 mr-2" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                {saveStatus === 'saving' ? '保存中...' :
-                 saveStatus === 'saved' ? '已保存' :
-                 saveStatus === 'error' ? '保存失败' : '保存设置'}
-              </Button>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search settings..."
+                className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-[320px] focus:outline-none focus:border-[#B882B1] transition-colors"
+              />
             </div>
+            <button
+              onClick={() => router.push('/teacher')}
+              className="px-6 py-2 bg-[#B882B1] text-white rounded-lg hover:bg-[#A172A1] transition-colors"
+            >
+              Back to Dashboard
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* 左侧：导航标签 */}
-          <div className="lg:col-span-1">
-            <Card className="p-4">
-              <nav className="space-y-1">
-                {tabs.map(tab => {
-                  const IconComponent = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors",
-                        activeTab === tab.id
-                          ? "bg-blue-100 text-blue-700"
-                          : "text-gray-600 hover:bg-gray-100"
-                      )}
+      <div className="flex gap-8 mx-auto max-w-[1800px] pt-32 px-12 pb-12">
+        {/* Left Sidebar Navigation */}
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="w-[280px] shrink-0"
+        >
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sticky top-32">
+            <div className="space-y-2">
+              {categories.map((category) => {
+                const Icon = category.icon;
+                const isActive = activeCategory === category.id;
+                return (
+                  <motion.button
+                    key={category.id}
+                    onClick={() => handleCategoryChange(category.id)}
+                    whileHover={{ x: 4 }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                      isActive
+                        ? 'shadow-md'
+                        : 'hover:bg-gray-50'
+                    }`}
+                    style={{
+                      backgroundColor: isActive ? `${category.color}15` : 'transparent',
+                      borderLeft: isActive ? `4px solid ${category.color}` : '4px solid transparent'
+                    }}
+                  >
+                    <Icon
+                      size={20}
+                      style={{ color: isActive ? category.color : '#9ca3af' }}
+                    />
+                    <span
+                      className={`text-[15px] ${isActive ? 'font-semibold' : 'font-medium'}`}
+                      style={{ color: isActive ? category.color : '#6b7280' }}
                     >
-                      <IconComponent className="w-5 h-5" />
-                      <span className="font-medium">{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </Card>
+                      {category.label}
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
           </div>
+        </motion.div>
 
-          {/* 右侧：设置内容 */}
-          <div className="lg:col-span-3">
-            <Card className="p-6">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {/* 个人资料 */}
-                  {activeTab === 'profile' && (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">个人资料</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="language">语言</Label>
-                            <Select
-                              value={userSettings?.language}
-                              onValueChange={(value) => updateUserSetting('language', value as any)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {languages.map(lang => (
-                                  <SelectItem key={lang.value} value={lang.value}>
-                                    {lang.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="timezone">时区</Label>
-                            <Select
-                              value={userSettings?.timezone}
-                              onValueChange={(value) => updateUserSetting('timezone', value as any)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {timezones.map(tz => (
-                                  <SelectItem key={tz.value} value={tz.value}>
-                                    {tz.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="email-frequency">邮件频率</Label>
-                            <Select
-                              value={userSettings?.email_frequency}
-                              onValueChange={(value) => updateUserSetting('email_frequency', value as any)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="immediate">立即</SelectItem>
-                                <SelectItem value="daily">每日</SelectItem>
-                                <SelectItem value="weekly">每周</SelectItem>
-                                <SelectItem value="never">从不</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
+        {/* Main Content Area */}
+        <div className="flex-1 pb-12">
+          <motion.div
+            key={activeCategory}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* Header */}
+            <div className="mb-8">
+              <RetroTitle
+                text={currentCategory.label}
+                className="mb-2"
+                color={currentCategory.color}
+              />
+              <p className="text-gray-600">
+                {activeCategory === 'profile' && 'Manage your personal information and profile settings'}
+                {activeCategory === 'account' && 'Manage your account security and connected services'}
+                {activeCategory === 'teaching' && 'Configure your teaching preferences and defaults'}
+                {activeCategory === 'ai' && 'Customize AI assistant behavior and features'}
+                {activeCategory === 'notifications' && 'Control how and when you receive notifications'}
+                {activeCategory === 'appearance' && 'Customize language, timezone, and display preferences'}
+              </p>
+            </div>
+
+            {/* Profile Settings */}
+            {activeCategory === 'profile' && (
+              <div className="space-y-6">
+                {/* Avatar Upload */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-4 text-gray-800">Profile Picture</h3>
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <div
+                        className="w-32 h-32 rounded-full flex items-center justify-center overflow-hidden"
+                        style={{
+                          background: profileImage ? 'transparent' : `${currentCategory.color}20`
+                        }}
+                      >
+                        {profileImage ? (
+                          <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          <User size={48} style={{ color: currentCategory.color }} />
+                        )}
                       </div>
                     </div>
-                  )}
+                    <div className="flex-1">
+                      <label className="inline-block">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                        <motion.div
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="px-6 py-3 rounded-xl cursor-pointer inline-flex items-center gap-2 transition-all"
+                          style={{
+                            backgroundColor: `${currentCategory.color}15`,
+                            border: `2px dashed ${currentCategory.color}`
+                          }}
+                        >
+                          <Upload size={18} style={{ color: currentCategory.color }} />
+                          <span style={{ color: currentCategory.color }} className="font-medium">
+                            Upload Photo
+                          </span>
+                        </motion.div>
+                      </label>
+                      <p className="text-sm text-gray-500 mt-2">
+                        JPG, GIF or PNG. 1MB max.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-                  {/* 通知设置 */}
-                  {activeTab === 'notifications' && (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">通知偏好</h3>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Mail className="w-5 h-5 text-blue-500" />
-                              <div>
-                                <p className="font-medium">邮件通知</p>
-                                <p className="text-sm text-gray-500">接收重要更新的邮件通知</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.email_notifications}
-                              onCheckedChange={(checked) => updateUserSetting('email_notifications', checked)}
-                            />
-                          </div>
+                {/* Basic Information */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Basic Information</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <InputField
+                      label="Full Name"
+                      value={profileData.fullName}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, fullName: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                    <SelectField
+                      label="Title"
+                      value={profileData.title}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, title: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'Professor', label: 'Professor' },
+                        { value: 'Dr.', label: 'Dr.' },
+                        { value: 'Mr.', label: 'Mr.' },
+                        { value: 'Ms.', label: 'Ms.' },
+                        { value: 'Instructor', label: 'Instructor' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                    <InputField
+                      label="Email"
+                      type="email"
+                      value={profileData.email}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, email: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                    <InputField
+                      label="Phone"
+                      type="tel"
+                      value={profileData.phone}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, phone: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                    <InputField
+                      label="Organization"
+                      value={profileData.organization}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, organization: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                    <InputField
+                      label="Department"
+                      value={profileData.department}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, department: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                  <div className="mt-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Bio</label>
+                    <textarea
+                      value={profileData.bio}
+                      onChange={(e) => {
+                        setProfileData({ ...profileData, bio: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      rows={4}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all resize-none"
+                      onFocus={(e) => e.target.style.borderColor = currentCategory.color}
+                      onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
+                      placeholder="Tell us about yourself..."
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Smartphone className="w-5 h-5 text-green-500" />
-                              <div>
-                                <p className="font-medium">推送通知</p>
-                                <p className="text-sm text-gray-500">接收实时推送通知</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.push_notifications}
-                              onCheckedChange={(checked) => updateUserSetting('push_notifications', checked)}
-                            />
-                          </div>
+            {/* Account Settings */}
+            {activeCategory === 'account' && (
+              <div className="space-y-6">
+                {/* Password */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[18px] font-semibold text-gray-800">Password</h3>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setShowPasswordFields(!showPasswordFields)}
+                      className="text-sm font-medium px-4 py-2 rounded-lg"
+                      style={{ color: currentCategory.color, backgroundColor: `${currentCategory.color}15` }}
+                    >
+                      {showPasswordFields ? 'Cancel' : 'Change Password'}
+                    </motion.button>
+                  </div>
+                  <AnimatePresence>
+                    {showPasswordFields && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="space-y-4 overflow-hidden"
+                      >
+                        <InputField
+                          label="Current Password"
+                          type="password"
+                          color={currentCategory.color}
+                        />
+                        <InputField
+                          label="New Password"
+                          type="password"
+                          color={currentCategory.color}
+                        />
+                        <InputField
+                          label="Confirm Password"
+                          type="password"
+                          color={currentCategory.color}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <MessageSquare className="w-5 h-5 text-purple-500" />
-                              <div>
-                                <p className="font-medium">讨论通知</p>
-                                <p className="text-sm text-gray-500">新讨论和回复通知</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.discussion_notifications}
-                              onCheckedChange={(checked) => updateUserSetting('discussion_notifications', checked)}
-                            />
-                          </div>
+                {/* Two-Factor Authentication */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-[18px] font-semibold text-gray-800">Two-Factor Authentication</h3>
+                      <p className="text-sm text-gray-500 mt-1">Add an extra layer of security to your account</p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={twoFactorEnabled}
+                      onChange={() => {
+                        setTwoFactorEnabled(!twoFactorEnabled);
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                </div>
 
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Target className="w-5 h-5 text-orange-500" />
-                              <div>
-                                <p className="font-medium">作业通知</p>
-                                <p className="text-sm text-gray-500">作业提交和截止日期通知</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.assignment_notifications}
-                              onCheckedChange={(checked) => updateUserSetting('assignment_notifications', checked)}
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Award className="w-5 h-5 text-yellow-500" />
-                              <div>
-                                <p className="font-medium">成绩通知</p>
-                                <p className="text-sm text-gray-500">成绩发布和更新通知</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.grade_notifications}
-                              onCheckedChange={(checked) => updateUserSetting('grade_notifications', checked)}
-                            />
-                          </div>
+                {/* Connected Accounts */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Connected Accounts</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                          <svg width="20" height="20" viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-800">Google</p>
+                          <p className="text-sm text-gray-500">sarah.chen@gmail.com</p>
                         </div>
                       </div>
+                      <ToggleSwitch
+                        enabled={connectedAccounts.google}
+                        onChange={() => {
+                          setConnectedAccounts({ ...connectedAccounts, google: !connectedAccounts.google });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
                     </div>
-                  )}
-
-                  {/* 外观设置 */}
-                  {activeTab === 'appearance' && (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">外观和显示</h3>
-                        <div className="space-y-4">
-                          <div>
-                            <Label>主题</Label>
-                            <div className="grid grid-cols-3 gap-3 mt-2">
-                              {[
-                                { value: 'light', label: '浅色', icon: Sun },
-                                { value: 'dark', label: '深色', icon: Moon },
-                                { value: 'auto', label: '自动', icon: Monitor }
-                              ].map(theme => {
-                                const IconComponent = theme.icon;
-                                return (
-                                  <button
-                                    key={theme.value}
-                                    onClick={() => updateUserSetting('theme', theme.value as any)}
-                                    className={cn(
-                                      "flex flex-col items-center space-y-2 p-4 rounded-lg border transition-colors",
-                                      userSettings?.theme === theme.value
-                                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                                        : "border-gray-200 hover:border-gray-300"
-                                    )}
-                                  >
-                                    <IconComponent className="w-6 h-6" />
-                                    <span className="text-sm font-medium">{theme.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Volume2 className="w-5 h-5 text-blue-500" />
-                              <div>
-                                <p className="font-medium">声音效果</p>
-                                <p className="text-sm text-gray-500">启用操作声音反馈</p>
-                              </div>
-                            </div>
-                            <Switch />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Save className="w-5 h-5 text-green-500" />
-                              <div>
-                                <p className="font-medium">自动保存</p>
-                                <p className="text-sm text-gray-500">自动保存您的设置和内容</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.auto_save_enabled}
-                              onCheckedChange={(checked) => updateUserSetting('auto_save_enabled', checked)}
-                            />
-                          </div>
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                          <svg width="20" height="20" viewBox="0 0 24 24">
+                            <path fill="#F25022" d="M0 0h11.377v11.377H0z"/>
+                            <path fill="#00A4EF" d="M12.623 0H24v11.377H12.623z"/>
+                            <path fill="#7FBA00" d="M0 12.623h11.377V24H0z"/>
+                            <path fill="#FFB900" d="M12.623 12.623H24V24H12.623z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-800">Microsoft</p>
+                          <p className="text-sm text-gray-500">Not connected</p>
                         </div>
                       </div>
+                      <ToggleSwitch
+                        enabled={connectedAccounts.microsoft}
+                        onChange={() => {
+                          setConnectedAccounts({ ...connectedAccounts, microsoft: !connectedAccounts.microsoft });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
                     </div>
-                  )}
+                  </div>
+                </div>
 
-                  {/* AI助手 */}
-                  {activeTab === 'ai' && (
-                    <div className="space-y-6">
+                {/* Danger Zone */}
+                <div className="bg-white rounded-3xl p-8 shadow-sm border-2 border-red-200">
+                  <h3 className="text-[18px] font-semibold text-red-600 mb-4">Danger Zone</h3>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-800">Delete Account</p>
+                      <p className="text-sm text-gray-500">Permanently delete your account and all data</p>
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setShowDeleteDialog(true)}
+                      className="px-6 py-2 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors flex items-center gap-2"
+                    >
+                      <Trash2 size={18} />
+                      Delete
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Teaching Preferences */}
+            {activeCategory === 'teaching' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Session Defaults</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <SelectField
+                      label="Default Duration"
+                      value={teachingPrefs.defaultDuration}
+                      onChange={(e) => {
+                        setTeachingPrefs({ ...teachingPrefs, defaultDuration: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: '30min', label: '30 minutes' },
+                        { value: '1h', label: '1 hour' },
+                        { value: '2h', label: '2 hours' },
+                        { value: '3h', label: '3 hours' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                    <InputField
+                      label="Default Class Capacity"
+                      value={teachingPrefs.classCapacity}
+                      onChange={(e) => {
+                        setTeachingPrefs({ ...teachingPrefs, classCapacity: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Grading Settings</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <SelectField
+                      label="Grading Scale"
+                      value={teachingPrefs.gradingScale}
+                      onChange={(e) => {
+                        setTeachingPrefs({ ...teachingPrefs, gradingScale: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'percentage', label: 'Percentage (0-100%)' },
+                        { value: 'letter', label: 'Letter Grade (A-F)' },
+                        { value: 'points', label: 'Points' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                    <SelectField
+                      label="Late Submission Policy"
+                      value={teachingPrefs.lateSubmission}
+                      onChange={(e) => {
+                        setTeachingPrefs({ ...teachingPrefs, lateSubmission: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'accept', label: 'Accept (No penalty)' },
+                        { value: 'deduction', label: 'Accept with deduction' },
+                        { value: 'reject', label: 'Reject late submissions' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* AI Assistant Settings */}
+            {activeCategory === 'ai' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">AI Features</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">AI助手设置</h3>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Bot className="w-5 h-5 text-blue-500" />
-                              <div>
-                                <p className="font-medium">启用AI助手</p>
-                                <p className="text-sm text-gray-500">开启AI驱动的教学辅助功能</p>
-                              </div>
-                            </div>
-                            <Switch
-                              checked={userSettings?.ai_assistance_enabled}
-                              onCheckedChange={(checked) => updateUserSetting('ai_assistance_enabled', checked)}
-                            />
-                          </div>
-
-                          {userSettings?.ai_assistance_enabled && (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                              <div className="flex items-start space-x-3">
-                                <Info className="w-5 h-5 text-blue-500 mt-0.5" />
-                                <div>
-                                  <p className="font-medium text-blue-900">AI助手已启用</p>
-                                  <p className="text-sm text-blue-700 mt-1">
-                                    您现在可以使用AI助手进行课程创建、讨论管理、作业评分等教学活动。
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <p className="font-medium text-gray-800">Enable AI Suggestions</p>
+                        <p className="text-sm text-gray-500">Get intelligent suggestions while teaching</p>
                       </div>
+                      <ToggleSwitch
+                        enabled={aiPrefs.enableSuggestions}
+                        onChange={() => {
+                          setAiPrefs({ ...aiPrefs, enableSuggestions: !aiPrefs.enableSuggestions });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
                     </div>
-                  )}
-
-                  {/* 组织设置 */}
-                  {activeTab === 'organization' && organizationSettings && (
-                    <div className="space-y-6">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">组织设置</h3>
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="org-name">组织名称</Label>
-                            <Input
-                              id="org-name"
-                              value={organizationSettings.name}
-                              onChange={(e) => updateOrgSetting('name', e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="org-description">组织描述</Label>
-                            <Textarea
-                              id="org-description"
-                              value={organizationSettings.description}
-                              onChange={(e) => updateOrgSetting('description', e.target.value)}
-                              rows={3}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="org-website">组织网站</Label>
-                            <Input
-                              id="org-website"
-                              value={organizationSettings.website || ''}
-                              onChange={(e) => updateOrgSetting('website', e.target.value)}
-                              placeholder="https://"
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <h4 className="font-medium text-gray-900">功能设置</h4>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <Brain className="w-5 h-5 text-purple-500" />
-                                <div>
-                                  <p className="font-medium">AI优化</p>
-                                  <p className="text-sm text-gray-500">启用AI驱动的教学优化</p>
-                                </div>
-                              </div>
-                              <Switch
-                                checked={organizationSettings.ai_optimization_enabled}
-                                onCheckedChange={(checked) => updateOrgSetting('ai_optimization_enabled', checked)}
-                              />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <Target className="w-5 h-5 text-green-500" />
-                                <div>
-                                  <p className="font-medium">自动评分</p>
-                                  <p className="text-sm text-gray-500">启用AI辅助作业评分</p>
-                                </div>
-                              </div>
-                              <Switch
-                                checked={organizationSettings.auto_grading_enabled}
-                                onCheckedChange={(checked) => updateOrgSetting('auto_grading_enabled', checked)}
-                              />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <Shield className="w-5 h-5 text-orange-500" />
-                                <div>
-                                  <p className="font-medium">讨论审核</p>
-                                  <p className="text-sm text-gray-500">启用AI讨论内容审核</p>
-                                </div>
-                              </div>
-                              <Switch
-                                checked={organizationSettings.discussion_moderation_enabled}
-                                onCheckedChange={(checked) => updateOrgSetting('discussion_moderation_enabled', checked)}
-                              />
-                            </div>
-                          </div>
-                        </div>
+                        <p className="font-medium text-gray-800">Auto-generate Session Content</p>
+                        <p className="text-sm text-gray-500">Let AI create session materials automatically</p>
                       </div>
+                      <ToggleSwitch
+                        enabled={aiPrefs.autoGenerateContent}
+                        onChange={() => {
+                          setAiPrefs({ ...aiPrefs, autoGenerateContent: !aiPrefs.autoGenerateContent });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
                     </div>
-                  )}
-
-                  {/* AI优化建议 */}
-                  {activeTab === 'ai-recommendations' && (
-                    <div className="space-y-6">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">AI优化建议</h3>
-                        <p className="text-gray-600 mb-6">
-                          基于您的使用模式，AI助手为您推荐以下优化设置
-                        </p>
-                        <div className="space-y-4">
-                          {aiSuggestions.map(suggestion => (
-                            <Card key={suggestion.id} className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center space-x-3 mb-2">
-                                    <Sparkles className="w-5 h-5 text-yellow-500" />
-                                    <h4 className="font-medium text-gray-900">{suggestion.title}</h4>
-                                    <Badge
-                                      variant="secondary"
-                                      className={getImpactColor(suggestion.impact)}
-                                    >
-                                      {suggestion.impact === 'high' ? '高影响' :
-                                       suggestion.impact === 'medium' ? '中影响' : '低影响'}
-                                    </Badge>
-                                  </div>
-                                  <p className="text-gray-600 text-sm mb-3">
-                                    {suggestion.description}
-                                  </p>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => applyAiSuggestion(suggestion.action)}
-                                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                                  >
-                                    应用建议
-                                  </Button>
-                                </div>
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
+                        <p className="font-medium text-gray-800">Auto-generate Outline</p>
+                        <p className="text-sm text-gray-500">Automatically create outlines for new sessions</p>
                       </div>
+                      <ToggleSwitch
+                        enabled={aiPrefs.autoOutline}
+                        onChange={() => {
+                          setAiPrefs({ ...aiPrefs, autoOutline: !aiPrefs.autoOutline });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
                     </div>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </Card>
-          </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">AI Behavior</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <SelectField
+                      label="Response Style"
+                      value={aiPrefs.responseStyle}
+                      onChange={(e) => {
+                        setAiPrefs({ ...aiPrefs, responseStyle: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'professional', label: 'Professional' },
+                        { value: 'casual', label: 'Casual' },
+                        { value: 'detailed', label: 'Detailed & Technical' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                    <SelectField
+                      label="Context Memory"
+                      value={aiPrefs.contextMemory}
+                      onChange={(e) => {
+                        setAiPrefs({ ...aiPrefs, contextMemory: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: '1day', label: '1 day' },
+                        { value: '7days', label: '7 days' },
+                        { value: '30days', label: '30 days' },
+                        { value: 'forever', label: 'Forever' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Notifications Settings */}
+            {activeCategory === 'notifications' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Notification Channels</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-800">Email Notifications</p>
+                        <p className="text-sm text-gray-500">Receive notifications via email</p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={notifPrefs.emailNotifications}
+                        onChange={() => {
+                          setNotifPrefs({ ...notifPrefs, emailNotifications: !notifPrefs.emailNotifications });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-800">Push Notifications</p>
+                        <p className="text-sm text-gray-500">Receive browser push notifications</p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={notifPrefs.pushNotifications}
+                        onChange={() => {
+                          setNotifPrefs({ ...notifPrefs, pushNotifications: !notifPrefs.pushNotifications });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Session Reminders</h3>
+                  <SelectField
+                    label="Remind me before session"
+                    value={notifPrefs.sessionReminder}
+                    onChange={(e) => {
+                      setNotifPrefs({ ...notifPrefs, sessionReminder: e.target.value });
+                      setHasUnsavedChanges(true);
+                    }}
+                    options={[
+                      { value: '15min', label: '15 minutes' },
+                      { value: '30min', label: '30 minutes' },
+                      { value: '1h', label: '1 hour' },
+                      { value: '1day', label: '1 day' }
+                    ]}
+                    color={currentCategory.color}
+                  />
+                </div>
+
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Assignment Notifications</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-800">Assignment Due Reminders</p>
+                        <p className="text-sm text-gray-500">Remind about upcoming assignment deadlines</p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={notifPrefs.assignmentDue}
+                        onChange={() => {
+                          setNotifPrefs({ ...notifPrefs, assignmentDue: !notifPrefs.assignmentDue });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-800">Student Submission Alerts</p>
+                        <p className="text-sm text-gray-500">Notify when students submit assignments</p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={notifPrefs.studentSubmission}
+                        onChange={() => {
+                          setNotifPrefs({ ...notifPrefs, studentSubmission: !notifPrefs.studentSubmission });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-800">Late Submission Alerts</p>
+                        <p className="text-sm text-gray-500">Notify about late submissions</p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={notifPrefs.lateSubmission}
+                        onChange={() => {
+                          setNotifPrefs({ ...notifPrefs, lateSubmission: !notifPrefs.lateSubmission });
+                          setHasUnsavedChanges(true);
+                        }}
+                        color={currentCategory.color}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Appearance Settings */}
+            {activeCategory === 'appearance' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Language & Region</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <SelectField
+                      label="Language"
+                      value={appearancePrefs.language}
+                      onChange={(e) => {
+                        setAppearancePrefs({ ...appearancePrefs, language: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'en', label: 'English' },
+                        { value: 'zh', label: '中文' },
+                        { value: 'es', label: 'Español' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                    <SelectField
+                      label="Timezone"
+                      value={appearancePrefs.timezone}
+                      onChange={(e) => {
+                        setAppearancePrefs({ ...appearancePrefs, timezone: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'America/Los_Angeles', label: 'Pacific Time (PST)' },
+                        { value: 'America/New_York', label: 'Eastern Time (EST)' },
+                        { value: 'America/Chicago', label: 'Central Time (CST)' },
+                        { value: 'Europe/London', label: 'London (GMT)' },
+                        { value: 'Asia/Shanghai', label: 'Shanghai (CST)' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Date & Time Format</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <SelectField
+                      label="Date Format"
+                      value={appearancePrefs.dateFormat}
+                      onChange={(e) => {
+                        setAppearancePrefs({ ...appearancePrefs, dateFormat: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
+                        { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
+                        { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                    <SelectField
+                      label="Time Format"
+                      value={appearancePrefs.timeFormat}
+                      onChange={(e) => {
+                        setAppearancePrefs({ ...appearancePrefs, timeFormat: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      options={[
+                        { value: '12h', label: '12-hour' },
+                        { value: '24h', label: '24-hour' }
+                      ]}
+                      color={currentCategory.color}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                  <h3 className="text-[18px] font-semibold mb-6 text-gray-800">Calendar Settings</h3>
+                  <SelectField
+                    label="Week Starts On"
+                    value={appearancePrefs.weekStart}
+                    onChange={(e) => {
+                      setAppearancePrefs({ ...appearancePrefs, weekStart: e.target.value });
+                      setHasUnsavedChanges(true);
+                    }}
+                    options={[
+                      { value: 'sunday', label: 'Sunday' },
+                      { value: 'monday', label: 'Monday' }
+                    ]}
+                    color={currentCategory.color}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Save Button */}
+            <motion.div
+              className="flex items-center gap-4 mt-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+            >
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleSave}
+                disabled={!hasUnsavedChanges || isLoading}
+                className="px-8 py-4 rounded-2xl font-semibold text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                style={{
+                  background: hasUnsavedChanges
+                    ? currentCategory.color
+                    : '#d1d5db'
+                }}
+              >
+                {isLoading ? (
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Save className="w-5 h-5" />
+                )}
+                {isLoading ? 'Saving...' : 'Save Changes'}
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  setHasUnsavedChanges(false);
+                  alert('Changes discarded');
+                }}
+                className="px-6 py-4 rounded-2xl font-medium text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Reset
+              </motion.button>
+            </motion.div>
+          </motion.div>
         </div>
       </div>
+
+      {/* Delete Account Dialog */}
+      <AnimatePresence>
+        {showDeleteDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => setShowDeleteDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/95 backdrop-blur-xl rounded-3xl p-8 max-w-md shadow-2xl border border-gray-200"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <Trash2 size={24} className="text-red-600" />
+                </div>
+                <h3 className="text-[24px] font-semibold text-gray-800">Delete Account</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete your account? This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleDeleteAccount}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors"
+                >
+                  Delete Account
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowDeleteDialog(false)}
+                  className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
