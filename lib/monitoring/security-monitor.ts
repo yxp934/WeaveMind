@@ -145,7 +145,8 @@ export class SecurityMonitor {
 
     try {
       // 获取最近的请求日志
-      const { data: requestLogs } = await this.supabase
+      const supabase = await createClient()
+      const { data: requestLogs } = await supabase
         .from('api_request_logs')
         .select('*')
         .gte('created_at', new Date(Date.now() - 300000).toISOString()) // 最近5分钟
@@ -154,7 +155,7 @@ export class SecurityMonitor {
 
       for (const log of requestLogs) {
         // SQL注入检测
-        const sqlInjection = this.detectSQLInjection(log.request_body || log.query_params || '')
+        const sqlInjection = SecurityMonitor.detectSQLInjection(log.request_body || log.query_params || '')
         if (sqlInjection.detected) {
           malicious.push({
             id: `sql_injection_${log.id}`,
@@ -171,7 +172,7 @@ export class SecurityMonitor {
         }
 
         // XSS检测
-        const xss = this.detectXSS(log.request_body || log.query_params || '')
+        const xss = SecurityMonitor.detectXSS(log.request_body || log.query_params || '')
         if (xss.detected) {
           malicious.push({
             id: `xss_${log.id}`,
@@ -393,16 +394,32 @@ export class SecurityMonitor {
     const windowStart = Date.now() - timeWindow
 
     // 获取请求频率统计
-    const { data: requestStats } = await this.supabase
+    const supabase = await createClient()
+    const { data: requestLogs } = await supabase
       .from('api_request_logs')
-      .select('ip_address, user_id, COUNT(*) as request_count')
+      .select('ip_address, user_id, created_at')
       .gte('created_at', new Date(windowStart).toISOString())
-      .group('ip_address, user_id')
 
-    if (!requestStats) return anomalies
+    if (!requestLogs) return anomalies
 
-    for (const stat of requestStats) {
-      if (stat.request_count > this.ANOMALY_THRESHOLDS.REQUESTS_PER_MINUTE) {
+    // 在客户端进行聚合统计
+    const requestStats = requestLogs.reduce((acc, log) => {
+      const key = `${log.ip_address || 'unknown'}_${log.user_id || 'anonymous'}`
+      if (!acc[key]) {
+        acc[key] = {
+          ip_address: log.ip_address,
+          user_id: log.user_id,
+          request_count: 0
+        }
+      }
+      acc[key].request_count++
+      return acc
+    }, {} as Record<string, any>)
+
+    const statsArray = Object.values(requestStats)
+
+    for (const stat of statsArray) {
+      if (stat.request_count > SecurityMonitor.ANOMALY_THRESHOLDS.REQUESTS_PER_MINUTE) {
         anomalies.push({
           id: `frequency_${stat.ip_address}_${Date.now()}`,
           type: 'FREQUENCY_ANOMALY',
@@ -447,10 +464,10 @@ export class SecurityMonitor {
     return anomalies
   }
 
-  private static detectSQLInjection(input: string): { detected: boolean; evidence: string[] } {
+  static detectSQLInjection(input: string): { detected: boolean; evidence: string[] } {
     const evidence: string[] = []
 
-    for (const pattern of this.THREAT_PATTERNS.SQL_INJECTION) {
+    for (const pattern of SecurityMonitor.THREAT_PATTERNS.SQL_INJECTION) {
       const matches = input.match(pattern)
       if (matches) {
         evidence.push(...matches)
@@ -463,10 +480,10 @@ export class SecurityMonitor {
     }
   }
 
-  private static detectXSS(input: string): { detected: boolean; evidence: string[] } {
+  static detectXSS(input: string): { detected: boolean; evidence: string[] } {
     const evidence: string[] = []
 
-    for (const pattern of this.THREAT_PATTERNS.XSS) {
+    for (const pattern of SecurityMonitor.THREAT_PATTERNS.XSS) {
       const matches = input.match(pattern)
       if (matches) {
         evidence.push(...matches)
@@ -483,7 +500,8 @@ export class SecurityMonitor {
     const timeWindow = 300000 // 5分钟
     const windowStart = Date.now() - timeWindow
 
-    const { count } = await this.supabase
+    const supabase = await createClient()
+    const { count } = await supabase
       .from('api_request_logs')
       .select('*', { count: 'exact', head: true })
       .eq('ip_address', ipAddress)
@@ -493,8 +511,8 @@ export class SecurityMonitor {
     const failedLogins = count || 0
 
     return {
-      detected: failedLogins >= this.ANOMALY_THRESHOLDS.FAILED_LOGINS,
-      evidence: failedLogins >= this.ANOMALY_THRESHOLDS.FAILED_LOGINS
+      detected: failedLogins >= SecurityMonitor.ANOMALY_THRESHOLDS.FAILED_LOGINS,
+      evidence: failedLogins >= SecurityMonitor.ANOMALY_THRESHOLDS.FAILED_LOGINS
         ? [`${failedLogins} failed login attempts in 5 minutes`]
         : []
     }

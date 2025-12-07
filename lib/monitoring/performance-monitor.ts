@@ -332,7 +332,8 @@ export class PerformanceMonitor {
 
     try {
       // 获取AI请求统计
-      const { data: aiLogs } = await createClient()
+      const supabase = await createClient()
+      const { data: aiLogs } = await supabase
         .from('ai_usage_audit')
         .select('*')
         .gte('timestamp', new Date(Date.now() - 60000).toISOString())

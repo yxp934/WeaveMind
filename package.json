@@ -33,7 +33,7 @@
     "ioredis": "^5.8.2",
     "lucide-react": "^0.555.0",
     "motion": "^12.23.25",
-    "next": "^15.1.6",
+    "next": "^16.0.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-intersection-observer": "^10.0.0",
