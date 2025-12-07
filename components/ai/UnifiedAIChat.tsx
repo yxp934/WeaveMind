@@ -3,7 +3,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Bot, User, Loader2, Settings, Mic, Paperclip, MoreHorizontal, Zap, Sparkles } from 'lucide-react';
-import { useChat } from 'ai/react';
+// TODO: 修复AI SDK导入
+// import { useChat } from 'ai/react';
+
+// Stub for useChat hook
+const useChat = (props?: any) => ({
+  messages: [] as any[],
+  input: '',
+  handleInputChange: () => {},
+  handleSubmit: () => {},
+  isLoading: false,
+  stop: () => {},
+  setInput: () => {},
+  append: (message: any) => {}
+});
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';

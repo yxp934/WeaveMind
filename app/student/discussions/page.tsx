@@ -354,7 +354,7 @@ export default function StudentDiscussionsPage() {
                           selectedThread?.id === thread.id
                             ? "border-blue-500 bg-blue-50"
                             : "border-gray-200 hover:border-gray-300",
-                          viewMode === 'grid' && "h-full"
+                          viewMode === 'grid' ? "h-full" : ""
                         )}
                         onClick={() => setSelectedThread(thread)}
                       >
@@ -377,7 +377,7 @@ export default function StudentDiscussionsPage() {
                               }}
                               className={cn(
                                 "p-1 rounded hover:bg-gray-100",
-                                thread.is_bookmarked && "text-blue-500"
+                                thread.is_bookmarked ? "text-blue-500" : ""
                               )}
                             >
                               <Bookmark className="w-4 h-4" />
@@ -521,10 +521,10 @@ export default function StudentDiscussionsPage() {
                                   onClick={() => handleLikePost(post.id)}
                                   className={cn(
                                     "flex items-center space-x-1 hover:text-red-500",
-                                    post.user_liked && "text-red-500"
+                                    post.user_liked ? "text-red-500" : ""
                                   )}
                                 >
-                                  <Heart className={cn("w-3 h-3", post.user_liked && "fill-current")} />
+                                  <Heart className={cn("w-3 h-3", post.user_liked ? "fill-current" : "")} />
                                   <span>{post.likes_count}</span>
                                 </button>
                                 <button className="flex items-center space-x-1 hover:text-blue-500">

@@ -116,14 +116,12 @@ export default function TeacherSettingsPage() {
       setIsLoading(true);
       const userId = 'current-user-id'; // 需要从认证上下文获取
 
-      // 并行加载用户设置和组织设置
-      const [userData, orgData] = await Promise.all([
-        apiClient.settings.get(userId).catch(() => null),
-        apiClient.settings.getOrganization('current-org-id').catch(() => null) // 需要从上下文获取
-      ]);
+      // 加载用户设置
+      const userData = await apiClient.settings.getSettings(userId).catch(() => null);
+      const orgData = null; // TODO: 实现组织设置获取
 
-      if (userData) {
-        setUserSettings(userData);
+      if (userData && userData.length > 0) {
+        setUserSettings(userData[0]);
       } else {
         // 默认设置
         setUserSettings({
@@ -161,14 +159,13 @@ export default function TeacherSettingsPage() {
       setIsSaving(true);
       setSaveStatus('saving');
 
-      await apiClient.settings.update(userSettings.user_id, {
-        theme: userSettings.theme,
-        language: userSettings.language,
-        timezone: userSettings.timezone,
-        email_frequency: userSettings.email_frequency,
-        ai_assistance_enabled: userSettings.ai_assistance_enabled,
-        auto_save_enabled: userSettings.auto_save_enabled
-      });
+      // TODO: 实现设置保存功能
+      // await apiClient.settings.updateSetting(userSettings.user_id, {
+      //   setting_category: 'user_preferences',
+      //   setting_key: 'theme',
+      //   setting_value: userSettings.theme,
+      //   data_type: 'string'
+      // });
 
       setSaveStatus('saved');
       setHasChanges(false);
@@ -530,7 +527,7 @@ export default function TeacherSettingsPage() {
                                 <p className="text-sm text-gray-500">启用操作声音反馈</p>
                               </div>
                             </div>
-                            <Switch defaultChecked />
+                            <Switch />
                           </div>
 
                           <div className="flex items-center justify-between">

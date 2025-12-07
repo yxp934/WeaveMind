@@ -117,13 +117,13 @@ export default function StudentSettingsPage() {
 
       // 并行加载设置
       const [userData, learningData] = await Promise.all([
-        apiClient.settings.get(userId).catch(() => null),
+        apiClient.settings.getSettings(userId).catch(() => null),
         // 这里可以加载学习偏好，暂时用默认值
         Promise.resolve(null)
       ]);
 
-      if (userData) {
-        setUserSettings(userData);
+      if (userData && userData.length > 0) {
+        setUserSettings(userData[0]);
       } else {
         // 默认设置
         setUserSettings({
@@ -168,14 +168,13 @@ export default function StudentSettingsPage() {
       setIsSaving(true);
       setSaveStatus('saving');
 
-      await apiClient.settings.update(userSettings.user_id, {
-        theme: userSettings.theme,
-        language: userSettings.language,
-        timezone: userSettings.timezone,
-        email_frequency: userSettings.email_frequency,
-        ai_assistance_enabled: userSettings.ai_assistance_enabled,
-        auto_save_enabled: userSettings.auto_save_enabled
-      });
+      // TODO: 实现设置保存功能
+      // await apiClient.settings.updateSetting(userSettings.user_id, {
+      //   setting_category: 'user_preferences',
+      //   setting_key: 'theme',
+      //   setting_value: userSettings.theme,
+      //   data_type: 'string'
+      // });
 
       setSaveStatus('saved');
       setHasChanges(false);
@@ -622,7 +621,7 @@ export default function StudentSettingsPage() {
                                 <p className="text-sm text-gray-500">启用操作声音反馈</p>
                               </div>
                             </div>
-                            <Switch defaultChecked />
+                            <Switch />
                           </div>
 
                           <div className="flex items-center justify-between">

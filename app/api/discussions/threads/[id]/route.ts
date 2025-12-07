@@ -27,8 +27,9 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -54,8 +55,9 @@ export async function GET(
       .single()
 
     if (error || !thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
@@ -69,8 +71,9 @@ export async function GET(
       .single()
 
     if (!classMember) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Access denied',
       }, { status: 403 })
     }
@@ -99,8 +102,9 @@ export async function GET(
 
   } catch (error: any) {
     console.error('Get thread error:', error)
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })
@@ -118,8 +122,9 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -136,8 +141,9 @@ export async function PUT(
       .single()
 
     if (fetchError || !thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
@@ -151,8 +157,9 @@ export async function PUT(
       .single()
 
     if (!classMember || (classMember.role !== 'teacher' && thread.created_by !== user.id)) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Insufficient permissions. Only the creator or teachers can update this thread.',
       }, { status: 403 })
     }
@@ -180,8 +187,9 @@ export async function PUT(
 
     if (error) {
       console.error('Error updating discussion thread:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to update discussion thread',
         details: error.message,
       }, { status: 500 })
@@ -213,15 +221,17 @@ export async function PUT(
     console.error('Update thread error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })
@@ -239,8 +249,9 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -254,8 +265,9 @@ export async function DELETE(
       .single()
 
     if (fetchError || !thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
@@ -269,8 +281,9 @@ export async function DELETE(
       .single()
 
     if (!classMember || (classMember.role !== 'teacher' && thread.created_by !== user.id)) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Insufficient permissions. Only the creator or teachers can delete this thread.',
       }, { status: 403 })
     }
@@ -286,8 +299,9 @@ export async function DELETE(
 
     if (error) {
       console.error('Error deleting discussion thread:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to delete discussion thread',
         details: error.message,
       }, { status: 500 })
@@ -302,8 +316,9 @@ export async function DELETE(
 
   } catch (error: any) {
     console.error('Delete thread error:', error)
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })

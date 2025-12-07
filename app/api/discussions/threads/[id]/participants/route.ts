@@ -28,8 +28,9 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -46,8 +47,9 @@ export async function GET(
       .single()
 
     if (!thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
@@ -61,8 +63,9 @@ export async function GET(
       .single()
 
     if (!classMember) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Access denied',
       }, { status: 403 })
     }
@@ -95,8 +98,9 @@ export async function GET(
 
     if (error) {
       console.error('Error fetching participants:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to fetch participants',
         details: error.message,
       }, { status: 500 })
@@ -125,15 +129,17 @@ export async function GET(
     console.error('Get participants error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })

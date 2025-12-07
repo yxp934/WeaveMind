@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
         {
           error: 'Validation Error',
           message: '请求数据无效',
-          details: validatedData.error.errors
+          details: (validatedData.error as any).errors || validatedData.error.issues
         },
         { status: 400 }
       )

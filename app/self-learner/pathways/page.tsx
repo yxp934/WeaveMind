@@ -100,14 +100,11 @@ export default function SelfLearnerPathwaysPage() {
       setIsLoading(true);
       const userId = 'current-user-id'; // 需要从认证上下文获取
 
-      // 并行加载路径和推荐
-      const [pathwaysData, recommendationsData] = await Promise.all([
-        apiClient.selfLearner.getPathways(userId).catch(() => []),
-        apiClient.selfLearner.getRecommendations(userId, 10).catch(() => [])
-      ]);
+      // 加载学习路径
+      const pathwaysData = await apiClient.selfLearner.listPathways(userId).catch(() => []);
 
       setPathways(pathwaysData || []);
-      setRecommendations(recommendationsData || []);
+      setRecommendations([]); // 推荐功能待实现
     } catch (error) {
       console.error('Error loading self-learner data:', error);
     } finally {
@@ -118,11 +115,12 @@ export default function SelfLearnerPathwaysPage() {
   // 开始学习路径
   const startPathway = async (pathwayId: string) => {
     try {
-      await apiClient.selfLearner.updateProgress({
-        user_id: 'current-user-id',
-        pathway_id: pathwayId,
-        completed: false
-      });
+      // TODO: 实现路径进度更新功能
+      // await apiClient.selfLearner.updateProgress({
+      //   user_id: 'current-user-id',
+      //   pathway_id: pathwayId,
+      //   completed: false
+      // });
 
       setPathways(prev => prev.map(p =>
         p.id === pathwayId
@@ -150,13 +148,14 @@ export default function SelfLearnerPathwaysPage() {
   // 完成里程碑
   const completeMilestone = async (pathwayId: string, milestoneId: string) => {
     try {
-      await apiClient.selfLearner.updateProgress({
-        user_id: 'current-user-id',
-        pathway_id: pathwayId,
-        milestone_id: milestoneId,
-        completed: true,
-        time_spent: 30 // 示例时间
-      });
+      // TODO: 实现里程碑完成功能
+      // await apiClient.selfLearner.updateProgress({
+      //   user_id: 'current-user-id',
+      //   pathway_id: pathwayId,
+      //   milestone_id: milestoneId,
+      //   completed: true,
+      //   time_spent: 30 // 示例时间
+      // });
 
       // 重新加载数据以获取更新的进度
       loadData();
@@ -168,7 +167,8 @@ export default function SelfLearnerPathwaysPage() {
   // 标记推荐为已查看
   const markRecommendationViewed = async (recommendationId: string) => {
     try {
-      await apiClient.selfLearner.markRecommendationViewed(recommendationId);
+      // TODO: 实现推荐查看标记功能
+      // await apiClient.selfLearner.markRecommendationViewed(recommendationId);
       setRecommendations(prev => prev.map(r =>
         r.id === recommendationId
           ? { ...r, viewed: true }

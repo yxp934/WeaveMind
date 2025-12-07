@@ -42,8 +42,9 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -60,8 +61,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!classMember || classMember.role !== 'teacher') {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Insufficient permissions. Only teachers can create discussion threads.',
       }, { status: 403 })
     }
@@ -74,8 +76,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!classData) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Class not found',
       }, { status: 404 })
     }
@@ -110,8 +113,9 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating discussion thread:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to create discussion thread',
         details: error.message,
       }, { status: 500 })
@@ -134,15 +138,17 @@ export async function POST(request: NextRequest) {
     console.error('Create thread error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })
@@ -156,8 +162,9 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -214,8 +221,9 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching discussion threads:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to fetch discussion threads',
         details: error.message,
       }, { status: 500 })
@@ -279,15 +287,17 @@ export async function GET(request: NextRequest) {
     console.error('Get threads error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })

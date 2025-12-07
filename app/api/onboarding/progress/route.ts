@@ -28,6 +28,7 @@ import { OnboardingProgress } from '@/lib/types/api';
  * 获取用户引导进度
  */
 export async function GET(request: NextRequest) {
+  let user: any = null;
   try {
     logApiRequest(request);
 
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Unauthorized', 401);
     }
 
-    const { user, supabase } = authResult;
+    const { supabase } = authResult;
+    user = authResult.user;
 
     // 验证和解析查询参数
     const url = new URL(request.url);
@@ -136,6 +138,7 @@ export async function GET(request: NextRequest) {
  * 更新引导步骤进度
  */
 export async function PUT(request: NextRequest) {
+  let user: any = null;
   try {
     logApiRequest(request);
 
@@ -145,7 +148,8 @@ export async function PUT(request: NextRequest) {
       return createErrorResponse('Unauthorized', 401);
     }
 
-    const { user, supabase } = authResult;
+    const { supabase } = authResult;
+    user = authResult.user;
 
     // 解析请求体
     const body = await request.json();

@@ -24,7 +24,7 @@ const chatRequestSchema = z.object({
       content: z.string(),
       timestamp: z.string(),
       toolsUsed: z.array(z.string()).optional(),
-      metadata: z.record(z.any()).optional()
+      metadata: z.record(z.string(), z.any()).optional()
     })).optional()
   }).optional(),
   tools: z.array(z.string()).optional()
@@ -37,11 +37,16 @@ const chatRequestSchema = z.object({
 export async function POST(request: NextRequest): Promise<NextResponse<StandardApiResponse<ChatResponseData>>> {
   const requestId = crypto.randomUUID()
   const startTime = Date.now()
+  let user: any = null
+  let organizationId: string | undefined
+  let message: string = ''
+  let context: any = null
 
   try {
     // 1. 验证用户身份和权限
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user: authenticatedUser } } = await supabase.auth.getUser()
+    user = authenticatedUser
 
     if (!user) {
       return NextResponse.json({
@@ -76,11 +81,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
       }, { status: 400 })
     }
 
-    const { message, context, tools } = validation.data
+    const { message: msg, context: ctx, tools } = validation.data
+    message = msg
+    context = ctx
 
     // 3. 获取用户组织信息和角色验证
     let userRole = 'student'
-    let organizationId: string | undefined
 
     if (context?.organizationId) {
       const { data: orgMember } = await supabase
@@ -134,7 +140,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
 
         请根据用户角色提供适当的响应：${userRole === 'teacher' ? '你可以访问所有管理功能' : '你专注于学习支持和指导'}。`
       },
-      ...(context?.conversationHistory || []).map(msg => ({
+      ...(context?.conversationHistory || []).map((msg: any) => ({
         role: msg.role,
         content: msg.content
       })),
@@ -157,20 +163,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
         acc[toolName] = courseEditingTools[toolName as keyof typeof courseEditingTools]
         return acc
       }, {} as any),
-      maxTokens: 2000,
+      maxOutputTokens: 2000,
       temperature: 0.7,
       system: `作为${userRole}角色的AI助手，请提供专业、准确的回答。`
     })
 
     // 7. 构建响应数据
     const responseData: ChatResponseData = {
-      message: result.text,
-      toolsUsed: result.toolCalls?.map(call => call.toolName) || [],
+      message: await result.text,
+      toolsUsed: (await result.toolCalls)?.map(call => call.toolName) || [],
       metadata: {
         userRole,
         organizationId,
         processingTimeMs: Date.now() - startTime,
-        tokensUsed: result.usage?.totalTokens || 0,
+        tokensUsed: (await result.usage)?.totalTokens || 0,
         model: 'gpt-4-turbo'
       }
     }

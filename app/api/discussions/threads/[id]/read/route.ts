@@ -15,8 +15,9 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -30,8 +31,9 @@ export async function POST(
       .single()
 
     if (!thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
@@ -45,8 +47,9 @@ export async function POST(
       .single()
 
     if (!classMember) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Access denied',
       }, { status: 403 })
     }
@@ -73,7 +76,7 @@ export async function POST(
 
       if (error) {
         console.error('Error updating participant read status:', error)
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
           error: 'Failed to mark thread as read',
           details: error.message,
@@ -93,7 +96,7 @@ export async function POST(
 
       if (error) {
         console.error('Error creating participant record:', error)
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
           error: 'Failed to mark thread as read',
           details: error.message,
@@ -114,8 +117,9 @@ export async function POST(
 
   } catch (error: any) {
     console.error('Mark thread as read error:', error)
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })

@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
     
     if (!validatedQuery.success) {
       return NextResponse.json(
-        { 
-          error: 'Validation Error', 
+        {
+          error: 'Validation Error',
           message: '查询参数无效',
-          details: validatedQuery.error.errors
+          details: (validatedQuery.error as any).errors || validatedQuery.error.issues
         },
         { status: 400 }
       )
@@ -153,10 +153,10 @@ export async function POST(request: NextRequest) {
     
     if (!validatedData.success) {
       return NextResponse.json(
-        { 
-          error: 'Validation Error', 
+        {
+          error: 'Validation Error',
           message: '请求数据无效',
-          details: validatedData.error.errors
+          details: (validatedData.error as any).errors || validatedData.error.issues
         },
         { status: 400 }
       )

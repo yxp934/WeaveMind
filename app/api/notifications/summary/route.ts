@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         {
           error: 'Validation Error',
           message: '查询参数无效',
-          details: validatedQuery.error.errors
+          details: (validatedQuery.error as any).errors || validatedQuery.error.issues
         },
         { status: 400 }
       )
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
 
     // 处理分组数据
     const classGroups = (unreadByClass || []).reduce((groups: any, notification) => {
-      const className = notification.classes?.name || '未知班级'
+      const className = (notification.classes as any)?.name || '未知班级'
       if (!groups[className]) {
         groups[className] = {
           class_name: className,
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     }, {})
 
     const courseGroups = (unreadByCourse || []).reduce((groups: any, notification) => {
-      const courseTitle = notification.courses?.title || '未知课程'
+      const courseTitle = (notification.courses as any)?.title || '未知课程'
       if (!groups[courseTitle]) {
         groups[courseTitle] = {
           course_title: courseTitle,
@@ -447,7 +447,7 @@ function calculateTrends(notifications: any[], dateRange: any): any {
   // 找到最活跃的一天
   const mostActiveDay = Object.entries(dailyCounts).reduce((max, [date, count]) =>
     count > max.count ? { date, count } : max,
-    { date: null, count: 0 }
+    { date: null as string | null, count: 0 }
   )
 
   // 找到高峰时段

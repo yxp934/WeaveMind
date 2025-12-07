@@ -115,7 +115,7 @@ ${courseData ? `课程信息：${courseData.title} - ${courseData.description ||
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.7,
-        maxTokens: 1500,
+        maxOutputTokens: 1500,
       })
 
       const aiData = extractJson(aiResponse)
@@ -282,7 +282,7 @@ ${difficultyRange ? `【难度范围】\n${difficultyRange.min} - ${difficultyRa
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.8,
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
       })
 
       const aiData = extractJson(aiResponse)

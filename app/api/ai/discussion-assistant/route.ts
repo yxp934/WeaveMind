@@ -20,7 +20,7 @@ const discussionRequestSchema = z.object({
     userRole: z.enum(['teacher', 'student', 'self_learner']),
     organizationId: z.string().uuid()
   }),
-  parameters: z.record(z.any()).optional()
+  parameters: z.record(z.string(), z.any()).optional()
 })
 
 /**
@@ -30,11 +30,19 @@ const discussionRequestSchema = z.object({
 export async function POST(request: NextRequest): Promise<NextResponse<StandardApiResponse<DiscussionAssistantResponseData>>> {
   const requestId = crypto.randomUUID()
   const startTime = Date.now()
+  let user: any = null
+  let action: string = ''
+  let context: any = null
+  let courseId: string | undefined
+  let classId: string | undefined
+  let threadId: string | undefined
+  let parameters: any = null
 
   try {
     // 1. 验证用户身份和权限
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user: authenticatedUser } } = await supabase.auth.getUser()
+    user = authenticatedUser
 
     if (!user) {
       return NextResponse.json({
@@ -69,7 +77,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
       }, { status: 400 })
     }
 
-    const { action, courseId, classId, threadId, context, parameters } = validation.data
+    const validatedData = validation.data
+    action = validatedData.action
+    courseId = validatedData.courseId
+    classId = validatedData.classId
+    threadId = validatedData.threadId
+    context = validatedData.context
+    parameters = validatedData.parameters
 
     // 3. 验证用户权限
     const { data: orgMember } = await supabase
@@ -255,29 +269,15 @@ async function suggestDiscussionTopics({
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        suggestions: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              description: { type: 'string' },
-              discussion_points: {
-                type: 'array',
-                items: { type: 'string' }
-              },
-              estimated_duration: { type: 'string' },
-              difficulty_level: { type: 'string', enum: ['easy', 'medium', 'hard'] }
-            },
-            required: ['title', 'description', 'discussion_points']
-          }
-        }
-      },
-      required: ['suggestions']
-    },
+    schema: z.object({
+      suggestions: z.array(z.object({
+        title: z.string(),
+        description: z.string(),
+        discussion_points: z.array(z.string()),
+        estimated_duration: z.string(),
+        difficulty_level: z.enum(['easy', 'medium', 'hard'])
+      }))
+    }),
     prompt
   })
 
@@ -349,7 +349,7 @@ async function analyzeDiscussionEngagement({
 参与人数: ${participants?.length || 0}
 
 参与详情:
-${participants?.map(p => `- 用户 ${p.user_id}: ${p.posts_count} 帖子, 角色: ${p.role}, 最后活动: ${p.last_activity_at}`).join('\n') || '无数据'}
+${participants?.map((p: any) => `- 用户 ${p.user_id}: ${p.posts_count} 帖子, 角色: ${p.role}, 最后活动: ${p.last_activity_at}`).join('\n') || '无数据'}
 
 请从以下角度分析:
 1. 整体参与度评分 (1-10分)
@@ -362,29 +362,15 @@ ${participants?.map(p => `- 用户 ${p.user_id}: ${p.posts_count} 帖子, 角色
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        engagement_score: { type: 'number', minimum: 1, maximum: 10 },
-        recommendations: {
-          type: 'array',
-          items: { type: 'string' }
-        },
-        participants: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              user_id: { type: 'string' },
-              activity_level: { type: 'number', minimum: 1, maximum: 10 },
-              role: { type: 'string' }
-            },
-            required: ['user_id', 'activity_level', 'role']
-          }
-        }
-      },
-      required: ['engagement_score', 'recommendations', 'participants']
-    },
+    schema: z.object({
+      engagement_score: z.number().min(1).max(10),
+      recommendations: z.array(z.string()),
+      participants: z.array(z.object({
+        user_id: z.string(),
+        activity_level: z.number().min(1).max(10),
+        role: z.string()
+      }))
+    }),
     prompt: analysisPrompt
   })
 
@@ -432,24 +418,13 @@ ${replyTo ? `回复对象: "${replyTo}"` : ''}
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        replies: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              content: { type: 'string' },
-              reasoning: { type: 'string' },
-              tone: { type: 'string', enum: ['friendly', 'professional', 'enthusiastic', 'thoughtful', 'supportive'] }
-            },
-            required: ['content', 'reasoning', 'tone']
-          }
-        }
-      },
-      required: ['replies']
-    },
+    schema: z.object({
+      replies: z.array(z.object({
+        content: z.string(),
+        reasoning: z.string(),
+        tone: z.enum(['friendly', 'professional', 'enthusiastic', 'thoughtful', 'supportive'])
+      }))
+    }),
     prompt
   })
 
@@ -495,23 +470,10 @@ async function moderateDiscussion({
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        flagged_content: {
-          type: 'array',
-          items: { type: 'string' }
-        },
-        recommended_actions: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['approve', 'warn', 'remove', 'request_edit', 'escalate']
-          }
-        }
-      },
-      required: ['flagged_content', 'recommended_actions']
-    },
+    schema: z.object({
+      flagged_content: z.array(z.string()),
+      recommended_actions: z.array(z.enum(['approve', 'warn', 'remove', 'request_edit', 'escalate']))
+    }),
     prompt
   })
 

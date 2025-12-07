@@ -25,8 +25,9 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -50,16 +51,18 @@ export async function PUT(
       .single()
 
     if (fetchError || !post) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Post not found',
       }, { status: 404 })
     }
 
     // Check if thread is locked
     if (post.thread.is_locked) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Cannot edit posts in a locked discussion thread',
       }, { status: 403 })
     }
@@ -75,8 +78,9 @@ export async function PUT(
         .single()
 
       if (!classMember || classMember.role !== 'teacher') {
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
+          data: null as any,
           error: 'Insufficient permissions. Only the author or teachers can edit this post.',
         }, { status: 403 })
       }
@@ -108,8 +112,9 @@ export async function PUT(
 
     if (error) {
       console.error('Error updating post:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to update post',
         details: error.message,
       }, { status: 500 })
@@ -148,15 +153,17 @@ export async function PUT(
     console.error('Update post error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })
@@ -174,8 +181,9 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -198,8 +206,9 @@ export async function DELETE(
       .single()
 
     if (fetchError || !post) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Post not found',
       }, { status: 404 })
     }
@@ -217,8 +226,9 @@ export async function DELETE(
     const isThreadCreator = post.thread.created_by === user.id
 
     if (!isAuthor && !isTeacher && !isThreadCreator) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Insufficient permissions. Only the author, teachers, or thread creator can delete this post.',
       }, { status: 403 })
     }
@@ -245,8 +255,9 @@ export async function DELETE(
 
       if (error) {
         console.error('Error soft deleting post:', error)
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
+          data: null as any,
           error: 'Failed to delete post',
           details: error.message,
         }, { status: 500 })
@@ -260,8 +271,9 @@ export async function DELETE(
 
       if (error) {
         console.error('Error deleting post:', error)
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
+          data: null as any,
           error: 'Failed to delete post',
           details: error.message,
         }, { status: 500 })
@@ -304,8 +316,9 @@ export async function DELETE(
 
   } catch (error: any) {
     console.error('Delete post error:', error)
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })

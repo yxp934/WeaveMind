@@ -40,8 +40,9 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -58,16 +59,18 @@ export async function POST(
       .single()
 
     if (threadError || !thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
 
     // Check if thread is locked
     if (thread.is_locked) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Cannot post to a locked discussion thread',
       }, { status: 403 })
     }
@@ -81,8 +84,9 @@ export async function POST(
       .single()
 
     if (!classMember) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Access denied',
       }, { status: 403 })
     }
@@ -99,7 +103,7 @@ export async function POST(
         .single()
 
       if (!parentPost) {
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
           error: 'Parent post not found',
         }, { status: 404 })
@@ -108,7 +112,7 @@ export async function POST(
       depth = parentPost.depth + 1
 
       if (depth > 10) {
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
           error: 'Maximum reply depth (10) exceeded',
         }, { status: 400 })
@@ -116,7 +120,7 @@ export async function POST(
     } else {
       // For root posts, title is required
       if (!validatedData.title) {
-        return NextResponse.json<ApiResponse<never>>({
+        return NextResponse.json({
           success: false,
           error: 'Title is required for root posts',
         }, { status: 400 })
@@ -154,8 +158,9 @@ export async function POST(
 
     if (error) {
       console.error('Error creating post:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to create post',
         details: error.message,
       }, { status: 500 })
@@ -208,15 +213,17 @@ export async function POST(
     console.error('Create post error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })
@@ -234,8 +241,9 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Unauthorized',
       }, { status: 401 })
     }
@@ -252,8 +260,9 @@ export async function GET(
       .single()
 
     if (!thread) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Discussion thread not found',
       }, { status: 404 })
     }
@@ -267,8 +276,9 @@ export async function GET(
       .single()
 
     if (!classMember) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Access denied',
       }, { status: 403 })
     }
@@ -310,8 +320,9 @@ export async function GET(
 
     if (error) {
       console.error('Error fetching posts:', error)
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Failed to fetch posts',
         details: error.message,
       }, { status: 500 })
@@ -381,15 +392,17 @@ export async function GET(
     console.error('Get posts error:', error)
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json<ApiResponse<never>>({
+      return NextResponse.json({
         success: false,
+        data: null as any,
         error: 'Validation error',
-        details: error.errors,
+        details: (error as any).errors || error.issues,
       }, { status: 400 })
     }
 
-    return NextResponse.json<ApiResponse<never>>({
+    return NextResponse.json({
       success: false,
+      data: null as any,
       error: 'Internal server error',
       details: error.message,
     }, { status: 500 })

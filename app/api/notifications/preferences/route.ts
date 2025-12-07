@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         {
           error: 'Validation Error',
           message: '查询参数无效',
-          details: validatedQuery.error.errors
+          details: (validatedQuery.error as any).errors || validatedQuery.error.issues
         },
         { status: 400 }
       )
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
         {
           error: 'Validation Error',
           message: '请求数据无效',
-          details: validatedData.error.errors
+          details: (validatedData.error as any).errors || validatedData.error.issues
         },
         { status: 400 }
       )
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
       const validated = Schemas.NotificationPreferenceUpdate.safeParse(pref)
 
       if (!validated.success) {
-        errors.push(`偏好设置 ${i + 1}: ${validated.error.errors.map(e => e.message).join(', ')}`)
+        errors.push(`偏好设置 ${i + 1}: ${((validated.error as any).errors || validated.error.issues).map((e: any) => e.message).join(', ')}`)
       } else {
         validatedPreferences.push(validated.data)
       }

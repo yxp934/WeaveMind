@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 处理数据，添加关联信息的便捷访问
-    const processedFavorites = favorites?.map(favorite => {
+    const processedFavorites = favorites?.map((favorite: any) => {
       // 确定主要关联对象
       let primary_object = null;
       let primary_type = null;

@@ -32,11 +32,17 @@ const settingsAdvisorRequestSchema = z.object({
 export async function POST(request: NextRequest): Promise<NextResponse<StandardApiResponse<SettingsAdvisorResponseData>>> {
   const requestId = crypto.randomUUID()
   const startTime = Date.now()
+  let user: any = null
+  let action: string = ''
+  let context: any = null
+  let preferences: any = null
+  let userId: string | undefined
 
   try {
     // 1. 验证用户身份和权限
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user: authenticatedUser } } = await supabase.auth.getUser()
+    user = authenticatedUser
 
     if (!user) {
       return NextResponse.json({
@@ -71,7 +77,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
       }, { status: 400 })
     }
 
-    const { action, userId, context, preferences } = validation.data
+    const validatedData = validation.data
+    action = validatedData.action
+    userId = validatedData.userId
+    context = validatedData.context
+    preferences = validatedData.preferences
     const targetUserId = userId || user.id
 
     // 3. 验证用户权限
@@ -257,8 +267,8 @@ async function optimizeLearningPath({
 用户角色: ${context.userRole}
 学习偏好: ${JSON.stringify(preferences)}
 
-学习路径: ${userProfile.pathways.map(p => `${p.title} (${p.difficulty_level})`).join(', ') || '无'}
-近期活动: ${userProfile.recentActivities.map(a => `${a.activity_type} - ${a.created_at}`).join(', ') || '无'}
+学习路径: ${userProfile.pathways.map((p: any) => `${p.title} (${p.difficulty_level})`).join(', ') || '无'}
+近期活动: ${userProfile.recentActivities.map((a: any) => `${a.activity_type} - ${a.created_at}`).join(', ') || '无'}
 学习进度: ${userProfile.learningProgress.length} 个学习事件
 收藏内容: ${userProfile.favorites.length} 个收藏
 
@@ -272,28 +282,14 @@ async function optimizeLearningPath({
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        learning_path: {
-          type: 'object',
-          properties: {
-            current_stage: { type: 'string' },
-            next_steps: {
-              type: 'array',
-              items: { type: 'string' }
-            },
-            estimated_completion: { type: 'string' },
-            difficulty_adjustments: {
-              type: 'array',
-              items: { type: 'string' }
-            }
-          },
-          required: ['current_stage', 'next_steps', 'estimated_completion', 'difficulty_adjustments']
-        }
-      },
-      required: ['learning_path']
-    },
+    schema: z.object({
+      learning_path: z.object({
+        current_stage: z.string(),
+        next_steps: z.array(z.string()),
+        estimated_completion: z.string(),
+        difficulty_adjustments: z.array(z.string())
+      })
+    }),
     prompt
   })
 
@@ -336,7 +332,7 @@ async function recommendNotifications({
     currentSettings: currentSettings || [],
     recentActivityCount: activities?.length || 0,
     mostActiveHours: calculateMostActiveHours(activities || []),
-    activityTypes: [...new Set(activities?.map(a => a.activity_type) || [])]
+    activityTypes: [...new Set(activities?.map((a: any) => a.activity_type) || [])]
   }
 
   const prompt = `基于以下用户通知偏好和活动模式，推荐个性化通知设置：
@@ -363,27 +359,16 @@ async function recommendNotifications({
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        recommendations: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              setting_category: { type: 'string' },
-              setting_key: { type: 'string' },
-              current_value: { anyOf: [{ type: 'string' }, { type: 'boolean' }, { type: 'number' }, { type: 'array' }] },
-              recommended_value: { anyOf: [{ type: 'string' }, { type: 'boolean' }, { type: 'number' }, { type: 'array' }] },
-              reasoning: { type: 'string' },
-              priority: { type: 'string', enum: ['low', 'medium', 'high'] }
-            },
-            required: ['setting_category', 'setting_key', 'recommended_value', 'reasoning', 'priority']
-          }
-        }
-      },
-      required: ['recommendations']
-    },
+    schema: z.object({
+      recommendations: z.array(z.object({
+        setting_category: z.string(),
+        setting_key: z.string(),
+        current_value: z.any(),
+        recommended_value: z.any(),
+        reasoning: z.string(),
+        priority: z.enum(['low', 'medium', 'high'])
+      }))
+    }),
     prompt
   })
 
@@ -453,27 +438,16 @@ ${context.userRole === 'teacher' ? '教师界面建议考虑: 课程管理效率
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        recommendations: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              setting_category: { type: 'string' },
-              setting_key: { type: 'string' },
-              current_value: { anyOf: [{ type: 'string' }, { type: 'boolean' }, { type: 'number' }, { type: 'array' }] },
-              recommended_value: { anyOf: [{ type: 'string' }, { type: 'boolean' }, { type: 'number' }, { type: 'array' }] },
-              reasoning: { type: 'string' },
-              priority: { type: 'string', enum: ['low', 'medium', 'high'] }
-            },
-            required: ['setting_category', 'setting_key', 'recommended_value', 'reasoning', 'priority']
-          }
-        }
-      },
-      required: ['recommendations']
-    },
+    schema: z.object({
+      recommendations: z.array(z.object({
+        setting_category: z.string(),
+        setting_key: z.string(),
+        current_value: z.any(),
+        recommended_value: z.any(),
+        reasoning: z.string(),
+        priority: z.enum(['low', 'medium', 'high'])
+      }))
+    }),
     prompt
   })
 
@@ -543,29 +517,15 @@ ${Object.entries(usageStats.activityDistribution).map(([type, count]) => `${type
 
   const { object } = await generateObject({
     model: openai('gpt-4-turbo'),
-    schema: {
-      type: 'object',
-      properties: {
-        usage_analysis: {
-          type: 'object',
-          properties: {
-            total_sessions: { type: 'number' },
-            average_session_duration: { type: 'number' },
-            most_used_features: {
-              type: 'array',
-              items: { type: 'string' }
-            },
-            learning_velocity: { type: 'string', enum: ['slow', 'normal', 'fast'] },
-            recommendations: {
-              type: 'array',
-              items: { type: 'string' }
-            }
-          },
-          required: ['total_sessions', 'average_session_duration', 'most_used_features', 'learning_velocity', 'recommendations']
-        }
-      },
-      required: ['usage_analysis']
-    },
+    schema: z.object({
+      usage_analysis: z.object({
+        total_sessions: z.number(),
+        average_session_duration: z.number(),
+        most_used_features: z.array(z.string()),
+        learning_velocity: z.enum(['slow', 'normal', 'fast']),
+        recommendations: z.array(z.string())
+      })
+    }),
     prompt
   })
 
