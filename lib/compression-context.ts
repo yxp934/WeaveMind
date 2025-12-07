@@ -414,5 +414,72 @@ export class CompressionContextService {
   }
 }
 
-// Export singleton instance
-export const compressionContextService = new CompressionContextService()
+// Export singleton accessor function to avoid module-level execution
+let compressionContextServiceInstance: CompressionContextService | null = null
+
+export function getCompressionContextService(): CompressionContextService {
+  if (!compressionContextServiceInstance) {
+    compressionContextServiceInstance = new CompressionContextService()
+  }
+  return compressionContextServiceInstance
+}
+
+// For backward compatibility, also export the service with all methods
+export const compressionContextService = {
+  getOrCreateContext: async (classId: string, organizationId: string) => {
+    const service = getCompressionContextService()
+    return await service.getOrCreateContext(classId, organizationId)
+  },
+  getCompressionContext: async (classId: string) => {
+    const service = getCompressionContextService()
+    return await service.getCompressionContext(classId)
+  },
+  extractFromScheduleGeneration: async (
+    classId: string,
+    organizationId: string,
+    scheduleContext: any,
+    conversationContext?: string
+  ) => {
+    const service = getCompressionContextService()
+    return await service.extractFromScheduleGeneration(
+      classId,
+      organizationId,
+      scheduleContext,
+      conversationContext
+    )
+  },
+  extractFromSessionGeneration: async (
+    classId: string,
+    organizationId: string,
+    sessionData: any,
+    generatedComponents: any[]
+  ) => {
+    const service = getCompressionContextService()
+    return await service.extractFromSessionGeneration(
+      classId,
+      organizationId,
+      sessionData,
+      generatedComponents
+    )
+  },
+  refineContext: async (contextId: string) => {
+    const service = getCompressionContextService()
+    return await service.refineContext(contextId)
+  },
+  getContextWithEvents: async (contextId: string) => {
+    const service = getCompressionContextService()
+    return await service.getContextWithEvents(contextId)
+  },
+  createInitialContext: async (classId: string, organizationId: string) => {
+    const service = getCompressionContextService()
+    return await service.createInitialContext(classId, organizationId)
+  },
+  addExtractionEvent: async (contextId: string, event: any) => {
+    const service = getCompressionContextService()
+    return await service.addExtractionEvent(contextId, event)
+  },
+  updateContext: async (contextId: string, updates: any) => {
+    const service = getCompressionContextService()
+    return await service.updateContext(contextId, updates)
+  }
+}

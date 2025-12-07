@@ -3,7 +3,13 @@
  * 实时监控异常访问、恶意请求、权限异常和安全事件
  */
 
-import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+// 辅助函数：获取Supabase客户端
+async function getSupabaseClient(): Promise<SupabaseClient> {
+  const { createClient } = await import('@/lib/supabase/server')
+  return await createClient()
+}
 
 interface AnomalyResult {
   id: string
@@ -66,8 +72,6 @@ interface AlertResult {
 }
 
 export class SecurityMonitor {
-  private supabase = createClient()
-
   // 安全威胁模式
   private static readonly THREAT_PATTERNS = {
     SQL_INJECTION: [
@@ -145,7 +149,7 @@ export class SecurityMonitor {
 
     try {
       // 获取最近的请求日志
-      const supabase = await createClient()
+      const supabase = await getSupabaseClient()
       const { data: requestLogs } = await supabase
         .from('api_request_logs')
         .select('*')
@@ -394,7 +398,7 @@ export class SecurityMonitor {
     const windowStart = Date.now() - timeWindow
 
     // 获取请求频率统计
-    const supabase = await createClient()
+    const supabase = await getSupabaseClient()
     const { data: requestLogs } = await supabase
       .from('api_request_logs')
       .select('ip_address, user_id, created_at')
@@ -500,7 +504,7 @@ export class SecurityMonitor {
     const timeWindow = 300000 // 5分钟
     const windowStart = Date.now() - timeWindow
 
-    const supabase = await createClient()
+    const supabase = await getSupabaseClient()
     const { count } = await supabase
       .from('api_request_logs')
       .select('*', { count: 'exact', head: true })

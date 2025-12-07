@@ -3,7 +3,13 @@
  * 实时监控API、数据库、实时系统和AI系统的性能指标
  */
 
-import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+// 辅助函数：获取Supabase客户端
+async function getSupabaseClient(): Promise<SupabaseClient> {
+  const { createClient } = await import('@/lib/supabase/server')
+  return await createClient()
+}
 
 interface APIMetrics {
   timestamp: string
@@ -104,7 +110,6 @@ interface Alert {
 }
 
 export class PerformanceMonitor {
-  private supabase = createClient()
   private alertRules: AlertRule[] = []
   private alertHistory: Alert[] = []
 
@@ -116,7 +121,7 @@ export class PerformanceMonitor {
 
     try {
       // 从数据库获取API请求统计
-      const supabase = await createClient()
+      const supabase = await getSupabaseClient()
       const { data: requestLogs } = await supabase
         .from('api_request_logs')
         .select('*')
@@ -195,7 +200,7 @@ export class PerformanceMonitor {
 
     try {
       // 获取数据库连接统计
-      const supabase = await createClient()
+      const supabase = await getSupabaseClient()
       const { data: connectionStats } = await supabase
         .from('database_connection_stats')
         .select('*')
@@ -281,7 +286,7 @@ export class PerformanceMonitor {
 
     try {
       // 获取WebSocket连接统计
-      const supabase = await createClient()
+      const supabase = await getSupabaseClient()
       const { data: connectionStats } = await supabase
         .from('realtime_connection_stats')
         .select('*')
@@ -332,7 +337,7 @@ export class PerformanceMonitor {
 
     try {
       // 获取AI请求统计
-      const supabase = await createClient()
+      const supabase = await getSupabaseClient()
       const { data: aiLogs } = await supabase
         .from('ai_usage_audit')
         .select('*')
