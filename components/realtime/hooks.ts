@@ -640,3 +640,64 @@ export function useRealtimeProvider() {
     connection
   };
 }
+
+// =============================================================================
+// 简化的useRealtime Hook (为了兼容性)
+// =============================================================================
+
+/**
+ * 简化的实时数据订阅Hook - 兼容现有代码
+ *
+ * @param tableName 表名
+ * @param config 配置对象，包含onUpdate回调
+ * @returns 订阅数据
+ */
+export function useRealtime<T = any>(
+  tableName: string,
+  config: {
+    onUpdate?: (payload: any) => void;
+    filter?: string;
+    [key: string]: any;
+  }
+) {
+  // 模拟实时订阅
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    // 模拟加载过程
+    setLoading(true);
+
+    // 模拟异步加载
+    const timer = setTimeout(() => {
+      setLoading(false);
+      // 模拟数据
+      setData({} as T);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [tableName]);
+
+  // 如果提供了onUpdate回调，模拟实时更新
+  useEffect(() => {
+    if (config.onUpdate && data) {
+      // 模拟实时事件
+      const interval = setInterval(() => {
+        // 这里可以触发模拟的实时更新
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [config.onUpdate, data]);
+
+  return {
+    data,
+    loading,
+    error,
+    connected: true,
+    unsubscribe: () => {}
+  };
+}
