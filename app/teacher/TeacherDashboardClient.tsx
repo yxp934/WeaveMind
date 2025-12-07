@@ -6,6 +6,7 @@ import { Bell, Search, Settings, MessageSquare, Building2, BookOpen, Users, Cloc
 import { createClient } from "@/lib/supabase/client"
 import { RetroTitle } from '@/components/teacher/RetroTitle'
 import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu'
+import { TeacherDashboardChat } from '@/components/teacher/TeacherDashboardChat'
 
 interface ClassData {
   id: number;
@@ -316,20 +317,11 @@ export function TeacherDashboardClient({ classes, upcomingSessions, assignments,
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] h-full">
-              <div className="mb-5">
-                <RetroTitle
-                  text="AI Assistant"
-                  className="text-[24px]"
-                  color="#B882B1"
-                />
-              </div>
-              <div className="text-center text-gray-500 mt-8">
-                <MessageSquare className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>AI Chatbot coming soon</p>
-                <p className="text-sm mt-2">Get help with course creation and management</p>
-              </div>
-            </div>
+            <TeacherDashboardChat
+              classes={classes.map(c => ({ id: c.id, title: c.title }))}
+              sessions={upcomingSessions.map(s => ({ id: s.id, title: s.title }))}
+              assignments={assignments.map(a => ({ id: a.id, title: a.title }))}
+            />
           </div>
         </div>
       </div>
