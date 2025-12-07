@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 interface RoleCard {
   id: string;
@@ -35,6 +36,7 @@ const roles: RoleCard[] = [
 
 export default function RoleSelectPage() {
   const router = useRouter()
+  const supabase = createClientComponentClient()
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -48,8 +50,29 @@ export default function RoleSelectPage() {
     setLoading(true)
 
     try {
-      // Save role selection to localStorage for persistence
-      localStorage.setItem('selectedRole', selectedRole)
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        console.error('Error getting user:', userError)
+        setLoading(false)
+        return
+      }
+
+      // Save role to database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          role: selectedRole,
+          updated_at: new Date().toISOString()
+        })
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError)
+        setLoading(false)
+        return
+      }
 
       // Short delay for UX
       await new Promise(resolve => setTimeout(resolve, 500))
