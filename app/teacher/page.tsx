@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, Search, Settings, MessageSquare, Building2, BookOpen, Users, Clock, Video, MapPin, MoreHorizontal, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { createClient } from "@/lib/supabase/client"
+import { RetroText } from '@/components/landing/RetroText'
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState<any>(null);
@@ -212,9 +213,9 @@ export default function TeacherDashboard() {
       <div className="bg-white border-b border-gray-200 px-8 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="font-['Slackey:Regular',sans-serif] text-[#B882B1] text-[32px] cursor-pointer hover:opacity-80 transition-opacity">
+            <div className="text-[#B882B1] text-[32px] cursor-pointer hover:opacity-80 transition-opacity font-bold">
               WeaveMind
-            </h1>
+            </div>
           </div>
 
           <div className="flex items-center gap-6">
@@ -269,9 +270,9 @@ export default function TeacherDashboard() {
           <div className="flex-1 space-y-6">
             {/* Welcome Header */}
             <div className="mb-2">
-              <h1 className="font-['Slackey:Regular',sans-serif] text-[#B882B1] text-[40px] leading-[1.1] mb-2">
+              <div className="text-[#B882B1] text-[40px] leading-[1.1] mb-2 font-bold">
                 Welcome Back! 👋
-              </h1>
+              </div>
               <p className="text-[#6a7282] text-[16px]">
                 Let&apos;s manage your classes today
               </p>
@@ -279,7 +280,7 @@ export default function TeacherDashboard() {
 
             {/* Classes Section - Horizontal Scroll */}
             <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] relative">
-              <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#B882B1]">
+              <h2 className="text-[24px] mb-5 text-[#B882B1] font-bold">
                 Classes
               </h2>
 
@@ -340,7 +341,7 @@ export default function TeacherDashboard() {
             <div className="grid grid-cols-2 gap-6">
               {/* Upcoming Sessions - Vertical Scroll */}
               <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] relative">
-                <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#3FA11B]">
+                <h2 className="text-[24px] mb-5 text-[#3FA11B] font-bold">
                   Upcoming Sessions
                 </h2>
                 <div className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-hide scroll-smooth pr-2">
@@ -386,7 +387,7 @@ export default function TeacherDashboard() {
 
               {/* Assignments - Vertical Scroll */}
               <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] relative">
-                <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#B882B1]">
+                <h2 className="text-[24px] mb-5 text-[#B882B1] font-bold">
                   Assignments
                 </h2>
                 <div className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-hide scroll-smooth pr-2">
@@ -436,7 +437,7 @@ export default function TeacherDashboard() {
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
             <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] h-full">
-              <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#B882B1]">
+              <h2 className="text-[24px] mb-5 text-[#B882B1] font-bold">
                 AI Assistant
               </h2>
               <div className="text-center text-gray-500 mt-8">
