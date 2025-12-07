@@ -82,6 +82,11 @@ export default function TeacherDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Debug Banner */}
+      <div className="bg-red-500 text-white py-2 px-4 text-center font-bold">
+        ✅ Teacher Dashboard is Working! User: {user?.email || 'Unknown'}
+      </div>
+
       <DashboardSidebar navItems={navItems} />
       <div className="lg:pl-72">
         <DashboardHeader
@@ -103,7 +108,7 @@ export default function TeacherDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="mb-8"
+              className="mb-8 bg-white p-6 rounded-lg shadow"
             >
               <h1 className="text-3xl font-bold text-gray-900">
                 欢迎回来，{user?.user_metadata?.full_name || '教师'}！
