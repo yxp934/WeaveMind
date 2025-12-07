@@ -1016,3 +1016,123 @@ export function getCompressionContextService(): CompressionContextService {
 3. **单例模式的正确实现**: 使用函数延迟实例化而非直接导出
 4. **TypeScript严格模式**: 有助于在编译时发现这些问题
 
+
+## framer-motion服务器端渲染错误和useRealtime导出修复 (2025-12-07)
+
+### 问题概述:
+登录后出现"Application error: a server-side exception has occurred while loading weavemind.vercel.app"错误，具体错误为：
+```
+Error: Attempted to call createMotionComponent() from the server but createMotionComponent is on the client.
+```
+
+### 根本原因分析:
+1. **framer-motion服务器端渲染错误**:
+   - teacher页面是服务器组件（`export default async function`）
+   - 但导入了framer-motion客户端库
+   - 服务器组件不能使用客户端库，导致createMotionComponent调用失败
+
+2. **useRealtime导出问题**:
+   - hooks.ts文件末尾有重复的export语句
+   - 同时有`export function useRealtime`和`export { useRealtime }`
+
+3. **组件props类型不匹配**:
+   - NavItem的icon类型不包含MessageCircle
+   - DashboardHeader不接受user属性
+   - StatCard不接受trend属性
+
+### 解决方案:
+
+#### 1. 转换teacher页面为客户端组件
+**文件:** `/app/teacher/page.tsx`
+- 添加`'use client'`指令
+- 将`export default async function`改为`export default function`
+- 导入`@/lib/supabase/client`而非`server`
+- 使用useState和useEffect管理状态
+- 将所有数据库查询移至useEffect中
+
+#### 2. 修复useRealtime导出
+**文件:** `/components/realtime/hooks.ts`
+- 移除第300行的重复export语句：`export { useRealtime }`
+- 保留第274行的`export function useRealtime`
+
+#### 3. 修复组件props类型
+- **NavItem**: 将`MessageCircle`替换为`MessageSquare`（在允许的图标列表中）
+- **DashboardHeader**: 添加正确的props：`title`、`subtitle`、`userEmail`
+- **StatCard**: 移除`trend`属性，只保留基本属性：`title`、`value`、`icon`
+
+### 技术细节:
+
+#### 客户端组件模式:
+```typescript
+'use client';
+
+import { useEffect, useState } from 'react'
+import { createClient } from "@/lib/supabase/client"
+
+export default function TeacherDashboard() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setLoading(false);
+    };
+    checkUser();
+  }, []);
+
+  if (loading) return <div>Loading...</div>;
+  if (!user) return <div>请先登录</div>;
+
+  return (...);
+}
+```
+
+#### 组件props修复:
+```typescript
+// 错误用法
+<DashboardHeader user={user} />
+<StatCard trend={{ value: 0, isPositive: true }} />
+{ icon: "MessageCircle" }
+
+// 正确用法
+<DashboardHeader
+  title="教师仪表板"
+  subtitle="欢迎使用WeaveMind教学管理系统"
+  userEmail={user?.email}
+/>
+<StatCard title="班级" value={classesCount} icon={Users} />
+{ icon: "MessageSquare" }
+```
+
+### 测试验证:
+✅ **TypeScript编译**: 所有类型检查通过
+✅ **Next.js构建**: 完全成功，无错误
+✅ **开发服务器**: 正常运行在localhost:3000
+✅ **页面编译**: 所有页面正确编译（静态和动态）
+✅ **网站功能**:
+  - 首页正常加载
+  - teacher页面正常显示
+  - 登录流程正常工作
+  - 无服务器端渲染错误
+
+### 修复效果:
+- ✅ **解决framer-motion错误**: 客户端组件正确使用framer-motion
+- ✅ **修复useRealtime导入**: 无重复导出错误
+- ✅ **TypeScript类型安全**: 所有组件props类型匹配
+- ✅ **提升稳定性**: 避免服务器端渲染时调用客户端函数
+- ✅ **保持功能完整**: 所有原有功能正常工作
+
+### 提交信息:
+- **Commit**: c845916
+- **状态**: 已推送到GitHub并部署 ✅
+
+### 关键学习点:
+1. **服务器vs客户端组件**: 服务器组件不能导入客户端库（如framer-motion）
+2. **use client指令**: 需要使用动画、状态管理的页面必须是客户端组件
+3. **组件props类型**: 严格匹配组件定义的props接口
+4. **动态导入 vs 客户端组件**: 动态导入解决部分问题，但客户端组件是根本解决方案
+5. **状态管理**: 客户端组件需要使用React hooks管理状态和副作用
+
