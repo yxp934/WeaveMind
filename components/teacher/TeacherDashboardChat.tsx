@@ -143,16 +143,22 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       if (data.success) {
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: data.data.message || data.data.response,
+          text: data.data?.message || data.data?.response || 'Response received.',
           isUser: false,
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
-        // 处理错误
+        // Handle error - ensure we get a string, not an object
+        let errorText = '抱歉，我遇到了一个错误。请重试。';
+        if (typeof data.error === 'string') {
+          errorText = data.error;
+        } else if (data.error?.message) {
+          errorText = data.error.message;
+        }
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: '抱歉，我遇到了一个错误。请重试。',
+          text: errorText,
           isUser: false,
           timestamp: new Date(),
         };
@@ -172,14 +178,69 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     }
   };
 
-  // 建议点击处理
-  const handleSuggestionClick = (suggestion: string) => {
-    setInputValue(suggestion);
-    setTimeout(() => handleSendMessage(), 100);
+  // 建议点击处理 - 直接发送消息
+  const handleSuggestionClick = async (suggestion: string) => {
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: suggestion,
+      isUser: true,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsTyping(true);
+
+    try {
+      const response = await fetch('/api/ai/teacher-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: suggestion,
+          context: selectedContext,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: data.data?.message || data.data?.response || 'Response received.',
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        // Handle error - ensure we get a string, not an object
+        let errorText = 'Sorry, I encountered an error. Please try again.';
+        if (typeof data.error === 'string') {
+          errorText = data.error;
+        } else if (data.error?.message) {
+          errorText = data.error.message;
+        }
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: errorText,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Network error, please check your connection and try again.',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
-  // 键盘事件处理
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  // 键盘事件处理 - 使用 onKeyDown 替代已弃用的 onKeyPress
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -313,7 +374,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder="Ask me anything about your classes..."
               className="w-full px-4 py-3 border border-gray-200 rounded-[8px] focus:outline-none focus:border-[#B882B1] transition-colors text-[14px]"
               disabled={isTyping}
