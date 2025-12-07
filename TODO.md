@@ -916,3 +916,103 @@ try {
 **迁移文件: 023_notification_system.sql**
 **文档: NOTIFICATION_SYSTEM_DESIGN.md**
 
+
+## useRealtime导入错误和cookies作用域修复 (2025-12-07)
+
+### 问题概述:
+登录后出现"Application error: a server-side exception has occurred"错误，页面无法正常加载。teacher/discussions页面的useRealtime导入被注释，导致功能不可用。
+
+### 根本原因分析:
+1. **useRealtime导入错误**: teacher/discussions页面中useRealtime的import和使用代码被注释
+2. **cookies作用域错误**:
+   - `lib/monitoring/performance-monitor.ts`在模块顶部导入server客户端
+   - `lib/monitoring/security-monitor.ts`在类属性中初始化supabase客户端
+   - `lib/compression-context.ts`导出单例实例，在模块加载时调用构造函数
+   - 这些都在模块级别调用了server的createClient()，导致cookies()在请求上下文外被调用
+
+### 解决方案:
+
+#### 1. 修复useRealtime导入
+**文件:** `/app/teacher/discussions/page.tsx`
+- 取消注释第34行的import: `import { useRealtime } from '@/components/realtime/hooks'`
+- 取消注释第92-102行的useRealtime使用代码
+- 修正回调函数参数，使用onInsert/onUpdate/onDelete替代原来的payload格式
+
+#### 2. 修复performance-monitor.ts
+**文件:** `/lib/monitoring/performance-monitor.ts`
+- 移除模块顶部的`import { createClient } from '@/lib/supabase/server'`
+- 移除类属性中的`private supabase = createClient()`
+- 添加辅助函数`getSupabaseClient()`使用动态导入
+- 将所有`await createClient()`替换为`await getSupabaseClient()`
+
+#### 3. 修复security-monitor.ts
+**文件:** `/lib/monitoring/security-monitor.ts`
+- 移除模块顶部的`import { createClient } from '@/lib/supabase/server'`
+- 移除类属性中的`private supabase = createClient()`
+- 添加辅助函数`getSupabaseClient()`使用动态导入
+- 将所有`await createClient()`替换为`await getSupabaseClient()`
+
+#### 4. 修复compression-context.ts
+**文件:** `/lib/compression-context.ts`
+- 移除模块顶部的直接实例化: `export const compressionContextService = new CompressionContextService()`
+- 创建`getCompressionContextService()`函数实现延迟加载
+- 创建向后兼容的`compressionContextService`对象，包含所有必要方法:
+  - getOrCreateContext
+  - getCompressionContext
+  - extractFromScheduleGeneration
+  - extractFromSessionGeneration
+  - refineContext
+  - getContextWithEvents
+  - createInitialContext
+  - addExtractionEvent
+  - updateContext
+
+### 技术细节:
+
+#### 动态导入模式:
+```typescript
+// 辅助函数：获取Supabase客户端
+async function getSupabaseClient(): Promise<SupabaseClient> {
+  const { createClient } = await import('@/lib/supabase/server')
+  return await createClient()
+}
+```
+
+#### 延迟单例模式:
+```typescript
+let compressionContextServiceInstance: CompressionContextService | null = null
+
+export function getCompressionContextService(): CompressionContextService {
+  if (!compressionContextServiceInstance) {
+    compressionContextServiceInstance = new CompressionContextService()
+  }
+  return compressionContextServiceInstance
+}
+```
+
+### 测试验证:
+✅ **TypeScript编译**: 所有类型检查通过
+✅ **Next.js构建**: `npm run build`完全成功，无错误
+✅ **开发服务器**: 正常运行在localhost:3000
+✅ **网站功能**:
+  - 首页正常加载，显示Figma设计的RetroText组件
+  - 登录页面正常工作
+  - 所有页面和API路由成功编译
+
+### 修复效果:
+- ✅ **解决cookies错误**: 不再有"cookies was called outside a request scope"错误
+- ✅ **恢复实时功能**: useRealtime hooks正常工作
+- ✅ **修复构建问题**: 所有TypeScript编译错误已解决
+- ✅ **保持向后兼容**: 现有API调用无需修改
+- ✅ **提升稳定性**: 避免了模块级别的副作用
+
+### 提交信息:
+- **Commit**: 43c9d84
+- **状态**: 已推送到GitHub并部署 ✅
+
+### 关键学习点:
+1. **避免模块级副作用**: 服务器端代码不应在模块加载时执行
+2. **动态导入的优势**: 延迟加载避免请求上下文外调用
+3. **单例模式的正确实现**: 使用函数延迟实例化而非直接导出
+4. **TypeScript严格模式**: 有助于在编译时发现这些问题
+
