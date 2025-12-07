@@ -38,9 +38,18 @@ export default function RoleSelectPage() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const handleContinue = async () => {
-    if (!selectedRole) return
+  const handleRoleSelect = (roleId: string) => {
+    console.log('Selecting role:', roleId, 'Current selected:', selectedRole)
+    setSelectedRole(roleId)
+  }
 
+  const handleContinue = async () => {
+    if (!selectedRole) {
+      console.log('No role selected, cannot continue')
+      return
+    }
+
+    console.log('Continuing with role:', selectedRole)
     setLoading(true)
 
     try {
@@ -49,6 +58,7 @@ export default function RoleSelectPage() {
 
       // Redirect based on selected role
       const targetPath = selectedRole === "self-learner" ? "/self-learner" : `/${selectedRole}`
+      console.log('Redirecting to:', targetPath)
       router.push(targetPath)
     } catch (error) {
       console.error("Error selecting role:", error)
@@ -79,7 +89,7 @@ export default function RoleSelectPage() {
                 style={{ animationDelay: `${index * 0.15}s` }}
               >
                 <button
-                  onClick={() => setSelectedRole(role.id)}
+                  onClick={() => handleRoleSelect(role.id)}
                   className={`w-full p-8 rounded-2xl border-2 transition-all text-left space-y-6 ${
                     isSelected
                       ? 'border-green-600 bg-white shadow-xl ring-2 ring-green-200'
