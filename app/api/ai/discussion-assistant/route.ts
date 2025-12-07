@@ -5,9 +5,17 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 
-// 初始化OpenAI客户端
+export const runtime = 'edge'
+
+// 初始化OpenAI客户端 - 使用Vercel AI Gateway
+const gatewayKey = process.env.VERCEL_GATEWAY_KEY
+if (!gatewayKey) {
+  throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
+}
+
 const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GAI_API_KEY,
+  apiKey: gatewayKey,
+  baseURL: 'https://ai-gateway.vercel.sh/v1',
 })
 
 // 讨论助手请求验证模式
@@ -268,7 +276,7 @@ async function suggestDiscussionTopics({
 请以JSON格式返回，包含suggestions数组。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       suggestions: z.array(z.object({
         title: z.string(),
@@ -361,7 +369,7 @@ ${participants?.map((p: any) => `- 用户 ${p.user_id}: ${p.posts_count} 帖子,
 以JSON格式返回分析结果。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       engagement_score: z.number().min(1).max(10),
       recommendations: z.array(z.string()),
@@ -417,7 +425,7 @@ ${replyTo ? `回复对象: "${replyTo}"` : ''}
 以JSON格式返回。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       replies: z.array(z.object({
         content: z.string(),
@@ -469,7 +477,7 @@ async function moderateDiscussion({
 以JSON格式返回审核结果，包含标记内容和推荐操作。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       flagged_content: z.array(z.string()),
       recommended_actions: z.array(z.enum(['approve', 'warn', 'remove', 'request_edit', 'escalate']))

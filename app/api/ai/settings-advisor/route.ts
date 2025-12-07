@@ -5,9 +5,17 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 
-// 初始化OpenAI客户端
+export const runtime = 'edge'
+
+// 初始化OpenAI客户端 - 使用Vercel AI Gateway
+const gatewayKey = process.env.VERCEL_GATEWAY_KEY
+if (!gatewayKey) {
+  throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
+}
+
 const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GAI_API_KEY,
+  apiKey: gatewayKey,
+  baseURL: 'https://ai-gateway.vercel.sh/v1',
 })
 
 // 设置顾问请求验证模式
@@ -281,7 +289,7 @@ async function optimizeLearningPath({
 以JSON格式返回优化结果。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       learning_path: z.object({
         current_stage: z.string(),
@@ -358,7 +366,7 @@ async function recommendNotifications({
 以JSON格式返回推荐结果。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       recommendations: z.array(z.object({
         setting_category: z.string(),
@@ -437,7 +445,7 @@ ${context.userRole === 'teacher' ? '教师界面建议考虑: 课程管理效率
 以JSON格式返回推荐结果。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       recommendations: z.array(z.object({
         setting_category: z.string(),
@@ -516,7 +524,7 @@ ${Object.entries(usageStats.activityDistribution).map(([type, count]) => `${type
 以JSON格式返回分析结果。`
 
   const { object } = await generateObject({
-    model: openai('gpt-4-turbo'),
+    model: openai.chat('meituan/longcat-flash-chat'),
     schema: z.object({
       usage_analysis: z.object({
         total_sessions: z.number(),

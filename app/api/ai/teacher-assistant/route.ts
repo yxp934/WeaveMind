@@ -6,9 +6,17 @@ import { streamText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 
+export const runtime = 'edge'
+
 // 初始化OpenAI客户端
+const gatewayKey = process.env.VERCEL_GATEWAY_KEY
+if (!gatewayKey) {
+  throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
+}
+
 const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GAI_API_KEY,
+  apiKey: gatewayKey,
+  baseURL: 'https://ai-gateway.vercel.sh/v1',
 })
 
 // 教师助手请求验证模式
@@ -188,7 +196,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
 
     // 6. 生成AI响应
     const result = await streamText({
-      model: openai('gpt-4-turbo'),
+      model: openai.chat('meituan/longcat-flash-chat'),
       messages,
       tools: availableTools.reduce((acc, toolName) => {
         acc[toolName] = teacherDashboardTools[toolName as keyof typeof teacherDashboardTools]
@@ -208,7 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
         organizationId,
         processingTimeMs: Date.now() - startTime,
         tokensUsed: (await result.usage)?.totalTokens || 0,
-        model: 'gpt-4-turbo',
+        model: 'meituan/longcat-flash-chat',
         assistantType: 'teacher'
       }
     }

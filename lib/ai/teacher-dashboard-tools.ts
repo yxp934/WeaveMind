@@ -230,7 +230,7 @@ export const getSessionScheduleTool = tool({
     futureDate.setDate(futureDate.getDate() + days)
 
     let query = supabase
-      .from('sessions')
+      .from('course_sessions')
       .select(`
         id,
         title,
@@ -374,7 +374,7 @@ export const createSessionTool = tool({
     }
 
     const { data: session, error } = await supabase
-      .from('sessions')
+      .from('course_sessions')
       .insert({
         class_id: classId,
         title,
