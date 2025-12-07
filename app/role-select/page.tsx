@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from "@/lib/supabase/client"
 
 interface RoleCard {
   id: string;
@@ -36,7 +36,7 @@ const roles: RoleCard[] = [
 
 export default function RoleSelectPage() {
   const router = useRouter()
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Bell, Search, Settings, MessageSquare, Building2, BookOpen, Users, Clock, Video, MapPin, MoreHorizontal, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { createClient } from "@/lib/supabase/client"
 import { RetroTitle } from '@/components/teacher/RetroTitle'
+import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu'
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState<any>(null);
@@ -469,11 +470,7 @@ export default function TeacherDashboard() {
       </div>
 
       {/* Floating Action Menu */}
-      <div className="fixed bottom-6 right-6">
-        <button className="bg-[#B882B1] hover:bg-[#A172A1] text-white rounded-full p-4 shadow-lg transition-all hover:scale-105">
-          <Plus className="w-6 h-6" />
-        </button>
-      </div>
+      <FloatingActionMenu sessions={upcomingSessions} />
     </>
   );
 }
