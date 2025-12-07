@@ -48,7 +48,7 @@ export function FloatingActionMenu({ sessions }: FloatingActionMenuProps) {
   const [newClassInput, setNewClassInput] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hoverTimeoutRef = useRef<number | null>(null);
 
   const handleMouseEnter = (menuId: string) => {
     if (isDragging) return;
@@ -56,6 +56,7 @@ export function FloatingActionMenu({ sessions }: FloatingActionMenuProps) {
     // Clear any existing timeout
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
     }
 
     // Set active menu immediately
@@ -66,9 +67,10 @@ export function FloatingActionMenu({ sessions }: FloatingActionMenuProps) {
     // Add a small delay before hiding to prevent flickering
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
     }
 
-    hoverTimeoutRef.current = setTimeout(() => {
+    hoverTimeoutRef.current = window.setTimeout(() => {
       setActiveMenu(null);
     }, 150);
   };
@@ -340,6 +342,7 @@ export function FloatingActionMenu({ sessions }: FloatingActionMenuProps) {
               onMouseEnter={() => {
                 if (hoverTimeoutRef.current) {
                   clearTimeout(hoverTimeoutRef.current);
+                  hoverTimeoutRef.current = null;
                 }
               }}
             >
