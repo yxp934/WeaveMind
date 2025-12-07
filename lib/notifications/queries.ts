@@ -98,8 +98,8 @@ export async function getUserNotifications(
   }
 
   // 应用分页
-  const offset = (query.page - 1) * query.limit
-  dbQuery = dbQuery.range(offset, offset + query.limit - 1)
+  const offset = ((query.page || 1) - 1) * (query.limit || 10)
+  dbQuery = dbQuery.range(offset, offset + (query.limit || 10) - 1)
 
   const { data: notifications, error, count } = await dbQuery
 
@@ -109,15 +109,15 @@ export async function getUserNotifications(
 
   // 计算分页信息
   const total = count || 0
-  const totalPages = Math.ceil(total / query.limit)
-  const hasNext = query.page < totalPages
-  const hasPrev = query.page > 1
+  const totalPages = Math.ceil(total / (query.limit || 10))
+  const hasNext = (query.page || 1) < totalPages
+  const hasPrev = (query.page || 1) > 1
 
   return {
     notifications: notifications || [],
     pagination: {
-      page: query.page,
-      limit: query.limit,
+      page: query.page || 1,
+      limit: query.limit || 10,
       total,
       totalPages,
       hasNext,

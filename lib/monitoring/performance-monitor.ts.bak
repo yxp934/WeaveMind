@@ -116,7 +116,8 @@ export class PerformanceMonitor {
 
     try {
       // 从数据库获取API请求统计
-      const { data: requestLogs } = await createClient()
+      const supabase = await createClient()
+      const { data: requestLogs } = await supabase
         .from('api_request_logs')
         .select('*')
         .gte('created_at', new Date(Date.now() - 60000).toISOString()) // 最近1分钟
@@ -194,14 +195,15 @@ export class PerformanceMonitor {
 
     try {
       // 获取数据库连接统计
-      const { data: connectionStats } = await createClient()
+      const supabase = await createClient()
+      const { data: connectionStats } = await supabase
         .from('database_connection_stats')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(1)
 
       // 获取查询性能统计
-      const { data: queryStats } = await createClient()
+      const { data: queryStats } = await supabase
         .from('query_performance_logs')
         .select('*')
         .gte('created_at', new Date(Date.now() - 60000).toISOString())
@@ -279,7 +281,8 @@ export class PerformanceMonitor {
 
     try {
       // 获取WebSocket连接统计
-      const { data: connectionStats } = await createClient()
+      const supabase = await createClient()
+      const { data: connectionStats } = await supabase
         .from('realtime_connection_stats')
         .select('*')
         .gte('created_at', new Date(Date.now() - 60000).toISOString())
@@ -288,12 +291,12 @@ export class PerformanceMonitor {
       const connectionFailures = connectionStats?.filter(stat => stat.status === 'failed').length || 0
 
       // 获取消息统计
-      const { data: messageStats } = await createClient()
+      const { data: messageStats } = await supabase
         .from('realtime_message_stats')
         .select('*')
         .gte('created_at', new Date(Date.now() - 60000).toISOString())
 
-      const messagesPerSecond = messageStats?.length / 60 || 0
+      const messagesPerSecond = (messageStats?.length || 0) / 60
       const messageLatencies = messageStats?.map(stat => stat.latency) || []
       const averageMessageLatency = messageLatencies.length > 0
         ? messageLatencies.reduce((sum, latency) => sum + latency, 0) / messageLatencies.length

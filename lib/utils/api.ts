@@ -216,7 +216,7 @@ export function transformRecord<T extends Record<string, any>>(
 ): T {
   if (!transformMap) return record;
 
-  const transformed = { ...record };
+  const transformed = { ...record } as any;
   Object.entries(transformMap).forEach(([dbField, apiField]) => {
     if (record[dbField] !== undefined) {
       transformed[apiField] = record[dbField];

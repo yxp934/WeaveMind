@@ -55,7 +55,7 @@ export const generatePersonalizedRecommendationsTool = tool({
       }).optional().describe('学习偏好'),
       skillProfile: z.object({
         current_skills: z.array(z.string()).optional(),
-        skill_levels: z.record(z.number()).optional().describe('技能水平（1-5）'),
+        skill_levels: z.record(z.string(), z.number()).optional().describe('技能水平（1-5）'),
         learning_goals: z.array(z.object({
           goal: z.string(),
           priority: z.enum(['high', 'medium', 'low']),
@@ -81,7 +81,7 @@ export const generatePersonalizedRecommendationsTool = tool({
       interactionPatterns: z.object({
         average_session_length: z.number().optional(),
         preferred_study_times: z.array(z.number()).optional().describe('偏好学习时间（小时）'),
-        feature_usage: z.record(z.number()).optional().describe('功能使用频率'),
+        feature_usage: z.record(z.string(), z.number()).optional().describe('功能使用频率'),
         engagement_score: z.number().optional().describe('参与度得分'),
       }).optional().describe('交互模式'),
     }).optional().describe('行为历史'),
@@ -293,7 +293,7 @@ ${recommendationTypes ? recommendationTypes.join(', ') : '全部类型'}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.6,
-        maxTokens: 3500,
+        maxOutputTokens: 3500,
       })
 
       const aiData = extractJson(aiResponse)
@@ -348,12 +348,12 @@ export const adaptContentDifficultyTool = tool({
     contentType: z.enum(['course', 'chapter', 'component', 'assessment']).describe('内容类型'),
     currentDifficulty: z.enum(['beginner', 'intermediate', 'advanced']).describe('当前难度'),
     userCapabilityProfile: z.object({
-      skillLevels: z.record(z.number()).describe('各技能水平（1-5）'),
+      skillLevels: z.record(z.string(), z.number()).describe('各技能水平（1-5）'),
       learningVelocity: z.enum(['slow', 'moderate', 'fast']).describe('学习速度'),
       retentionRate: z.number().min(0).max(1).describe('知识保持率'),
       frustrationTolerance: z.enum(['low', 'medium', 'high']).describe('挫折容忍度'),
       motivationLevel: z.enum(['low', 'medium', 'high']).describe('动机水平'),
-      priorKnowledge: z.record(z.boolean()).optional().describe('先验知识'),
+      priorKnowledge: z.record(z.string(), z.boolean()).optional().describe('先验知识'),
     }).describe('用户能力画像'),
     adaptationGoals: z.array(z.object({
       goal: z.string(),
@@ -503,7 +503,7 @@ ${JSON.stringify(constraints, null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.4,
-        maxTokens: 2800,
+        maxOutputTokens: 2800,
       })
 
       const aiData = extractJson(aiResponse)
@@ -614,7 +614,7 @@ export const createStudyRemindersTool = tool({
         timeOfDay: z.string(),
         motivationLevel: z.enum(['low', 'medium', 'high']),
       })).optional().describe('动机波动'),
-    }).optional().描述('行为模式'),
+    }).optional().describe('行为模式'),
   }),
   execute: async ({ userId, studyPlan, userPreferences, contextualFactors, behavioralPatterns }) => {
     const supabase = createAdminClient()
@@ -798,7 +798,7 @@ ${JSON.stringify(reminderResponsePattern, null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.5,
-        maxTokens: 3200,
+        maxOutputTokens: 3200,
       })
 
       const aiData = extractJson(aiResponse)
@@ -861,16 +861,17 @@ function buildComprehensiveProfile(userProfile: any, userSettings: any[], behavi
   }
 
   // 从学习事件中提取行为模式
+  let activityPatterns: any = {}
   if (learningEvents.length > 0) {
-    const activityPatterns = learningEvents.reduce((acc: any, event: any) => {
+    activityPatterns = learningEvents.reduce((acc: any, event: any) => {
       const hour = new Date(event.created_at).getHours()
       acc.preferredHours = acc.preferredHours || {}
       acc.preferredHours[hour] = (acc.preferredHours[hour] || 0) + 1
       return acc
     }, {})
-
-    profile.behaviorPatterns = activityPatterns
   }
+
+  (profile as any).behaviorPatterns = activityPatterns
 
   return profile
 }
@@ -985,7 +986,7 @@ function analyzeLearningPattern(learningEvents: any[], assessmentData: any[]) {
 
       const difficultyAverages = Object.entries(avgScoreByDifficulty).map(([diff, scores]) => ({
         difficulty: diff,
-        average: (scores as number[]).reduce((sum, score) => sum + score, 0) / scores.length
+        average: (scores as number[]).reduce((sum, score) => sum + score, 0) / (scores as number[]).length
       }))
 
       const bestDifficulty = difficultyAverages.sort((a, b) => b.average - a.average)[0]
@@ -1079,7 +1080,7 @@ function analyzeReminderResponsePattern(reminderHistory: any[], recentActivities
 }
 
 function generateReminderConfigs(reminderSystem: any, userPreferences: any, contextualFactors: any) {
-  const configs = []
+  const configs: any[] = []
 
   // 生成主要提醒配置
   reminderSystem.primary_reminders?.forEach((reminder: any) => {

@@ -318,7 +318,7 @@ export const analyzeDiscussionEngagementTool = tool({
       start: z.string().datetime(),
       end: z.string().datetime(),
     }).optional().describe('时间范围'),
-    includeAnonymous: z.boolean().default(true).description('是否包含匿名用户'),
+    includeAnonymous: z.boolean().default(true).describe('是否包含匿名用户'),
     analysisDepth: z.enum(['basic', 'detailed', 'comprehensive']).default('detailed').describe('分析深度'),
   }),
   execute: async ({ threadId, timeRange, includeAnonymous, analysisDepth }) => {
@@ -513,7 +513,7 @@ ${JSON.stringify(analysisData.time_distribution, null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.3,
-        maxTokens: 1500,
+        maxOutputTokens: 1500,
       })
 
       const aiData = extractJson(aiResponse)
@@ -675,7 +675,7 @@ ${customRules ? `【自定义规则】\n${customRules.join('\n')}` : ''}`
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.2,
-        maxTokens: 1200,
+        maxOutputTokens: 1200,
       })
 
       const aiData = extractJson(aiResponse)
@@ -694,20 +694,22 @@ ${customRules ? `【自定义规则】\n${customRules.join('\n')}` : ''}`
 
       // 记录审核日志（如果提供了threadId）
       if (context.threadId) {
-        const supabase = createAdminClient()
-        await supabase
-          .from('discussion_moderation_logs')
-          .insert({
-            thread_id: context.threadId,
-            content_hash: Buffer.from(content).toString('base64'),
-            moderation_result: aiData.moderation_result,
-            issues_detected: aiData.issues_detected,
-            final_status: finalStatus,
-            created_at: new Date().toISOString(),
-          })
-          .catch(() => {
-            // 忽略日志记录错误
-          })
+        try {
+          const supabase = createAdminClient()
+          await supabase
+            .from('discussion_moderation_logs')
+            .insert({
+              thread_id: context.threadId,
+              content_hash: Buffer.from(content).toString('base64'),
+              moderation_result: aiData.moderation_result,
+              issues_detected: aiData.issues_detected,
+              final_status: finalStatus,
+              created_at: new Date().toISOString(),
+            })
+        } catch (error) {
+          // 忽略日志记录错误
+          console.warn('Failed to log moderation:', error)
+        }
       }
 
       return {

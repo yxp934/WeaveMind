@@ -31,7 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiClient } from '@/lib/api-client';
-import { useRealtime } from '@/components/realtime/hooks';
+// import { useRealtime } from '@/components/realtime/hooks';
 
 // 讨论线程类型
 interface DiscussionThread {
@@ -89,17 +89,18 @@ export default function TeacherDiscussionsPage() {
   const [newPostContent, setNewPostContent] = useState('');
 
   // 实时订阅讨论更新
-  const { data: threadUpdates } = useRealtime('discussion_threads', {
-    onUpdate: (payload) => {
-      if (payload.eventType === 'INSERT') {
-        setThreads(prev => [payload.new, ...prev]);
-      } else if (payload.eventType === 'UPDATE') {
-        setThreads(prev => prev.map(t => t.id === payload.new.id ? payload.new : t));
-      } else if (payload.eventType === 'DELETE') {
-        setThreads(prev => prev.filter(t => t.id !== payload.old.id));
-      }
-    }
-  });
+  // TODO: 实现实时功能
+  // const { data: threadUpdates } = useRealtime('discussion_threads', {
+  //   onUpdate: (payload) => {
+  //     if (payload.eventType === 'INSERT') {
+  //       setThreads(prev => [payload.new, ...prev]);
+  //     } else if (payload.eventType === 'UPDATE') {
+  //       setThreads(prev => prev.map(t => t.id === payload.new.id ? payload.new : t));
+  //     } else if (payload.eventType === 'DELETE') {
+  //       setThreads(prev => prev.filter(t => t.id !== payload.old.id));
+  //     }
+  //   }
+  // });
 
   // 加载讨论线程
   useEffect(() => {

@@ -118,7 +118,7 @@ export const optimizeUserSettingsTool = tool({
         user_id: userId,
         organization_id: organizationId,
         role: orgMember?.role || 'student',
-        organization_name: orgMember?.organizations?.name || 'Unknown',
+        organization_name: (orgMember?.organizations as any)?.name || 'Unknown',
         current_settings_count: userSettings?.length || 0,
       },
       current_settings: userSettings?.reduce((acc: any, setting: any) => {
@@ -208,7 +208,7 @@ ${analysisData.optimization_goals.join(', ')}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.4,
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
       })
 
       const aiData = extractJson(aiResponse)
@@ -342,7 +342,7 @@ export const suggestLearningPreferencesTool = tool({
         course_id: ac.classes?.courses?.id || '',
         title: ac.classes?.courses?.title || '',
         progress: 0, // 需要从其他地方获取进度
-        next_chapter: null,
+        next_chapter: undefined,
       }))
     }
 
@@ -424,7 +424,7 @@ ${JSON.stringify(learningPatternAnalysis, null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.5,
-        maxTokens: 1800,
+        maxOutputTokens: 1800,
       })
 
       const aiData = extractJson(aiResponse)
@@ -607,7 +607,7 @@ ${includeFeatures ? `【重点分析功能】\n${includeFeatures.join(', ')}` : 
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.3,
-        maxTokens: 2000,
+        maxOutputTokens: 2000,
       })
 
       const aiData = extractJson(aiResponse)
@@ -705,7 +705,7 @@ export const recommendNotificationSettingsTool = tool({
 【用户信息】
 用户ID：${userId}
 角色：${userRole}
-组织：${orgMember?.organizations?.name || 'Unknown'}
+组织：${(orgMember?.organizations as any)?.name || 'Unknown'}
 时区：${timezone || '默认时区'}
 
 【当前设置】
@@ -788,7 +788,7 @@ ${workingHours ? `${workingHours.start} - ${workingHours.end}` : '未设置'}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.4,
-        maxTokens: 1800,
+        maxOutputTokens: 1800,
       })
 
       const aiData = extractJson(aiResponse)

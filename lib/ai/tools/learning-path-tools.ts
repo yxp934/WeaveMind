@@ -217,7 +217,7 @@ ${JSON.stringify(availableCourses?.slice(0, 10), null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.6,
-        maxTokens: 3000,
+        maxOutputTokens: 3000,
       })
 
       const aiData = extractJson(aiResponse)
@@ -458,7 +458,7 @@ ${JSON.stringify({
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.4,
-        maxTokens: 2500,
+        maxOutputTokens: 2500,
       })
 
       const aiData = extractJson(aiResponse)
@@ -669,7 +669,7 @@ ${JSON.stringify(constraints, null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.5,
-        maxTokens: 2200,
+        maxOutputTokens: 2200,
       })
 
       const aiData = extractJson(aiResponse)
@@ -868,7 +868,7 @@ ${JSON.stringify(efficiencyMetrics, null, 2)}
         model: openai(MODEL_NAME),
         prompt,
         temperature: 0.3,
-        maxTokens: 2800,
+        maxOutputTokens: 2800,
       })
 
       const aiData = extractJson(aiResponse)
@@ -1025,6 +1025,7 @@ function analyzeProgressPatterns(currentProgress: any, recentEvents: any[]) {
     }
 
     const recentAvg = recentIntervals.reduce((sum, interval) => sum + interval, 0) / recentIntervals.length
+    const avgInterval = completionIntervals.length > 0 ? completionIntervals.reduce((sum, interval) => sum + interval, 0) / completionIntervals.length : recentAvg
     if (recentAvg < avgInterval * 0.8) patterns.momentum = 'accelerating'
     else if (recentAvg > avgInterval * 1.2) patterns.momentum = 'decelerating'
   }
@@ -1063,8 +1064,8 @@ function matchExistingResources(recommendations: any[], existingCourses: any[], 
   }
 
   recommendations.forEach(rec => {
-    // 匹配 const course现有课程
-   Match = existingCourses.find(course =>
+    // 匹配现有课程
+    const courseMatch = existingCourses.find(course =>
       course.title.toLowerCase().includes(rec.title.toLowerCase()) ||
       rec.title.toLowerCase().includes(course.title.toLowerCase())
     )

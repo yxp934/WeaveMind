@@ -314,7 +314,7 @@ export class AIToolExecutor {
       let retryCount = 0
       while (retryCount <= retries) {
         try {
-          result = await this.executeWithTimeout(tool.execute, params, timeout)
+          result = await this.executeWithTimeout(() => tool.execute(params), params, timeout)
           break
         } catch (error) {
           retryCount++
@@ -520,7 +520,7 @@ export const toolUtils = {
       if (error instanceof z.ZodError) {
         return {
           valid: false,
-          errors: error.errors.map(err => `${err.path.join('.')}: ${err.message}`)
+          errors: error.issues.map(err => `${err.path.map(p => typeof p === 'string' ? p : p.toString()).join('.')}: ${err.message}`)
         }
       }
       return { valid: false, errors: ['Unknown validation error'] }
@@ -539,13 +539,13 @@ export const toolUtils = {
     }
 
     if (result.success && result.data) {
-      formatted.data = result.data
+      (formatted as any).data = result.data
     } else if (!result.success && result.error) {
-      formatted.error = result.error
+      (formatted as any).error = result.error
     }
 
     if (includeMetadata && result.metadata) {
-      formatted.metadata = result.metadata
+      (formatted as any).metadata = result.metadata
     }
 
     return formatted
@@ -627,6 +627,4 @@ export default {
   ToolCategory,
   ToolPriority,
   ToolStatus,
-  AIToolDefinition,
-  ToolExecutionResult,
 }

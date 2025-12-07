@@ -61,7 +61,7 @@ export const NotificationCreateSchema = z.object({
   discussion_thread_id: z.string().uuid().optional(),
   discussion_post_id: z.string().uuid().optional(),
   delivery_methods: z.array(DeliveryMethodSchema).default(['in_app']),
-  metadata: z.record(z.any()).default({}),
+  metadata: z.record(z.string(), z.any()).default({}),
   scheduled_for: z.string().datetime().optional(),
   expires_at: z.string().datetime().optional()
 }).refine(
@@ -122,7 +122,7 @@ export const NotificationSendSchema = z.object({
   course_id: z.string().uuid().optional(),
   assignment_id: z.string().uuid().optional(),
   delivery_methods: z.array(DeliveryMethodSchema).default(['in_app']),
-  metadata: z.record(z.any()).default({}),
+  metadata: z.record(z.string(), z.any()).default({}),
   scheduled_for: z.string().datetime().optional(),
   expires_at: z.string().datetime().optional()
 }).refine(
@@ -206,7 +206,7 @@ export const NotificationPreferenceUpdateSchema = z.object({
   notification_type: NotificationTypeSchema,
   scope: NotificationScopeSchema.default('individual'),
   delivery_preferences: DeliveryPreferencesSchema,
-  category_preferences: z.record(z.any()).default({}),
+  category_preferences: z.record(z.string(), z.any()).default({}),
   quiet_hours_enabled: z.boolean().default(false),
   quiet_hours_start: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
   quiet_hours_end: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
