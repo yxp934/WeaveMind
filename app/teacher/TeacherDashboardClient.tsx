@@ -115,7 +115,7 @@ export function TeacherDashboardClient({
                   classes.map((classItem) => (
                     <div
                       key={classItem.id}
-                      className="flex-none w-full sm:w-[calc(50%-8px)] lg:w-[calc(33.333%-10.666px)] min-w-[280px] max-w-[350px]"
+                      className="flex-none w-[calc(50%-8px)] min-w-[280px] max-w-[350px]"
                     >
                       <ClassCard
                         {...classItem}
