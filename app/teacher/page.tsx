@@ -1,36 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  LayoutDashboard,
-  Building2,
-  GraduationCap,
-  BookOpen,
-  Users,
-  Calendar,
-  Plus,
-  TrendingUp,
-  Clock,
-  MessageSquare,
-  Settings,
-  LogOut,
-  Bell,
-  Search,
-  ChevronDown,
-  Star,
-  Activity,
-  Target,
-  Zap
-} from 'lucide-react'
+import { Bell, Search, Settings, MessageSquare, Building2, BookOpen, Users, Clock, Video, MapPin, MoreHorizontal, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { createClient } from "@/lib/supabase/client"
 
 export default function TeacherDashboard() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const router = useRouter();
+  const classScrollRef = useRef<HTMLDivElement>(null);
+  const sessionScrollRef = useRef<HTMLDivElement>(null);
+  const assignmentScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -63,11 +45,127 @@ export default function TeacherDashboard() {
     router.push('/auth/login');
   };
 
+  // Mock data based on DesignTeacherDashboard
+  const teacherData = {
+    avatar: user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.email || 'Teacher')}&background=B882B1&color=fff`,
+    name: user?.user_metadata?.full_name || 'Teacher',
+    organization: user?.user_metadata?.organization || 'Your Organization'
+  };
+
+  const classes = [
+    {
+      id: 0,
+      title: 'Machine Learning Fundamentals',
+      instructor: teacherData.name,
+      progress: 75,
+      totalSessions: 24,
+      completedSessions: 18,
+      students: 45,
+      color: '#B882B1'
+    },
+    {
+      id: 1,
+      title: 'Web Development & Design',
+      instructor: teacherData.name,
+      progress: 60,
+      totalSessions: 20,
+      completedSessions: 12,
+      students: 38,
+      color: '#B882B1'
+    },
+    {
+      id: 2,
+      title: 'Data Structures & Algorithms',
+      instructor: teacherData.name,
+      progress: 85,
+      totalSessions: 18,
+      completedSessions: 15,
+      students: 52,
+      color: '#B882B1'
+    }
+  ];
+
+  const upcomingSessions = [
+    {
+      id: 0,
+      title: 'Neural Networks Deep Dive',
+      className: 'Machine Learning Fundamentals',
+      date: 'Dec 06',
+      time: '10:00 AM',
+      duration: '2h',
+      location: 'Zoom Meeting',
+      isOnline: true,
+      color: '#3FA11B'
+    },
+    {
+      id: 1,
+      title: 'React Hooks & State',
+      className: 'Web Development',
+      date: 'Dec 07',
+      time: '2:00 PM',
+      duration: '1.5h',
+      location: 'Room B-204',
+      isOnline: false,
+      color: '#3FA11B'
+    },
+    {
+      id: 2,
+      title: 'Binary Trees Introduction',
+      className: 'Data Structures',
+      date: 'Dec 08',
+      time: '11:00 AM',
+      duration: '1.5h',
+      location: 'Room A-101',
+      isOnline: false,
+      color: '#3FA11B'
+    }
+  ];
+
+  const assignments = [
+    {
+      id: 0,
+      title: 'Neural Network Project',
+      className: 'Machine Learning',
+      dueDate: 'Dec 10, 2024',
+      totalStudents: 45,
+      submittedCount: 38,
+      color: '#B882B1'
+    },
+    {
+      id: 1,
+      title: 'Portfolio Website',
+      className: 'Web Development',
+      dueDate: 'Dec 08, 2024',
+      totalStudents: 38,
+      submittedCount: 35,
+      color: '#B882B1'
+    },
+    {
+      id: 2,
+      title: 'Sorting Algorithms Analysis',
+      className: 'Data Structures',
+      dueDate: 'Dec 12, 2024',
+      totalStudents: 52,
+      submittedCount: 48,
+      color: '#B882B1'
+    }
+  ];
+
+  const scroll = (direction: 'left' | 'right', ref: React.RefObject<HTMLDivElement>) => {
+    if (ref.current) {
+      const scrollAmount = 300;
+      ref.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-600 border-t-transparent mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#B882B1] border-t-transparent mx-auto mb-4"></div>
           <p className="text-xl text-gray-600">Loading your dashboard...</p>
         </div>
       </div>
@@ -76,16 +174,13 @@ export default function TeacherDashboard() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center p-8 bg-white rounded-2xl shadow-xl max-w-md">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <LogOut className="w-8 h-8 text-red-600" />
-          </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Authentication Error</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => router.push('/auth/login')}
-            className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+            className="px-6 py-3 bg-[#B882B1] text-white rounded-xl hover:bg-[#A172A1] transition-colors"
           >
             Return to Login
           </button>
@@ -96,16 +191,13 @@ export default function TeacherDashboard() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center p-8 bg-white rounded-2xl shadow-xl max-w-md">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <LogOut className="w-8 h-8 text-blue-600" />
-          </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Login Required</h2>
           <p className="text-gray-600 mb-6">Please log in to access your teacher dashboard.</p>
           <button
             onClick={() => router.push('/auth/login')}
-            className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+            className="px-6 py-3 bg-[#B882B1] text-white rounded-xl hover:bg-[#A172A1] transition-colors"
           >
             Go to Login
           </button>
@@ -114,317 +206,255 @@ export default function TeacherDashboard() {
     );
   }
 
-  const navigationItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/teacher', active: true },
-    { icon: Building2, label: 'Organizations', href: '/teacher/organizations' },
-    { icon: GraduationCap, label: 'Classes', href: '/teacher/classes' },
-    { icon: BookOpen, label: 'Courses', href: '/teacher/courses' },
-    { icon: MessageSquare, label: 'Discussions', href: '/teacher/discussions' },
-    { icon: Calendar, label: 'Calendar', href: '/teacher/calendar' },
-    { icon: Settings, label: 'Settings', href: '/teacher/settings' },
-  ];
-
-  const stats = [
-    {
-      title: 'Organizations',
-      value: '0',
-      change: '+0%',
-      icon: Building2,
-      color: 'from-blue-500 to-blue-600',
-      textColor: 'text-blue-600',
-      bgColor: 'bg-blue-50'
-    },
-    {
-      title: 'Classes',
-      value: '0',
-      change: '+0%',
-      icon: GraduationCap,
-      color: 'from-green-500 to-green-600',
-      textColor: 'text-green-600',
-      bgColor: 'bg-green-50'
-    },
-    {
-      title: 'Courses',
-      value: '0',
-      change: '+0%',
-      icon: BookOpen,
-      color: 'from-purple-500 to-purple-600',
-      textColor: 'text-purple-600',
-      bgColor: 'bg-purple-50'
-    },
-    {
-      title: 'Students',
-      value: '0',
-      change: '+0%',
-      icon: Users,
-      color: 'from-orange-500 to-orange-600',
-      textColor: 'text-orange-600',
-      bgColor: 'bg-orange-50'
-    },
-  ];
-
-  const recentActivities = [
-    { action: 'Created new organization', target: 'Test Academy', time: '2 hours ago', type: 'create' },
-    { action: 'Updated course outline', target: 'Introduction to Biology', time: '1 day ago', type: 'update' },
-    { action: 'Added new student', target: 'Class 10A', time: '3 days ago', type: 'add' },
-    { action: 'Generated AI content', target: 'Physics Chapter 5', time: '1 week ago', type: 'ai' },
-  ];
-
-  const quickActions = [
-    {
-      title: 'Create Organization',
-      description: 'Set up a new teaching organization',
-      icon: Building2,
-      href: '/teacher/organizations/new',
-      color: 'from-blue-500 to-blue-600',
-      textColor: 'text-blue-600'
-    },
-    {
-      title: 'Generate AI Course',
-      description: 'Create courses with AI assistance',
-      icon: Zap,
-      href: '/teacher/courses/new-ai',
-      color: 'from-purple-500 to-purple-600',
-      textColor: 'text-purple-600'
-    },
-    {
-      title: 'Manage Students',
-      description: 'View and manage your students',
-      icon: Users,
-      href: '/teacher/classes',
-      color: 'from-green-500 to-green-600',
-      textColor: 'text-green-600'
-    },
-    {
-      title: 'Calendar View',
-      description: 'Check your teaching schedule',
-      icon: Calendar,
-      href: '/teacher/calendar',
-      color: 'from-orange-500 to-orange-600',
-      textColor: 'text-orange-600'
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Sidebar */}
-      <div className={`fixed left-0 top-0 h-full bg-white shadow-xl transition-all duration-300 z-30 ${
-        sidebarCollapsed ? 'w-16' : 'w-64'
-      }`}>
-        {/* Logo */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">W</span>
-            </div>
-            {!sidebarCollapsed && (
-              <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  WeaveMind
-                </h1>
-                <p className="text-xs text-gray-500">Teacher Dashboard</p>
-              </div>
-            )}
+    <>
+      {/* Top Navigation */}
+      <div className="bg-white border-b border-gray-200 px-8 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="font-['Slackey:Regular',sans-serif] text-[#B882B1] text-[32px] cursor-pointer hover:opacity-80 transition-opacity">
+              WeaveMind
+            </h1>
           </div>
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <ChevronDown className={`w-4 h-4 transition-transform ${sidebarCollapsed ? 'rotate-90' : ''}`} />
-          </button>
-        </div>
 
-        {/* Navigation */}
-        <nav className="p-4">
-          <ul className="space-y-2">
-            {navigationItems.map((item) => (
-              <li key={item.href}>
-                <a
-                  href={item.href}
-                  className={`flex items-center space-x-3 px-3 py-3 rounded-xl transition-all ${
-                    item.active
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* User Profile */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center">
-              <span className="text-white font-semibold text-sm">
-                {user?.email?.charAt(0).toUpperCase() || 'T'}
-              </span>
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 size-5" />
+              <input
+                type="text"
+                placeholder="Search courses, assignments..."
+                className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-[320px] focus:outline-none focus:border-[#B882B1] transition-colors"
+              />
             </div>
-            {!sidebarCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {user?.user_metadata?.full_name || 'Teacher'}
-                </p>
-                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
-            >
-              <LogOut className="w-4 h-4" />
+
+            <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <Bell className="size-5 text-gray-600" />
+              <span className="absolute top-1 right-1 size-2 bg-[#B882B1] rounded-full" />
             </button>
+
+            <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <MessageSquare className="size-5 text-gray-600" />
+              <span className="absolute top-1 right-1 size-2 bg-[#B882B1] rounded-full" />
+            </button>
+
+            <button
+              onClick={() => router.push('/teacher/settings')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Settings className="size-5 text-gray-600" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <img
+                src={teacherData.avatar}
+                alt={teacherData.name}
+                className="size-10 rounded-full object-cover border-2 border-[#B882B1] cursor-pointer hover:opacity-80 transition-opacity"
+              />
+              <div className="flex flex-col">
+                <span className="text-[#364153] text-[15px]">{teacherData.name}</span>
+                <div className="flex items-center gap-1">
+                  <Building2 className="size-3 text-gray-400" />
+                  <span className="text-[11px] text-gray-400">{teacherData.organization}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
-        {/* Header */}
-        <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-20">
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Welcome back, {user?.user_metadata?.full_name || 'Teacher'}! 👋
-                </h1>
-                <p className="text-gray-600 mt-1">Here's what's happening with your classes today.</p>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="relative">
-                  <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search..."
-                    className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <button className="p-2 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors relative">
-                  <Bell className="w-5 h-5 text-gray-600" />
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-                </button>
-              </div>
+      {/* Main Dashboard */}
+      <div className="px-8 py-6">
+        <div className="flex gap-6">
+          {/* Main Content */}
+          <div className="flex-1 space-y-6">
+            {/* Welcome Header */}
+            <div className="mb-2">
+              <h1 className="font-['Slackey:Regular',sans-serif] text-[#B882B1] text-[40px] leading-[1.1] mb-2">
+                Welcome Back! 👋
+              </h1>
+              <p className="text-[#6a7282] text-[16px]">
+                Let&apos;s manage your classes today
+              </p>
             </div>
-          </div>
-        </header>
 
-        {/* Main Dashboard Content */}
-        <main className="p-6">
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {stats.map((stat) => (
-              <div key={stat.title} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`w-12 h-12 ${stat.bgColor} rounded-xl flex items-center justify-center`}>
-                    <stat.icon className={`w-6 h-6 ${stat.textColor}`} />
-                  </div>
-                  <span className={`text-sm font-medium ${stat.textColor} bg-opacity-10 px-3 py-1 rounded-full`}>
-                    {stat.change}
-                  </span>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-1">{stat.value}</h3>
-                <p className="text-gray-600 text-sm">{stat.title}</p>
-              </div>
-            ))}
-          </div>
+            {/* Classes Section - Horizontal Scroll */}
+            <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] relative">
+              <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#B882B1]">
+                Classes
+              </h2>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Quick Actions */}
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Quick Actions</h2>
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-white" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {quickActions.map((action) => (
-                    <a
-                      key={action.title}
-                      href={action.href}
-                      className="group p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-md transition-all"
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div className={`w-10 h-10 ${action.textColor.replace('text-', 'bg-').replace('-600', '-100')} rounded-lg flex items-center justify-center`}>
-                          <action.icon className={`w-5 h-5 ${action.textColor}`} />
+              <div className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth pb-2">
+                {classes.map((classItem) => (
+                  <div
+                    key={classItem.id}
+                    className="flex-none w-[calc(50%-8px)] cursor-pointer"
+                    onClick={() => router.push(`/teacher/classes/${classItem.id}`)}
+                  >
+                    {/* Class Card */}
+                    <div className="bg-white rounded-[8px] border border-gray-200 p-3 shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.05)] hover:shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.1)] transition-all hover:-translate-y-0.5">
+                      <div className="flex items-start gap-2.5">
+                        <div
+                          className="size-9 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `${classItem.color}20` }}
+                        >
+                          <BookOpen className="size-4" style={{ color: classItem.color }} />
                         </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                            {action.title}
-                          </h3>
-                          <p className="text-sm text-gray-600 mt-1">{action.description}</p>
+
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-[#101828] text-[13px] mb-0.5 truncate">{classItem.title}</h4>
+                          <p className="text-[#6a7282] text-[11px] mb-2">{classItem.instructor}</p>
+
+                          <div className="flex items-center gap-3 text-[11px] text-[#6a7282] mb-2">
+                            <div className="flex items-center gap-1">
+                              <Clock className="size-3" />
+                              <span>{classItem.completedSessions}/{classItem.totalSessions}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Users className="size-3" />
+                              <span>{classItem.students}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-0.5">
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${classItem.progress}%`, backgroundColor: classItem.color }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-end">
+                              <span className="text-[10px]" style={{ color: classItem.color }}>
+                                {classItem.progress}%
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Recent Activity</h2>
-                <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
-                  <Activity className="w-5 h-5 text-white" />
-                </div>
-              </div>
-              <div className="space-y-4">
-                {recentActivities.map((activity, index) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-900">
-                        <span className="font-medium">{activity.action}</span>
-                        <span className="text-gray-600"> "{activity.target}"</span>
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1 flex items-center">
-                        <Clock className="w-3 h-3 mr-1" />
-                        {activity.time}
-                      </p>
                     </div>
                   </div>
                 ))}
               </div>
-              <button className="w-full mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium">
-                View all activity →
-              </button>
+            </div>
+
+            {/* Bottom Row: Upcoming Sessions and Assignments */}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Upcoming Sessions - Vertical Scroll */}
+              <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] relative">
+                <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#3FA11B]">
+                  Upcoming Sessions
+                </h2>
+                <div className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-hide scroll-smooth pr-2">
+                  {upcomingSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/teacher/sessions/${session.id}`)}
+                    >
+                      {/* Session Card */}
+                      <div className="bg-white rounded-[8px] border border-gray-200 p-3 shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.05)] hover:shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.1)] transition-all">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="size-9 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${session.color}20` }}
+                          >
+                            <BookOpen className="size-4" style={{ color: session.color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[#101828] text-[13px] mb-0.5 truncate">{session.title}</h4>
+                            <p className="text-[#6a7282] text-[11px] mb-1">{session.className}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-[#6a7282]">
+                              <span>{session.date} • {session.time}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px] text-[#6a7282] mt-1">
+                              {session.isOnline ? (
+                                <Video className="size-3" />
+                              ) : (
+                                <MapPin className="size-3" />
+                              )}
+                              <span>{session.location}</span>
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-[#6a7282]">
+                            {session.duration}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Assignments - Vertical Scroll */}
+              <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] relative">
+                <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#B882B1]">
+                  Assignments
+                </h2>
+                <div className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-hide scroll-smooth pr-2">
+                  {assignments.map((assignment) => (
+                    <div
+                      key={assignment.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/teacher/assignments/${assignment.id}`)}
+                    >
+                      {/* Assignment Card */}
+                      <div className="bg-white rounded-[8px] border border-gray-200 p-3 shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.05)] hover:shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.1)] transition-all">
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="size-9 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${assignment.color}20` }}
+                          >
+                            <BookOpen className="size-4" style={{ color: assignment.color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[#101828] text-[13px] mb-0.5 truncate">{assignment.title}</h4>
+                            <p className="text-[#6a7282] text-[11px] mb-2">{assignment.className}</p>
+                            <div className="text-[11px] text-[#6a7282] mb-2">Due: {assignment.dueDate}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{
+                                    width: `${(assignment.submittedCount / assignment.totalStudents) * 100}%`,
+                                    backgroundColor: assignment.color
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[10px]" style={{ color: assignment.color }}>
+                                {assignment.submittedCount}/{assignment.totalStudents}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Performance Overview */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-gray-900">Performance Overview</h2>
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="w-5 h-5 text-green-600" />
-                <span className="text-sm text-green-600 font-medium">All systems operational</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl">
-                <Target className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-blue-900">100%</p>
-                <p className="text-sm text-blue-700">System Uptime</p>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-xl">
-                <Star className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-green-900">0</p>
-                <p className="text-sm text-green-700">Active Students</p>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl">
-                <BookOpen className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-purple-900">0</p>
-                <p className="text-sm text-purple-700">Published Courses</p>
+          {/* AI Chatbot Sidebar */}
+          <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
+            <div className="bg-white rounded-[14px] border border-gray-200 p-6 shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.05)] h-full">
+              <h2 className="font-['Slackey:Regular',sans-serif] text-[24px] mb-5 text-[#B882B1]">
+                AI Assistant
+              </h2>
+              <div className="text-center text-gray-500 mt-8">
+                <MessageSquare className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <p>AI Chatbot coming soon</p>
+                <p className="text-sm mt-2">Get help with course creation and management</p>
               </div>
             </div>
           </div>
-        </main>
+        </div>
       </div>
-    </div>
+
+      {/* Floating Action Menu */}
+      <div className="fixed bottom-6 right-6">
+        <button className="bg-[#B882B1] hover:bg-[#A172A1] text-white rounded-full p-4 shadow-lg transition-all hover:scale-105">
+          <Plus className="w-6 h-6" />
+        </button>
+      </div>
+    </>
   );
 }
