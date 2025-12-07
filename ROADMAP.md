@@ -219,3 +219,154 @@
 - RLS policies completely cover all new tables
 - Content moderation is effective
 
+## Phase 11 – Teacher Dashboard AI Chatbot Implementation (1-2 weeks)
+
+**Goals**
+- Transform the teacher dashboard from using hardcoded/preset data to fully functional real-time data
+- Implement a complete AI chatbot interface with tool-calling capabilities
+- Enable natural language operations for course, session, and assignment management
+
+**Current State Analysis**
+The teacher dashboard (`/app/teacher/page.tsx`) currently has:
+- ✅ Complete UI structure with navigation, sidebar, and floating action menu
+- ✅ Beautiful card components for classes, sessions, and assignments
+- ❌ All data is hardcoded (3 sample classes, 3 sessions, 3 assignments)
+- ❌ AI chat sidebar shows "Coming soon" placeholder with no input box
+- ❌ No database integration for real data
+
+**Database Schema (Already Exists)**
+All required tables are available:
+- `organizations`, `organization_members` - Multi-tenant structure
+- `classes`, `class_members` - Class management
+- `courses`, `chapters`, `components` - Course content
+- `course_sessions` - Session scheduling (referenced but needs verification)
+- `assignments`, `assignment_questions` - Assignment system
+- `ai_usage_logs`, `ai_conversations` - AI tracking
+
+**Scope**
+
+### 11.1 Database Integration (1-2 days)
+- Replace hardcoded `classes` array with Supabase query for user's actual classes
+- Replace hardcoded `upcomingSessions` array with real session data from `course_sessions`
+- Replace hardcoded `assignments` array with real assignment data
+- Add proper loading states and error handling
+- Verify `course_sessions` table exists, create migration if needed
+
+### 11.2 AI Chat Interface Implementation (2-3 days)
+- Remove "AI Chatbot coming soon" placeholder
+- Integrate existing `UnifiedAIChat` component or create new `TeacherDashboardChat` component
+- Implement chat input box with send button
+- Add message history display with user/AI message bubbles
+- Implement streaming responses for AI messages
+- Add preset prompt suggestion buttons:
+  - "How is Jimmy's assignment progress?"
+  - "Create a schedule for my Machine Learning class"
+  - "What assignments are due this week?"
+  - "Show me my overall performance"
+
+### 11.3 AI Tool-Calling Functions (3-4 days)
+Create new tools specifically for teacher dashboard operations:
+
+**Information Extraction Tools:**
+- `getClassProgress` - Get progress summary for a class
+- `getStudentStatus` - Check specific student's status
+- `getUpcomingDeadlines` - List upcoming assignment deadlines
+- `getSessionSchedule` - Get scheduled sessions for a class
+
+**Creation Tools:**
+- `createClass` - Create new class with AI-generated details
+- `createSession` - Create new session for a class
+- `createAssignment` - Generate assignment with AI-powered questions
+- `createCourse` - Create course outline with AI assistance
+
+**Management Tools:**
+- `updateAssignment` - Modify assignment details
+- `publishAssignment` - Publish assignment to students
+- `scheduleSession` - Schedule or reschedule sessions
+
+### 11.4 Context Menu ("+" Button) Implementation (1-2 days)
+- Add "+" button in chat input area
+- Implement context menu with three tabs: Classes, Sessions, Assignments
+- Show scrollable list of items in each tab
+- Allow adding items as context to the current chat message
+- Display selected context as removable tags above input
+
+### 11.5 Real Data Flow Integration (1-2 days)
+- Connect chat context to actual database operations
+- Ensure all AI tool calls update the database correctly
+- Implement real-time UI updates when data changes
+- Add proper error handling and rollback for failed operations
+
+**Technical Implementation Details**
+
+**API Endpoints Needed:**
+```typescript
+// Existing endpoints to use:
+POST /api/ai/chat - Unified AI chat with tool-calling
+GET /api/classes/[id] - Get class details
+GET /api/classes/[id]/sessions - Get sessions for class
+GET /api/assignments/generate - Generate AI assignment
+POST /api/teacher/class-progress - Get class progress
+
+// May need new endpoints:
+POST /api/teacher/dashboard/overview - Aggregated dashboard data
+POST /api/ai/teacher-assistant - Teacher-specific AI chat
+```
+
+**Tool Definitions Pattern:**
+```typescript
+// lib/ai/teacher-dashboard-tools.ts
+export const getClassProgressTool = tool({
+  description: 'Get progress summary for a specific class',
+  inputSchema: z.object({
+    classId: z.string().describe('The class ID'),
+  }),
+  execute: async ({ classId }) => {
+    // Query class_progress_summary view
+    return { success: true, data: progressData }
+  },
+})
+```
+
+**Chat Component Structure:**
+```typescript
+// components/teacher/TeacherDashboardChat.tsx
+- Header with Weaver AI branding
+- Message area with welcome state and conversation
+- Context tags display (selected classes/sessions/assignments)
+- Context menu trigger ("+" button)
+- Input field with send button
+- Preset suggestion buttons (when empty)
+```
+
+**Acceptance Criteria**
+- ✅ Dashboard displays real data from Supabase (zero hardcoded data)
+- ✅ AI chat interface has functional input box and sends messages
+- ✅ Chat shows proper message history with user/AI bubbles
+- ✅ Preset prompt buttons work and trigger AI responses
+- ✅ "+" button opens context menu with Classes/Sessions/Assignments tabs
+- ✅ Selected context appears as removable tags
+- ✅ AI tool-calling works for:
+  - Extracting class/student/assignment information
+  - Creating new classes, sessions, and assignments
+  - Updating and publishing assignments
+- ✅ All operations persist to database correctly
+- ✅ Security: RLS policies enforced, teacher-only access verified
+- ✅ All tests pass locally with Playwright MCP
+- ✅ All tests pass on production deployment
+
+**Security Checklist**
+- [ ] All AI tool calls verify user authentication
+- [ ] Tool calls respect organization/class ownership
+- [ ] RLS policies prevent cross-tenant data access
+- [ ] Input sanitization for AI-generated content
+- [ ] Rate limiting on AI chat endpoints
+- [ ] Prompt injection protection in tool descriptions
+
+**Reference Files**
+- Design reference: `/DesignTeacherDashboard/` - Complete Figma-based prototype
+- Current dashboard: `/app/teacher/page.tsx` - Main dashboard with hardcoded data
+- AI patterns: `/lib/ai/` - Existing AI integration code
+- Existing chat: `/components/ai/UnifiedAIChat.tsx` - Reusable chat component
+- Tool definitions: `/lib/ai/editing-tool-definitions.ts` - Tool pattern reference
+
