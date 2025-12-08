@@ -614,7 +614,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         )}
 
         <div className="text-xs opacity-70 mt-1">
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {typeof message.timestamp === 'object' && message.timestamp instanceof Date
+            ? message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
 

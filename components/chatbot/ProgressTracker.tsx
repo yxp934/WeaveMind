@@ -73,7 +73,7 @@ const getWorkflowTypeName = (type: WorkflowState['type']) => {
 };
 
 // 获取步骤状态
-const getStepStatus = (stepKey: string, currentStep: string, progress: number, isCompleted: boolean) => {
+const getStepStatus = (workflow: WorkflowState, stepKey: string, currentStep: string, progress: number, isCompleted: boolean) => {
   const stepOrder = Object.keys(WORKFLOW_STEPS[workflow.type] || {});
   const currentIndex = stepOrder.indexOf(currentStep);
   const stepIndex = stepOrder.indexOf(stepKey);
@@ -235,6 +235,7 @@ export function ProgressTracker({
               <div className="space-y-2">
                 {steps.map((step, index) => {
                   const status = getStepStatus(
+                    workflow,
                     step.key,
                     workflow.currentStep,
                     workflow.progress,

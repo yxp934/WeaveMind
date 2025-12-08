@@ -549,7 +549,9 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
                       />
                     )}
                     <p className="text-[11px] text-[#6a7282] mt-1">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {typeof message.timestamp === 'object' && message.timestamp instanceof Date
+                        ? message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
 
