@@ -124,43 +124,49 @@ export default function SmartConversationManager({ className = '' }: SmartConver
     setIsLoading(true)
 
     try {
+      console.log('🤖 发送消息到API:', currentInput)
       // 调用后端API
       const apiResponse = await sendMessageToAPI(currentInput)
+      console.log('📡 API响应:', apiResponse)
 
-      // 模拟AI处理延迟
-      setTimeout(() => {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: apiResponse.message,
-          timestamp: new Date(),
-          workflowType: apiResponse.metadata?.workflowType,
-          toolCalls: apiResponse.toolsUsed?.map((toolName: string) => ({
-            id: crypto.randomUUID(),
-            name: toolName,
-            parameters: {},
-            status: 'completed' as const,
-            timestamp: new Date().toISOString()
-          }))
-        }
+      // 验证API响应
+      if (!apiResponse || !apiResponse.message) {
+        throw new Error('无效的API响应')
+      }
 
-        setMessages(prev => [...prev, assistantMessage])
-        setIsLoading(false)
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: apiResponse.message,
+        timestamp: new Date(),
+        workflowType: apiResponse.metadata?.workflowType,
+        toolCalls: apiResponse.toolsUsed?.map((toolName: string) => ({
+          id: crypto.randomUUID(),
+          name: toolName,
+          parameters: {},
+          status: 'completed' as const,
+          timestamp: new Date().toISOString()
+        }))
+      }
 
-        // 更新对话状态（如果API返回了工作流信息）
-        if (apiResponse.metadata?.workflowType) {
-          setConversationState({
-            sessionId,
-            workflowType: apiResponse.metadata.workflowType,
-            currentStep: apiResponse.metadata.currentStep || 1,
-            collectedData: {},
-            status: 'active'
-          })
-        }
-      }, 1500)
+      console.log('💬 创建助手消息:', assistantMessage)
+      setMessages(prev => [...prev, assistantMessage])
+      setIsLoading(false)
+
+      // 更新对话状态（如果API返回了工作流信息）
+      if (apiResponse.metadata?.workflowType) {
+        setConversationState({
+          sessionId,
+          workflowType: apiResponse.metadata.workflowType,
+          currentStep: apiResponse.metadata.currentStep || 1,
+          collectedData: {},
+          status: 'active'
+        })
+        console.log('🔄 更新工作流状态:', apiResponse.metadata.workflowType)
+      }
 
     } catch (error) {
-      console.error('Error sending message:', error)
+      console.error('❌ 发送消息错误:', error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -180,12 +186,33 @@ export default function SmartConversationManager({ className = '' }: SmartConver
   }
 
   const formatMessage = (content: string) => {
-    return content.split('\n').map((line, index) => (
-      <React.Fragment key={index}>
-        {line}
-        {index < content.split('\n').length - 1 && <br />}
-      </React.Fragment>
-    ))
+    // 验证内容
+    if (!content || typeof content !== 'string') {
+      console.warn('⚠️ 消息内容无效:', content)
+      return <span className="text-red-500">消息内容为空或无效</span>
+    }
+
+    // 检查是否是Next.js代码
+    if (content.includes('self.__next_f') || content.includes('__NEXT_DATA__')) {
+      console.error('❌ 检测到Next.js代码:', content.substring(0, 100))
+      return (
+        <div className="text-red-500 bg-red-50 p-2 rounded border">
+          ⚠️ 系统响应异常，请刷新页面重试
+        </div>
+      )
+    }
+
+    try {
+      return content.split('\n').map((line, index) => (
+        <React.Fragment key={index}>
+          <span>{line}</span>
+          {index < content.split('\n').length - 1 && <br />}
+        </React.Fragment>
+      ))
+    } catch (error) {
+      console.error('❌ 格式化消息时出错:', error)
+      return <span className="text-red-500">消息格式化错误</span>
+    }
   }
 
   const resetConversation = () => {
