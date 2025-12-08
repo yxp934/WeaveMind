@@ -3,6 +3,17 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=odowwkdgduhecrmuatnx&features=debugging%2Cdatabase%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage%2Cdocs%2Caccount"
+    },
+        "MiniMax": {
+          "command": "uvx",
+          "args": [
+            "minimax-coding-plan-mcp",
+            "-y"
+          ],
+          "env": {
+            "MINIMAX_API_KEY": "Enter your API key",
+            "MINIMAX_API_HOST": "https://api.minimax.io",
+          }
     }
   }
 }

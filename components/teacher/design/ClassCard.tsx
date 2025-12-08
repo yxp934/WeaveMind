@@ -37,7 +37,7 @@ export function ClassCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <h4 className="text-[#101828] text-[13px] mb-0.5 truncate font-medium">{title}</h4>
+          <h4 className="text-[#101828] text-[13px] mb-0.5 truncate">{title}</h4>
           <p className="text-[#6a7282] text-[11px] mb-2">{instructor}</p>
 
           <div className="flex items-center gap-3 text-[11px] text-[#6a7282] mb-2">
@@ -59,7 +59,7 @@ export function ClassCard({
               />
             </div>
             <div className="flex items-center justify-end">
-              <span className="text-[10px] font-medium" style={{ color }}>
+              <span className="text-[10px]" style={{ color }}>
                 {progress}%
               </span>
             </div>

@@ -37,7 +37,7 @@ export function TeacherAssignmentCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <h5 className="text-[#101828] text-[12px] mb-0.5 truncate font-medium">{title}</h5>
+          <h5 className="text-[#101828] text-[12px] mb-0.5 truncate">{title}</h5>
           <p className="text-[#6a7282] text-[10px] mb-1.5">{className}</p>
 
           <div className="flex items-center gap-1.5 text-[10px] text-[#6a7282] mb-1.5">
@@ -50,7 +50,7 @@ export function TeacherAssignmentCard({
                 <Users className="size-3" />
                 <span>Submissions</span>
               </div>
-              <span className="text-[#101828] font-medium">{submittedCount}/{totalStudents}</span>
+              <span className="text-[#101828]">{submittedCount}/{totalStudents}</span>
             </div>
             <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div

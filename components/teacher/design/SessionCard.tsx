@@ -36,7 +36,7 @@ export function SessionCard({
           style={{ backgroundColor: color }}
         />
         <div className="flex-1 min-w-0">
-          <h5 className="text-[#101828] text-[12px] mb-0.5 truncate font-medium">{title}</h5>
+          <h5 className="text-[#101828] text-[12px] mb-0.5 truncate">{title}</h5>
           <p className="text-[#6a7282] text-[10px] mb-1.5">{className}</p>
 
           <div className="grid grid-cols-2 gap-1 text-[10px] text-[#6a7282]">
