@@ -30,6 +30,12 @@ export function Navigation() {
           </div>
           <div className="flex items-center gap-4">
             <a
+              href="/chatbot"
+              className="px-4 py-2 text-gray-600 hover:text-[var(--color-primary)] transition font-medium flex items-center gap-2"
+            >
+              🤖 AI助手
+            </a>
+            <a
               href="/auth/login"
               className="px-4 py-2 text-gray-600 hover:text-[var(--color-primary)] transition font-medium"
             >
