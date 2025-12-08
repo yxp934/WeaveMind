@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 // Design-compliant components
 import { Navigation, ClassCard, SessionCard, TeacherAssignmentCard, SectionCard } from '@/components/teacher/design';
 import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
-import { TeacherDashboardChat } from '@/components/teacher/TeacherDashboardChat';
+import SidebarChatbot from '@/components/SidebarChatbot';
 
 interface ClassData {
   id: number;
@@ -189,11 +189,7 @@ export function TeacherDashboardClient({
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <TeacherDashboardChat
-              classes={classes.map(c => ({ id: c.id, title: c.title }))}
-              sessions={upcomingSessions.map(s => ({ id: s.id, title: s.title }))}
-              assignments={assignments.map(a => ({ id: a.id, title: a.title }))}
-            />
+            <SidebarChatbot userRole="teacher" />
           </div>
         </div>
       </div>

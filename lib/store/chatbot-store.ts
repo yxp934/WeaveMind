@@ -297,7 +297,7 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           // 保存对话到数据库
           try {
-            const messages = get().messages;
+            const messages = [...get().messages]; // 创建副本以避免状态竞争
             const conversationId = get().conversationId;
             const context = {
               userRole: get().userRole || 'teacher',
@@ -314,7 +314,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               },
               body: JSON.stringify({
                 conversationId,
-                title: conversationId ? undefined : messages[0]?.content?.slice(0, 50) + '...',
+                title: conversationId ? undefined : (messages[0]?.content?.slice(0, 50) || 'AI对话') + '...',
                 messages: messages.map(msg => ({
                   role: msg.role,
                   content: msg.content,
