@@ -85,6 +85,12 @@ interface ChatbotStore {
   saveOutline: (outlineData: any) => Promise<void>;
   loadOutlineFromClass: (classId: string) => Promise<void>;
 
+  // A2A会话生成方法
+  startA2ASession: (config: any) => Promise<void>;
+  updateA2AProgress: (step: string, progress: number, agent?: 'teacher' | 'student') => void;
+  getA2ASessionStatus: (sessionId: string) => Promise<any>;
+  cancelA2ASession: () => void;
+
   // 工具方法
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -94,6 +100,57 @@ interface ChatbotStore {
   // 重置状态
   reset: () => void;
 }
+
+// A2A状态轮询辅助函数
+const pollA2AStatus = async (generationId: string, getState: any, setState: any) => {
+  const poll = async () => {
+    try {
+      const response = await fetch(`/api/ai/session/generate?id=${generationId}`);
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const generation = data.generation;
+
+      if (!generation) return;
+
+      // 更新工作流进度
+      const progress = (generation.current_iteration / generation.max_iterations) * 100;
+      setState((state: any) => ({
+        workflow: state.workflow ? {
+          ...state.workflow,
+          progress,
+          data: {
+            ...state.workflow.data,
+            currentIteration: generation.current_iteration,
+            builderFeedback: generation.builder_feedback,
+            criticFeedback: generation.critic_feedback,
+            status: generation.status,
+          },
+        } : null,
+      }));
+
+      // 如果完成，停止轮询
+      if (generation.status === 'completed' || generation.status === 'failed') {
+        // 添加完成消息
+        const { addMessage } = getState();
+        addMessage({
+          role: 'system',
+          content: generation.status === 'completed'
+            ? `A2A会话生成完成！共进行了${generation.current_iteration}轮迭代。`
+            : `A2A会话生成失败：${generation.error_message}`,
+        });
+        return;
+      }
+
+      // 继续轮询
+      setTimeout(poll, 2000); // 每2秒轮询一次
+    } catch (error) {
+      console.error('A2A状态轮询失败:', error);
+    }
+  };
+
+  poll();
+};
 
 // 默认AI工具配置
 const DEFAULT_TOOLS: AITool[] = [
@@ -478,6 +535,120 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           throw error;
         }
+      },
+
+      // A2A会话生成实现
+      startA2ASession: async (config) => {
+        const { addMessage, updateWorkflow, setError, setLoading } = get();
+
+        try {
+          setLoading(true);
+          setError(null);
+
+          // 启动A2A工作流
+          get().startWorkflow('a2a_session', config);
+
+          // 调用A2A会话生成API
+          const response = await fetch('/api/ai/session/generate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              session_id: config.sessionId,
+              max_iterations: config.iterations || 3,
+              requirements: config,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`A2A会话启动失败: ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            // 添加成功消息
+            addMessage({
+              role: 'system',
+              content: `A2A会话生成已开始，共${config.iterations || 3}轮迭代。`,
+              toolCalls: [{
+                tool: 'a2a_session_generation',
+                args: config,
+                result: data.generation,
+                status: 'completed',
+              }],
+            });
+
+            // 开始轮询状态
+            const unsubscribe = useChatbotStore.subscribe(
+              (state) => state.workflow,
+              (workflow) => {
+                if (workflow?.status === 'completed' || workflow?.status === 'failed') {
+                  unsubscribe();
+                }
+              }
+            );
+
+            // 启动轮询
+            pollA2AStatus(data.generation.id, get, set);
+          } else {
+            throw new Error(data.error || 'A2A会话生成失败');
+          }
+
+        } catch (error) {
+          console.error('A2A会话启动失败:', error);
+          setError(error instanceof Error ? error.message : 'A2A会话启动失败');
+
+          addMessage({
+            role: 'system',
+            content: 'A2A会话启动失败，请重试。',
+            toolCalls: [{
+              tool: 'a2a_session_generation',
+              args: config,
+              status: 'error',
+              error: error instanceof Error ? error.message : 'Unknown error',
+            }],
+          });
+        } finally {
+          setLoading(false);
+        }
+      },
+
+      updateA2AProgress: (step, progress, agent) => {
+        get().updateWorkflow({
+          currentStep: step,
+          progress: Math.min(100, Math.max(0, progress)),
+          data: {
+            ...get().workflow?.data,
+            currentAgent: agent,
+            currentStep: step,
+          },
+        });
+      },
+
+      getA2ASessionStatus: async (sessionId) => {
+        try {
+          const response = await fetch(`/api/ai/session/generate?session_id=${sessionId}`);
+
+          if (!response.ok) {
+            throw new Error(`获取A2A状态失败: ${response.status}`);
+          }
+
+          const data = await response.json();
+          return data.generation;
+        } catch (error) {
+          console.error('获取A2A状态失败:', error);
+          throw error;
+        }
+      },
+
+      cancelA2ASession: () => {
+        get().cancelWorkflow();
+        get().addMessage({
+          role: 'system',
+          content: 'A2A会话已取消。',
+        });
       },
 
       // 工具方法

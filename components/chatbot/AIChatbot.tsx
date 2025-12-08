@@ -127,12 +127,27 @@ export function AIChatbot({
         inputRef.current?.focus();
         break;
 
+      case 'a2a_session':
+        // 触发A2A会话生成
+        startWorkflow('a2a_session', {
+          userRole,
+          classId,
+          courseId,
+        });
+        // 添加引导消息
+        addMessage({
+          role: 'system',
+          content: '我将帮您启动A2A会话生成。教师代理和学生代理将协作优化您的内容。请在工作流工具面板中点击"A2A会话生成"开始。',
+        });
+        break;
+
       default:
         const actions = {
           'generate_outline': '请帮我生成课程大纲',
           'create_course': '请帮我创建新课程',
           'analyze_progress': '请分析学习进度',
           'create_discussion': '请帮我创建讨论话题',
+          'a2a_session': '请帮我启动A2A会话优化',
         };
 
         const message = actions[action as keyof typeof actions];
@@ -368,6 +383,24 @@ export function AIChatbot({
                       <Zap className="w-3 h-3 mr-1" />
                       创建课程
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('a2a_session')}
+                      className="text-xs"
+                    >
+                      <Workflow className="w-3 h-3 mr-1" />
+                      A2A优化
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction('create_discussion')}
+                      className="text-xs"
+                    >
+                      <Bot className="w-3 h-3 mr-1" />
+                      创建讨论
+                    </Button>
                   </>
                 )}
                 <Button
@@ -379,17 +412,6 @@ export function AIChatbot({
                   <Settings className="w-3 h-3 mr-1" />
                   分析进度
                 </Button>
-                {userRole === 'teacher' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleQuickAction('create_discussion')}
-                    className="text-xs"
-                  >
-                    <Bot className="w-3 h-3 mr-1" />
-                    创建讨论
-                  </Button>
-                )}
               </div>
             </div>
           )}
