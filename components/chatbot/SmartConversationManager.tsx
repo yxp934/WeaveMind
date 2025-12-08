@@ -58,66 +58,54 @@ export default function SmartConversationManager({ className = '' }: SmartConver
     scrollToBottom()
   }, [messages])
 
-  // 智能响应生成器
-  const generateIntelligentResponse = useCallback(async (userInput: string, context: any): Promise<string> => {
-    const recognition = recognizeIntent(userInput, messages)
+  // 发送消息到后端API
+  const sendMessageToAPI = useCallback(async (userInput: string) => {
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userInput,
+          context: {
+            userRole: 'teacher',
+            sessionId,
+            conversationHistory: messages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp.toISOString(),
+              toolsUsed: msg.toolCalls?.map(tool => tool.name) || []
+            }))
+          }
+        })
+      })
 
-    // 如果没有当前工作流，开始新工作流
-    if (!context.workflowType) {
-      if (recognition.intent === 'unknown') {
-        return recognition.suggestedResponse
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`)
       }
 
-      // 初始化工作流
-      const newState: ConversationState = {
-        sessionId: context.sessionId,
-        workflowType: recognition.workflowType,
-        currentStep: 1,
-        collectedData: {},
-        status: 'active'
+      const data = await response.json()
+
+      if (data.success && data.data) {
+        return {
+          message: data.data.message,
+          metadata: data.data.metadata || {},
+          toolsUsed: data.data.toolsUsed || []
+        }
+      } else {
+        throw new Error(data.error?.message || 'API returned error')
       }
-      setConversationState(newState)
-
-      const guidance = getWorkflowGuidance(recognition.workflowType)
-      return `${guidance.welcome}\n\n${guidance.first_question}`
+    } catch (error) {
+      console.error('API Error:', error)
+      // 返回友好的错误消息
+      return {
+        message: '抱歉，AI服务暂时不可用。请稍后再试，或者告诉我你想要重新开始。',
+        metadata: { error: true },
+        toolsUsed: []
+      }
     }
-
-    // 处理当前工作流的下一步
-    return handleWorkflowProgress(userInput, context)
-  }, [messages])
-
-  // 工作流进度处理
-  const handleWorkflowProgress = async (userInput: string, state: ConversationState): Promise<string> => {
-    const { workflowType, currentStep } = state
-
-    // 根据工作流类型和步骤生成响应
-    if (workflowType === 'create_course') {
-      return handleCourseCreationStep(userInput, currentStep, state)
-    }
-
-    // 其他工作流的处理逻辑
-    return `感谢你的回答。我正在为你处理"${workflowType}"工作流的第${currentStep}步。`
-  }
-
-  // 课程创建步骤处理
-  const handleCourseCreationStep = (userInput: string, step: number, state: ConversationState): string => {
-    const stepPrompts = {
-      1: "好的，我了解了课程主题。**您希望这门课程有多少节课？**\nA) 4节课\nB) 8节课\nC) 12节课\nD) 其他（请具体说明）",
-      2: "很好！课程数量已确定。**您希望每周上几次课？**\nA) 每周一次\nB) 每周两次\nC) 每周三次\nD) 其他（请具体说明）",
-      3: "好的，上课频率已确认。**您希望在哪几天上课？**（根据您选择的频率）",
-      4: "很好！现在请告诉我**您希望课程什么时候开始？**（请提供具体日期，格式：YYYY-MM-DD）",
-      5: "好的，开始日期已确定。**您希望每节课在什么时间进行？**\nA) 上午 (9:00 AM)\nB) 下午 (2:00 PM)\nC) 晚上 (6:00 PM)\nD) 其他（请具体说明）",
-      6: "好的，上课时间已确认。**您希望每节课多长时间？**\nA) 45分钟\nB) 90分钟\nC) 120分钟\nD) 其他（请具体说明）",
-      7: "很好！现在请为每个课程节次提供简要的主题或内容概要。我将为每个节次生成一个详细的大纲。\n\n请按顺序列出每节课的主题：",
-      8: "太棒了！我已经收集到了所有必要信息。正在为你生成完整的课程大纲...\n\n📋 课程创建完成！\n\n你可以选择：\n1. 查看生成的课程大纲\n2. 开始创建具体的课程节次\n3. 创建相关作业\n4. 开始新的课程"
-    }
-
-    if (step < 8) {
-      return stepPrompts[step as keyof typeof stepPrompts] || "请继续回答问题。"
-    } else {
-      return stepPrompts[8]
-    }
-  }
+  }, [messages, sessionId])
 
   // 发送消息处理
   const handleSendMessage = async () => {
@@ -131,29 +119,44 @@ export default function SmartConversationManager({ className = '' }: SmartConver
     }
 
     setMessages(prev => [...prev, userMessage])
+    const currentInput = inputValue.trim()
     setInputValue('')
     setIsLoading(true)
 
     try {
-      // 生成智能响应
-      const response = await generateIntelligentResponse(inputValue, {
-        sessionId,
-        workflowType: conversationState?.workflowType,
-        currentStep: conversationState?.currentStep
-      })
+      // 调用后端API
+      const apiResponse = await sendMessageToAPI(currentInput)
 
       // 模拟AI处理延迟
       setTimeout(() => {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: response,
+          content: apiResponse.message,
           timestamp: new Date(),
-          workflowType: conversationState?.workflowType
+          workflowType: apiResponse.metadata?.workflowType,
+          toolCalls: apiResponse.toolsUsed?.map((toolName: string) => ({
+            id: crypto.randomUUID(),
+            name: toolName,
+            parameters: {},
+            status: 'completed' as const,
+            timestamp: new Date().toISOString()
+          }))
         }
 
         setMessages(prev => [...prev, assistantMessage])
         setIsLoading(false)
+
+        // 更新对话状态（如果API返回了工作流信息）
+        if (apiResponse.metadata?.workflowType) {
+          setConversationState({
+            sessionId,
+            workflowType: apiResponse.metadata.workflowType,
+            currentStep: apiResponse.metadata.currentStep || 1,
+            collectedData: {},
+            status: 'active'
+          })
+        }
       }, 1500)
 
     } catch (error) {
