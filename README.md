@@ -2,23 +2,25 @@
 
 WeaveMind is an AI-powered Learning Management System (LMS) that enables teachers to create courses through AI-assisted workflows and provides students with component-level AI tutoring.
 
-## 🚀 Latest Update: Teacher Dashboard Card Layout Fix
+## 🚀 Latest Update: Teacher Dashboard Layout & Height Restriction Fix
 
-**December 8, 2025** - WeaveMind LMS has successfully fixed the teacher dashboard card layout issues, implementing proper responsive design that follows the DesignTeacherDashboard specifications.
+**December 8, 2025** - WeaveMind LMS has successfully fixed the teacher dashboard layout and height restriction issues, implementing proper space allocation that follows the DesignTeacherDashboard specifications.
 
-### 🎯 Card Layout Fix Achievements
+### 🎯 Layout & Height Fix Achievements
+- **✅ Content Height Restriction**: Added `max-h-[calc(100vh-120px)]` to main content area to prevent overflow
+- **✅ Proper Space Allocation**: Main content area gets remaining space, chatbot gets fixed 400px width
+- **✅ Scroll Management**: Implemented `overflow-y-auto` for scrollable content when needed
 - **✅ Classes Card Layout**: Fixed to display 2 cards side-by-side (50% width) as per design specifications
 - **✅ Session & Assignment Cards**: Properly positioned in 2-column grid layout for vertical scrolling
+- **✅ Design Compliance**: Completely aligned with DesignTeacherDashboard folder specifications
 - **✅ Responsive Design**: Implemented proper responsive breakpoints for different screen sizes
-- **✅ Design Compliance**: Aligned with DesignTeacherDashboard folder specifications
-- **✅ Card Dimensions**: Set optimal min-width (280px) and max-width (350px) for consistent display
-- **✅ Horizontal Scrolling**: Maintained smooth horizontal scrolling for classes section when needed
 
 ### 🏗️ Technical Implementation
+- **Main Content Area**: `flex-1 space-y-6 max-h-[calc(100vh-120px)] overflow-y-auto`
+- **Chatbot Sidebar**: `w-[400px] sticky top-6 h-[calc(100vh-120px)]`
 - **Card Container**: Updated `/app/teacher/TeacherDashboardClient.tsx` with proper width calculations
-- **Responsive Classes**: `w-[calc(50%-8px)]` for optimal 2-card layout
+- **Font Styling**: Removed all `font-medium` classes to match design exactly
 - **Grid System**: Maintained `grid grid-cols-2` for Session/Assignment sections
-- **Section Cards**: Preserved proper padding (`p-6`) and title styling
 - **Cross-browser Compatibility**: Ensured consistent display across different browsers
 
 ## 🚀 Previous Update: Teacher Dashboard Database Integration
