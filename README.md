@@ -2,7 +2,40 @@
 
 WeaveMind is an AI-powered Learning Management System (LMS) that enables teachers to create courses through AI-assisted workflows and provides students with component-level AI tutoring.
 
-## 🚀 Latest Update: Teacher Dashboard Layout & Height Restriction Fix
+## 🚀 Latest Update: A2A Session Generation Integration
+
+**December 8, 2025** - WeaveMind LMS has successfully integrated A2A (Agent-to-Agent) session generation functionality into the AI chatbot workflow, enabling collaborative content optimization between teacher and student agents.
+
+### 🎯 A2A Integration Achievements
+- **✅ Chatbot Integration**: Added A2A session shortcut button "A2A优化" in chatbot interface
+- **✅ State Management**: Enhanced Zustand store with A2A-specific methods for session control
+- **✅ Real-time Visualization**: Rebuilt A2A refinement visualizer with live progress tracking
+- **✅ Workflow Integration**: Seamless integration with existing chatbot workflow tools
+- **✅ User Experience**: Simplified A2A session creation with guided configuration
+- **✅ Progress Tracking**: Real-time iteration progress with agent status indicators
+- **✅ Error Handling**: Comprehensive error handling and recovery mechanisms
+
+### 🏗️ Technical Implementation
+- **Enhanced Chatbot Store**: Added `startA2ASession`, `updateA2AProgress`, `getA2ASessionStatus`, `cancelA2ASession` methods
+- **A2A Status Polling**: Automatic status updates every 2 seconds with store synchronization
+- **Visual Component Updates**: Rebuilt `A2ARefinementVisualizer` with motion animations and interactive controls
+- **API Integration**: Complete integration with existing A2A generation endpoints
+- **User Interface**: Added A2A shortcut button with Workflow icon in teacher chatbot interface
+
+### 📊 A2A Session Features
+- **Collaborative Optimization**: Teacher Agent creates content, Student Agent provides feedback
+- **Iterative Refinement**: Multi-round optimization with configurable iteration count (2-5 rounds)
+- **Real-time Monitoring**: Live visualization of agent conversations and progress
+- **Quality Metrics**: Automatic scoring and feedback analysis
+- **User Controls**: Pause, resume, and cancel functionality during optimization
+
+### 📁 Key Files Modified
+- `/lib/store/chatbot-store.ts` - Enhanced state management for A2A sessions
+- `/components/chatbot/AIChatbot.tsx` - Added A2A shortcut integration
+- `/components/ai/a2a-refinement-visualizer.tsx` - Rebuilt with enhanced features
+- `/A2A_INTEGRATION_REPORT.md` - Comprehensive integration documentation
+
+## 🚀 Previous Update: Teacher Dashboard Layout & Height Restriction Fix
 
 **December 8, 2025** - WeaveMind LMS has successfully fixed the teacher dashboard layout and height restriction issues, implementing proper space allocation that follows the DesignTeacherDashboard specifications.
 
