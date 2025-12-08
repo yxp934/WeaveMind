@@ -128,18 +128,10 @@ export const WORKFLOW_GUIDANCE_PROMPTS = {
 export function recognizeIntent(userMessage: string, conversationHistory: any[] = []): RecognitionResult {
   const message = userMessage.toLowerCase()
 
-  // 创建课程意图
-  if (matchIntent(message, ['创建课程', '我要上课', '做课程', '新建课程', '课程安排', '教学计划', 'start a course', 'create a course', 'new course'])) {
-    return {
-      intent: 'create_course',
-      workflowType: 'create_course',
-      confidence: 0.9,
-      suggestedResponse: "好的！我来帮你创建一个完整的课程。让我们通过8个简单的问题来规划你的课程。"
-    }
-  }
-
-  // 创建课程节次意图
-  if (matchIntent(message, ['创建节次', '新建课时', '添加课程', '上课时间', '课时安排', 'create session', 'add class'])) {
+  // 1. 创建课程节次意图 - 只匹配很长的特定词汇
+  if (matchIntent(message, [
+    'create session', 'add class', '新建课时', '课时安排', '制定课时', '课时计划'
+  ])) {
     return {
       intent: 'create_session',
       workflowType: 'create_session',
@@ -148,8 +140,12 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
     }
   }
 
-  // 生成大纲意图
-  if (matchIntent(message, ['生成大纲', '做课程大纲', '课程结构', '教学大纲', 'generate outline', 'course outline'])) {
+  // 2. 生成大纲意图 - 只匹配很长的特定词汇
+  if (matchIntent(message, [
+    'course outline', 'generate outline', '做课程大纲', '教学大纲', '课程结构',
+    '制作大纲', '设计大纲', '课程规划', '教学设计', '课程内容规划', '教学大纲设计',
+    '制定大纲', '设计课程结构'
+  ])) {
     return {
       intent: 'generate_outline',
       workflowType: 'generate_outline',
@@ -158,8 +154,12 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
     }
   }
 
-  // 创建作业意图
-  if (matchIntent(message, ['创建作业', '做作业', '布置作业', '作业题目', 'create assignment', 'make homework'])) {
+  // 3. 创建作业意图 - 只匹配很长的特定词汇
+  if (matchIntent(message, [
+    'create assignment', 'make homework', '布置作业', '作业题目', '测验题目',
+    '作业布置', '布置测验', '出考试题', '制作作业', '设计作业', '创建题目',
+    '需要布置作业'
+  ])) {
     return {
       intent: 'create_assignment',
       workflowType: 'create_assignment',
@@ -168,8 +168,12 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
     }
   }
 
-  // A2A优化意图
-  if (matchIntent(message, ['优化内容', '改进课程', '内容完善', '质量提升', 'A2A', 'optimize content', 'improve course'])) {
+  // 4. A2A优化意图 - 只匹配很长的特定词汇
+  if (matchIntent(message, [
+    'optimize content', 'improve course', '内容完善', '质量提升',
+    '内容优化', '课程优化', '提升质量', '质量改进', '内容改进', '课程改进',
+    '改进内容质量', '提升内容质量', '优化教学', '改进教学'
+  ])) {
     return {
       intent: 'a2a_optimization',
       workflowType: 'a2a_optimization',
@@ -178,13 +182,33 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
     }
   }
 
-  // 内容生成意图
-  if (matchIntent(message, ['生成内容', '创建材料', '制作内容', '教学材料', 'generate content', 'create materials'])) {
+  // 5. 内容生成意图 - 只匹配很长的特定词汇
+  if (matchIntent(message, [
+    'generate content', 'create materials', '创建材料', '制作内容', '教学材料',
+    '生成教学', '教学内容', '制作教学', '创建教学', '教学资料', '教学素材',
+    '学习材料', '教学资源', '学习资源', '教学内容生成',
+    '制作教学', '生成教学', '创建教学内容', '制作学习材料'
+  ])) {
     return {
       intent: 'content_generation',
       workflowType: 'content_generation',
       confidence: 0.75,
       suggestedResponse: "好的！我来帮你生成具体的教学内容。"
+    }
+  }
+
+  // 6. 创建课程意图 - 匹配剩余的课程相关请求
+  if (matchIntent(message, [
+    'start a course', 'create a course', 'new course', '开课程',
+    '做一个课程', '创建一个', '建一个课程', '做一个',
+    '我要创建一个', '我想要创建', '我想要创建一个',
+    '创建课程', '我要上课', '做课程', '新建课程', '教学计划'
+  ])) {
+    return {
+      intent: 'create_course',
+      workflowType: 'create_course',
+      confidence: 0.9,
+      suggestedResponse: "好的！我来帮你创建一个完整的课程。让我们通过8个简单的问题来规划你的课程。"
     }
   }
 
@@ -198,38 +222,28 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
 }
 
 /**
- * 匹配意图关键词 - 支持中英文混合匹配，优先精确匹配
+ * 严格匹配意图关键词 - 只匹配完整词汇，避免误匹配
  */
 function matchIntent(message: string, keywords: string[]): boolean {
   const normalizedMessage = message.toLowerCase()
 
-  // 按关键词长度排序，优先匹配更长的关键词
-  const sortedKeywords = [...keywords].sort((a, b) => b.length - a.length)
+  // 移除标点符号进行清理
+  const cleanMessage = normalizedMessage.replace(/[，。！？、\s]/g, '')
 
-  return sortedKeywords.some(keyword => {
+  return keywords.some(keyword => {
     const normalizedKeyword = keyword.toLowerCase()
-
-    // 1. 直接匹配（最高优先级）
-    if (normalizedMessage.includes(normalizedKeyword)) {
-      return true
-    }
-
-    // 2. 移除标点符号和空格后匹配
-    const cleanMessage = normalizedMessage.replace(/[，。！？、\s]/g, '')
     const cleanKeyword = normalizedKeyword.replace(/[，。！？、\s]/g, '')
 
-    if (cleanMessage.includes(cleanKeyword) || cleanKeyword.includes(cleanMessage)) {
+    // 1. 完整词汇匹配（使用单词边界）
+    const keywordPattern = new RegExp(`(^|[^\\w])${cleanKeyword}([^\\w]|$)`, 'i')
+    if (keywordPattern.test(cleanMessage)) {
       return true
     }
 
-    // 3. 模糊匹配：只对长度>=3的关键词进行模糊匹配，避免误匹配
-    if (cleanKeyword.length >= 3) {
-      // 检查关键词的连续字符片段
-      for (let i = 0; i <= cleanKeyword.length - 3; i++) {
-        const part = cleanKeyword.slice(i, i + 3)
-        if (cleanMessage.includes(part)) {
-          return true
-        }
+    // 2. 精确子字符串匹配（只对长关键词进行）
+    if (cleanKeyword.length >= 4) {
+      if (cleanMessage.includes(cleanKeyword)) {
+        return true
       }
     }
 
