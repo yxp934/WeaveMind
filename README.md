@@ -2,7 +2,29 @@
 
 WeaveMind is an AI-powered Learning Management System (LMS) that enables teachers to create courses through AI-assisted workflows and provides students with component-level AI tutoring.
 
-## 🚀 Latest Update: Complete AI Chatbot Workflow Tools Integration
+## 🚀 Latest Update: Enhanced AI Chatbot with Conversation Management
+
+**December 8, 2025** - WeaveMind LMS has successfully implemented comprehensive conversation management features including clear history, automatic conversation saving, and robust tool calling APIs. The system now provides a complete enterprise-grade chatbot experience with data persistence and workflow automation.
+
+### 🎯 New Features
+- **✅ Clear History**: One-click chat history clearing with confirmation dialog
+- **✅ Conversation Saving**: Automatic saving to ai_conversations table with CRUD operations
+- **✅ Tool Calling API**: Complete 15+ tool support including outline generation, A2A optimization
+- **✅ Simple Chat Interface**: Clean chatbot UI at `/simple-chat` for focused testing
+- **✅ State Management**: Enhanced conversationId tracking and persistence
+
+### 🛠️ Technical Enhancements
+- **API Endpoints**:
+  - `POST /api/ai/conversations/save` - Save conversations
+  - `GET/PUT/DELETE /api/ai/conversations/[id]` - Conversation management
+  - `POST /api/ai/tools/call` - Tool execution
+  - `GET /api/ai/tools/list` - Tool catalog
+- **Deployment Fix**: Resolved missing Radix UI dependencies
+- **UI Cleanup**: Created simple chat interface to avoid complex demo pages
+
+---
+
+## 🚀 Previous Update: Complete AI Chatbot Workflow Tools Integration
 
 **December 8, 2025** - WeaveMind LMS has successfully implemented a comprehensive AI chatbot workflow tool system that integrates outline generation and A2A session generation into a unified, intelligent interface. The system now correctly uses class-session architecture instead of the deprecated class-course model.
 
