@@ -68,6 +68,8 @@ export function AIChatbot({
     clearMessages,
     setError,
     getAvailableTools,
+    generateOutline,
+    startWorkflow,
   } = useChatbotStore();
 
   // 获取可用的工具
@@ -94,18 +96,51 @@ export function AIChatbot({
   };
 
   // 处理快捷操作
-  const handleQuickAction = (action: string) => {
-    const actions = {
-      'generate_outline': '请帮我生成课程大纲',
-      'create_course': '请帮我创建新课程',
-      'analyze_progress': '请分析学习进度',
-      'create_discussion': '请帮我创建讨论话题',
-    };
+  const handleQuickAction = async (action: string) => {
+    switch (action) {
+      case 'generate_outline':
+        // 直接触发大纲生成流程
+        startWorkflow('outline_generation', {
+          userRole,
+          classId,
+          courseId,
+        });
+        // 添加引导消息
+        addMessage({
+          role: 'system',
+          content: '我将帮您生成课程大纲。请在工作流工具面板中点击"大纲生成器"开始。',
+        });
+        break;
 
-    const message = actions[action as keyof typeof actions];
-    if (message) {
-      setInputValue(message);
-      inputRef.current?.focus();
+      case 'create_course':
+        setInputValue('请帮我创建新课程');
+        inputRef.current?.focus();
+        break;
+
+      case 'analyze_progress':
+        setInputValue('请分析学习进度');
+        inputRef.current?.focus();
+        break;
+
+      case 'create_discussion':
+        setInputValue('请帮我创建讨论话题');
+        inputRef.current?.focus();
+        break;
+
+      default:
+        const actions = {
+          'generate_outline': '请帮我生成课程大纲',
+          'create_course': '请帮我创建新课程',
+          'analyze_progress': '请分析学习进度',
+          'create_discussion': '请帮我创建讨论话题',
+        };
+
+        const message = actions[action as keyof typeof actions];
+        if (message) {
+          setInputValue(message);
+          inputRef.current?.focus();
+        }
+        break;
     }
   };
 

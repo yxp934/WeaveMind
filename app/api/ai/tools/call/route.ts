@@ -253,15 +253,71 @@ async function executeDeleteSession(params: any, userId: string, supabase: any) 
 }
 
 async function executeGenerateOutline(params: any, userId: string, supabase: any) {
-  const { requirements, target_audience, duration_weeks } = params
+  const { requirements, class_id, save_to_class = false } = params
 
-  // This would integrate with the existing outline generation API
-  // For now, return a placeholder
-  return {
-    message: 'Outline generation initiated',
-    requirements,
-    target_audience,
-    duration_weeks
+  try {
+    // Validate required parameters
+    if (!requirements) {
+      throw new Error('Requirements parameter is required')
+    }
+
+    // Verify authentication for class operations
+    if (save_to_class && class_id) {
+      const { data: classMember } = await supabase
+        .from('class_members')
+        .select('role')
+        .eq('class_id', class_id)
+        .eq('user_id', userId)
+        .eq('role', 'teacher')
+        .single()
+
+      if (!classMember) {
+        throw new Error('Access denied: Not a teacher in this class')
+      }
+    }
+
+    // Prepare the request to the generate-outline API
+    const outlineRequestBody = {
+      requirements,
+      class_id,
+      save_to_class
+    }
+
+    // Call the generate-outline API
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/ai/generate-outline`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Note: In production, you would use proper session authentication
+        // For now, we're assuming the API validates the user internally
+      },
+      body: JSON.stringify(outlineRequestBody)
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(`Outline generation failed: ${errorData.error || response.statusText}`)
+    }
+
+    const result = await response.json()
+
+    if (!result.success) {
+      throw new Error(result.error || 'Outline generation failed')
+    }
+
+    // Return the complete result
+    return {
+      success: true,
+      chapters: result.chapters,
+      requirements: result.requirements,
+      class_id: result.class_id,
+      saved_outline: result.saved_outline,
+      message: 'Outline generated successfully'
+    }
+
+  } catch (error: any) {
+    console.error('Outline generation error:', error)
+    throw new Error(`Outline generation failed: ${error.message}`)
   }
 }
 

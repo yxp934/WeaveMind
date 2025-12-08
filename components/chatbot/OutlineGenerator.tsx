@@ -96,17 +96,20 @@ export function OutlineGenerator({
     setStep('generating');
 
     try {
-      // 调用AI API生成大纲
-      const response = await fetch('/api/ai/generate-outline', {
+      // 调用工具API生成大纲
+      const response = await fetch('/api/ai/tools/call', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...request,
-          userRole,
-          classId,
-          courseId,
+          workflow_id: 'temp_workflow', // 临时工作流ID
+          tool_name: 'generate_outline',
+          parameters: {
+            requirements: request,
+            class_id: classId,
+            save_to_class: !!classId,
+          },
         }),
       });
 
@@ -115,12 +118,18 @@ export function OutlineGenerator({
       }
 
       const data = await response.json();
-      setGeneratedOutline(data.chapters || []);
+
+      if (data.success && data.result && data.result.chapters) {
+        setGeneratedOutline(data.result.chapters || []);
+      } else {
+        throw new Error(data.error || 'Outline generation failed');
+      }
+
       setStep('review');
 
     } catch (error) {
       console.error('生成大纲失败:', error);
-      // 使用模拟数据
+      // 使用模拟数据作为后备
       const mockOutline: Chapter[] = [
         {
           id: '1',

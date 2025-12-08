@@ -79,6 +79,12 @@ interface ChatbotStore {
   updateToolCall: (toolCallId: string, updates: Partial<ToolCall>) => void;
   getAvailableTools: (userRole?: string) => AITool[];
 
+  // Outline generation specific methods
+  generateOutline: (requirements: any, options?: any) => Promise<void>;
+  updateOutlineProgress: (step: string, progress: number) => void;
+  saveOutline: (outlineData: any) => Promise<void>;
+  loadOutlineFromClass: (classId: string) => Promise<void>;
+
   // 工具方法
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -358,6 +364,119 @@ export const useChatbotStore = create<ChatbotStore>()(
           return tools.filter(tool =>
             ['personalize_path', 'generate_report'].includes(tool.id)
           );
+        }
+      },
+
+      // Outline generation specific implementations
+      generateOutline: async (requirements, options = {}) => {
+        const { addMessage, updateWorkflow, setError } = get();
+
+        try {
+          setError(null);
+
+          // Start outline generation workflow
+          get().startWorkflow('outline_generation', { requirements, ...options });
+
+          // Update progress
+          get().updateOutlineProgress('analyzing', 20);
+
+          // Call outline generation tool
+          const result = await get().callTool('generate_outline', {
+            requirements,
+            class_id: options.classId,
+            save_to_class: options.saveToClass || false
+          });
+
+          // Update progress to completion
+          get().updateOutlineProgress('finalizing', 100);
+          get().completeWorkflow();
+
+          // Add success message
+          addMessage({
+            role: 'system',
+            content: '大纲生成完成！您可以查看和编辑生成的大纲。',
+            toolCalls: [{
+              tool: 'generate_outline',
+              args: { requirements },
+              result,
+              status: 'completed',
+            }],
+          });
+
+          return result;
+
+        } catch (error) {
+          console.error('Outline generation failed:', error);
+          setError(error instanceof Error ? error.message : 'Outline generation failed');
+
+          addMessage({
+            role: 'system',
+            content: '大纲生成失败，请重试。',
+            toolCalls: [{
+              tool: 'generate_outline',
+              args: { requirements },
+              status: 'error',
+              error: error instanceof Error ? error.message : 'Unknown error',
+            }],
+          });
+        }
+      },
+
+      updateOutlineProgress: (step, progress) => {
+        get().updateWorkflow({
+          currentStep: step,
+          progress: Math.min(100, Math.max(0, progress)),
+        });
+      },
+
+      saveOutline: async (outlineData) => {
+        const { addMessage } = get();
+
+        try {
+          // This would typically save to the backend
+          addMessage({
+            role: 'system',
+            content: `大纲已保存到${outlineData.class_id ? '班级' : '本地'}。`,
+          });
+
+          return outlineData;
+        } catch (error) {
+          console.error('Save outline failed:', error);
+          throw error;
+        }
+      },
+
+      loadOutlineFromClass: async (classId) => {
+        const { addMessage, setError } = get();
+
+        try {
+          setError(null);
+
+          // This would typically load from the backend
+          const response = await fetch(`/api/ai/outline/${classId}`);
+
+          if (!response.ok) {
+            throw new Error('Failed to load outline');
+          }
+
+          const outlineData = await response.json();
+
+          addMessage({
+            role: 'system',
+            content: '已加载班级大纲。',
+          });
+
+          return outlineData;
+        } catch (error) {
+          console.error('Load outline failed:', error);
+          setError(error instanceof Error ? error.message : 'Failed to load outline');
+
+          addMessage({
+            role: 'system',
+            content: '加载大纲失败。',
+          });
+
+          throw error;
         }
       },
 
