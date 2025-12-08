@@ -60,6 +60,8 @@ interface ChatbotStore {
   currentSessionId: string | null;
   availableTools: AITool[];
   streamingMessage: string | null;
+  userRole: 'teacher' | 'student' | 'self-learner';
+  conversationId: string | null;
 
   // 操作方法
   sendMessage: (content: string, metadata?: any) => Promise<void>;
@@ -198,6 +200,8 @@ export const useChatbotStore = create<ChatbotStore>()(
       currentSessionId: null,
       availableTools: DEFAULT_TOOLS,
       streamingMessage: null,
+      userRole: 'teacher',
+      conversationId: null,
 
       // 消息操作
       addMessage: (message) => {
@@ -244,23 +248,34 @@ export const useChatbotStore = create<ChatbotStore>()(
             metadata,
           });
 
-          // 调用AI API
+          // 调用AI API - 修复格式以匹配后端期望
           const response = await fetch('/api/ai/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              messages: [...get().messages, {
-                role: 'user',
-                content,
-                metadata,
-              }],
-              sessionId: get().currentSessionId,
+              message: content,
+              context: {
+                courseId: metadata.courseId,
+                classId: metadata.classId,
+                organizationId: metadata.organizationId,
+                userRole: get().userRole || 'teacher',
+                conversationHistory: get().messages.slice(-5).map(msg => ({
+                  role: msg.role === 'assistant' ? 'assistant' : 'user',
+                  content: msg.content,
+                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
+                  toolsUsed: msg.toolCalls?.map(tool => tool.tool) || [],
+                  metadata: msg.metadata || {}
+                })),
+              },
+              tools: metadata.tools,
             }),
           });
 
           if (!response.ok) {
+            const errorData = await response.json();
+            console.error('API Error:', errorData);
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
@@ -269,17 +284,59 @@ export const useChatbotStore = create<ChatbotStore>()(
           // 添加AI响应消息
           addMessage({
             role: 'assistant',
-            content: data.content,
+            content: data.data?.message || data.message || '抱歉，我现在无法处理您的请求。请稍后重试。',
             metadata: {
               ...metadata,
-              sessionId: data.sessionId,
+              sessionId: data.data?.metadata?.sessionId || data.sessionId,
             },
-            toolCalls: data.toolCalls,
+            toolCalls: data.data?.toolsUsed || data.toolsUsed,
           });
 
           // 更新会话ID
           if (data.sessionId) {
             get().setSessionId(data.sessionId);
+          }
+
+          // 保存对话到数据库
+          try {
+            const messages = get().messages;
+            const conversationId = get().conversationId;
+            const context = {
+              userRole: get().userRole || 'teacher',
+              organizationId: metadata.organizationId,
+              courseId: metadata.courseId,
+              classId: metadata.classId,
+              ...metadata
+            };
+
+            const saveResponse = await fetch('/api/ai/conversations/save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                conversationId,
+                title: conversationId ? undefined : messages[0]?.content?.slice(0, 50) + '...',
+                messages: messages.map(msg => ({
+                  role: msg.role,
+                  content: msg.content,
+                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
+                  metadata: msg.metadata,
+                  toolsUsed: msg.toolCalls?.map(tool => tool.tool) || []
+                })),
+                context
+              })
+            });
+
+            if (saveResponse.ok) {
+              const saveData = await saveResponse.json();
+              if (saveData.data?.conversationId) {
+                get().setConversationId(saveData.data.conversationId);
+              }
+            }
+          } catch (saveError) {
+            console.warn('保存对话失败:', saveError);
+            // 不影响主流程，继续执行
           }
 
         } catch (error) {
@@ -655,6 +712,7 @@ export const useChatbotStore = create<ChatbotStore>()(
       setLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),
       setSessionId: (sessionId) => set({ currentSessionId: sessionId }),
+      setConversationId: (conversationId) => set({ conversationId }),
       setStreamingMessage: (message) => set({ streamingMessage: message }),
 
       // 重置状态
@@ -665,6 +723,8 @@ export const useChatbotStore = create<ChatbotStore>()(
         error: null,
         currentSessionId: null,
         streamingMessage: null,
+        userRole: 'teacher',
+        conversationId: null,
       }),
     }),
     {
@@ -672,6 +732,8 @@ export const useChatbotStore = create<ChatbotStore>()(
       partialize: (state) => ({
         messages: state.messages.slice(-50), // 只保存最近50条消息
         currentSessionId: state.currentSessionId,
+        userRole: state.userRole,
+        conversationId: state.conversationId,
       }),
     }
   )
