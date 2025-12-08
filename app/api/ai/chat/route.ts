@@ -8,126 +8,393 @@ import { z } from 'zod'
 
 export const runtime = 'edge'
 
-// 工作流意图处理函数
-async function handleWorkflowIntent(message: string, context: any, isDemoMode: boolean): Promise<ChatResponseData | null> {
+// 智能意图识别函数
+function detectIntent(message: string): { intent: string; workflowType: string; confidence: number } {
+  const lowerMessage = message.toLowerCase().trim()
+
+  // 课程创建意图
+  if ((lowerMessage.includes('创建') || lowerMessage.includes('新建')) && lowerMessage.includes('课程')) {
+    return { intent: 'create_course', workflowType: 'create_course', confidence: 0.95 }
+  }
+
+  // 课程节次创建意图
+  if ((lowerMessage.includes('创建') || lowerMessage.includes('新建')) && lowerMessage.includes('课次')) {
+    return { intent: 'create_session', workflowType: 'create_session', confidence: 0.9 }
+  }
+  if (lowerMessage.includes('课程') && lowerMessage.includes('节次')) {
+    return { intent: 'create_session', workflowType: 'create_session', confidence: 0.8 }
+  }
+
+  // 大纲生成意图
+  if (lowerMessage.includes('大纲') || lowerMessage.includes('outline')) {
+    return { intent: 'generate_outline', workflowType: 'generate_outline', confidence: 0.9 }
+  }
+
+  // 作业创建意图
+  if (lowerMessage.includes('作业') || lowerMessage.includes('测验') || lowerMessage.includes('考试')) {
+    return { intent: 'create_assignment', workflowType: 'create_assignment', confidence: 0.85 }
+  }
+
+  // A2A优化意图
+  if (lowerMessage.includes('a2a') || lowerMessage.includes('优化') || lowerMessage.includes('改进')) {
+    return { intent: 'a2a_optimization', workflowType: 'a2a_optimization', confidence: 0.8 }
+  }
+
+  // 内容生成意图
+  if (lowerMessage.includes('生成') && (lowerMessage.includes('内容') || lowerMessage.includes('教学'))) {
+    return { intent: 'content_generation', workflowType: 'content_generation', confidence: 0.75 }
+  }
+
+  return { intent: 'unknown', workflowType: 'unknown', confidence: 0 }
+}
+
+// 提取课程主题
+function extractCourseTopic(message: string): string {
   const lowerMessage = message.toLowerCase()
 
-  // 检测课程创建意图
-  if (lowerMessage.includes('创建') && (lowerMessage.includes('课程') || lowerMessage.includes('神经科学'))) {
-    // 实际启动大纲生成工作流
-    try {
-      const { createAdminClient } = await import('@/lib/supabase/admin')
-      const supabase = createAdminClient()
+  // 常见编程语言和主题
+  const topics = [
+    'python', 'java', 'javascript', 'typescript', 'react', 'vue', 'node.js',
+    '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治',
+    '艺术', '音乐', '体育', '心理学', '哲学', '经济学', '管理学',
+    '机器学习', '人工智能', '数据科学', '网络安全', '区块链'
+  ]
 
-      const userId = isDemoMode ? 'demo-user' : context?.userId || 'demo-user'
-      const classId = context?.classId || crypto.randomUUID()
+  for (const topic of topics) {
+    if (lowerMessage.includes(topic)) {
+      return topic
+    }
+  }
 
-      // 创建或获取课程大纲
-      const { data: outlineResult, error: outlineError } = await supabase
-        .from('course_outlines')
-        .insert({
-          class_id: classId,
-          title: `神经科学入门课程大纲`,
-          description: '基于AI生成的神经科学入门课程大纲',
-          requirements: {
-            subject: 'neuroscience',
-            level: 'beginner',
-            target_audience: 'undergraduate',
-            duration: '16 weeks',
-            prerequisites: 'basic biology'
-          },
-          generated_by_ai: true,
-          ai_generation_metadata: {
-            model: 'gpt-4',
-            prompt_version: '1.0',
-            generation_type: 'course_creation'
-          }
-        })
-        .select()
-        .single()
+  // 提取"创建XXX课程"中的XXX
+  const match = lowerMessage.match(/创建(.+?)课程/)
+  if (match) {
+    return match[1].trim()
+  }
 
-      if (outlineError && !outlineError.message.includes('duplicate')) {
-        console.warn('大纲创建警告:', outlineError)
+  // 提取"XXX课程"中的XXX
+  const match2 = lowerMessage.match(/^(.+?)课程/)
+  if (match2) {
+    return match2[1].trim()
+  }
+
+  return '通用'
+}
+
+// 工作流意图处理函数
+async function handleWorkflowIntent(message: string, context: any, isDemoMode: boolean): Promise<ChatResponseData | null> {
+  const intentDetection = detectIntent(message)
+
+  // 如果意图不明，返回默认响应
+  if (intentDetection.intent === 'unknown') {
+    return {
+      message: `您好！我是您的AI学习助手。
+
+我可以帮助您：
+- 🎯 **创建课程** - "帮我创建一个Python编程课程"
+- 📝 **生成大纲** - "为我的课程生成大纲"
+- 🤖 **A2A优化** - "用A2A优化我的内容"
+- 📋 **创建作业** - "创建一份数学测验"
+
+请告诉我您想做什么，或者点击下方的快捷按钮！`,
+      toolsUsed: [],
+      metadata: {
+        intent: 'unknown',
+        userRole: context?.userRole || 'teacher',
+        availableActions: ['outline_generation', 'a2a_session', 'course_creation', 'assignment_creation'],
+        suggestions: [
+          '帮我创建一个Python编程课程',
+          '生成课程大纲',
+          '使用A2A优化内容',
+          '创建一份数学测验'
+        ]
       }
+    }
+  }
 
-      return {
-        message: `我将帮您创建"神经科学入门课程"。
+  // 处理课程创建意图
+  if (intentDetection.intent === 'create_course') {
+    const topic = extractCourseTopic(message)
+    const classId = crypto.randomUUID()
+    const workflowId = `workflow_${Date.now()}`
 
-✅ **工作流已启动！**
+    return {
+      message: `好的！我来帮您创建"${topic}课程"。
 
-**当前进度：**
-- ✅ 正在分析课程需求
-- 🔄 正在生成课程大纲
-- ⏳ 等待A2A优化
+🎯 **8步课程创建工作流**
 
-**大纲生成中...**
+**第1步：课程基本信息**
+请告诉我以下信息：
 
-我将为您创建一个包含以下主题的入门级课程：
-1. 神经系统基础
-2. 神经元结构与功能
-3. 神经信号传导
-4. 感觉与运动系统
-5. 学习与记忆的神经机制
+**1. 您希望这门课程有多少节课？**
+A) 4节课 (4周完成)
+B) 8节课 (8周完成)
+C) 12节课 (12周完成)
+D) 其他数量（请具体说明）
 
-请稍候，我正在为您生成详细的课程大纲。完成后您可以编辑和定制内容。`,
-        toolsUsed: ['outline_generator'],
-        metadata: {
-          workflowType: 'course_creation',
-          intent: 'create_course',
-          workflowId: `workflow_${Date.now()}`,
-          currentStep: 'outline_generation',
-          classId,
-          outlineId: outlineResult?.id,
-          suggestedActions: ['outline_generation', 'a2a_session'],
-          userRole: context?.userRole || 'teacher',
-          progress: 25
-        }
+**2. 您希望每周上几次课？**
+A) 每周一次
+B) 每周两次
+C) 每周三次
+D) 其他（请具体说明）
+
+请回答上述问题，我会根据您的选择继续引导您完成剩余步骤！`,
+      toolsUsed: ['course_creation', 'workflow_manager'],
+      metadata: {
+        workflowType: 'create_course',
+        intent: 'create_course',
+        workflowId,
+        currentStep: 1,
+        classId,
+        courseTopic: topic,
+        userRole: context?.userRole || 'teacher',
+        steps: {
+          total: 8,
+          current: 1,
+          next: 'course_duration_and_frequency'
+        },
+        suggestedActions: ['continue_workflow'],
+        progress: 12.5
       }
-    } catch (error) {
-      console.error('启动课程创建工作流失败:', error)
-      // 如果启动失败，返回友好的错误消息
-      return {
-        message: `我将帮您创建"神经科学入门课程"。
+    }
+  }
 
-⚠️ 暂时无法启动完整的工作流，但我可以为您提供课程规划建议：
+  // 处理大纲生成意图
+  if (intentDetection.intent === 'generate_outline') {
+    return {
+      message: `好的！我来帮您生成课程大纲。
 
-**课程结构建议：**
-1. **神经系统基础** (2周)
-   - 神经系统的组织结构
-   - 中枢与外周神经系统
+📋 **大纲生成工作流**
 
-2. **神经元与胶质细胞** (3周)
-   - 神经元的基本结构
-   - 神经胶质细胞的功能
+**请提供以下信息：**
 
-3. **神经信号传导** (3周)
-   - 静息电位与动作电位
-   - 突触传递机制
+**1. 课程主题是什么？**
+（例如：Python编程、数学分析、英语写作等）
 
-4. **感觉系统** (3周)
-   - 视觉、听觉、体感系统
+**2. 课程节数？**
+（例如：8节、12节、16节等）
 
-5. **运动控制** (2周)
-   - 运动神经元与肌肉控制
+**3. 目标学员？**
+A) 零基础初学者
+B) 有一定基础
+C) 进阶学习者
 
-6. **高级认知功能** (3周)
-   - 学习与记忆
-   - 注意力与意识
+**4. 课程时长？**
+A) 短期课程 (1-2周)
+B) 中期课程 (1个月)
+C) 长期课程 (2-3个月)
 
-请告诉我您希望调整哪些部分，或者您可以点击下方按钮手动启动工作流。`,
-        toolsUsed: ['outline_generation'],
-        metadata: {
-          workflowType: 'course_creation',
-          intent: 'create_course',
-          error: true,
-          suggestedActions: ['outline_generation', 'a2a_session'],
-          userRole: context?.userRole || 'teacher'
-        }
+请提供这些信息，我会为您生成详细的课程大纲！`,
+      toolsUsed: ['outline_generator', 'workflow_manager'],
+      metadata: {
+        workflowType: 'generate_outline',
+        intent: 'generate_outline',
+        workflowId: `workflow_${Date.now()}`,
+        currentStep: 'gathering_requirements',
+        userRole: context?.userRole || 'teacher',
+        steps: {
+          total: 3,
+          current: 1,
+          next: 'generate_outline'
+        },
+        suggestedActions: ['outline_generation'],
+        progress: 33
+      }
+    }
+  }
+
+  // 处理作业创建意图
+  if (intentDetection.intent === 'create_assignment') {
+    return {
+      message: `好的！我来帮您创建作业。
+
+📝 **作业创建工作流**
+
+**请选择作业类型：**
+
+**A) 测验题**
+- 选择题、填空题、判断题
+- 适合知识点测试
+- 自动评分
+
+**B) 写作作业**
+- 论文、报告、文章
+- 开放式题目
+- 手动评分 + AI辅助
+
+**C) 研究项目**
+- 调研报告、数据分析
+- 小组合作项目
+- 成果展示
+
+**请告诉我：**
+1. 您想创建哪种类型的作业？
+2. 作业的主题是什么？
+3. 预计完成时间？
+
+我会根据您的选择引导您完成作业创建！`,
+      toolsUsed: ['assignment_creator', 'workflow_manager'],
+      metadata: {
+        workflowType: 'create_assignment',
+        intent: 'create_assignment',
+        workflowId: `workflow_${Date.now()}`,
+        currentStep: 'select_assignment_type',
+        userRole: context?.userRole || 'teacher',
+        steps: {
+          total: 4,
+          current: 1,
+          next: 'assignment_details'
+        },
+        suggestedActions: ['quiz_creation', 'writing_assignment', 'research_project'],
+        progress: 25
+      }
+    }
+  }
+
+  // 处理A2A优化意图
+  if (intentDetection.intent === 'a2a_optimization') {
+    return {
+      message: `好的！我来使用A2A双智能体为您优化内容。
+
+🔄 **A2A会话优化工作流**
+
+**A2A优化流程：**
+1. **教师代理** - 生成教学内容初稿
+2. **学生代理** - 从学习者角度提供批判性反馈
+3. **迭代优化** - 最多3轮优化循环
+4. **质量评估** - 确保内容质量
+
+**请提供您想要优化的内容：**
+- 课程大纲
+- 课程章节
+- 教学材料
+- 作业题目
+
+**或者告诉我：**
+1. 您要优化哪个课程？
+2. 需要优化哪些部分？
+3. 希望达到什么效果？
+
+我会启动A2A优化流程为您提升教学质量！`,
+      toolsUsed: ['a2a_optimizer', 'workflow_manager'],
+      metadata: {
+        workflowType: 'a2a_optimization',
+        intent: 'a2a_optimization',
+        workflowId: `workflow_${Date.now()}`,
+        currentStep: 'content_input',
+        userRole: context?.userRole || 'teacher',
+        steps: {
+          total: 4,
+          current: 1,
+          next: 'a2a_iteration'
+        },
+        suggestedActions: ['outline_optimization', 'content_optimization'],
+        progress: 25
+      }
+    }
+  }
+
+  // 处理内容生成意图
+  if (intentDetection.intent === 'content_generation') {
+    return {
+      message: `好的！我来帮您生成教学内容。
+
+📚 **内容生成工作流**
+
+**可生成的内容类型：**
+
+**1. 课程章节内容**
+- 理论知识讲解
+- 实践操作指导
+- 案例分析
+
+**2. 练习题库**
+- 选择题、填空题
+- 编程题目
+- 应用题
+
+**3. 教学辅助材料**
+- PPT大纲
+- 思维导图
+- 学习指南
+
+**请告诉我：**
+1. 您需要生成哪种类型的内容？
+2. 内容的主题和范围？
+3. 目标学员水平？
+4. 预期内容长度？
+
+我会根据您的需求生成高质量的教学内容！`,
+      toolsUsed: ['content_generator', 'workflow_manager'],
+      metadata: {
+        workflowType: 'content_generation',
+        intent: 'content_generation',
+        workflowId: `workflow_${Date.now()}`,
+        currentStep: 'content_specification',
+        userRole: context?.userRole || 'teacher',
+        steps: {
+          total: 3,
+          current: 1,
+          next: 'content_generation'
+        },
+        suggestedActions: ['chapter_content', 'exercise_generation', 'teaching_materials'],
+        progress: 33
+      }
+    }
+  }
+
+  // 处理课程节次创建意图
+  if (intentDetection.intent === 'create_session') {
+    return {
+      message: `好的！我来帮您创建课程节次。
+
+📅 **课程节次创建工作流**
+
+**请提供以下信息：**
+
+**1. 属于哪个课程？**
+（请告诉我课程名称）
+
+**2. 本节次的主题？**
+（例如：变量和数据类型、线性方程组、动词时态等）
+
+**3. 节次时长？**
+A) 45分钟
+B) 90分钟
+C) 120分钟
+D) 其他时长
+
+**4. 教学目标？**
+- 知识点掌握
+- 技能训练
+- 综合应用
+
+**5. 内容要求？**
+A) 理论讲解为主
+B) 实践操作为主
+C) 理论与实践结合
+
+请提供这些信息，我会为您创建详细的课程节次！`,
+      toolsUsed: ['session_creator', 'workflow_manager'],
+      metadata: {
+        workflowType: 'create_session',
+        intent: 'create_session',
+        workflowId: `workflow_${Date.now()}`,
+        currentStep: 'session_details',
+        userRole: context?.userRole || 'teacher',
+        steps: {
+          total: 3,
+          current: 1,
+          next: 'session_content_generation'
+        },
+        suggestedActions: ['session_creation'],
+        progress: 33
       }
     }
   }
 
   // 检测清除历史意图
+  const lowerMessage = message.toLowerCase()
   if (lowerMessage.includes('清除') && (lowerMessage.includes('历史') || lowerMessage.includes('聊天'))) {
     return {
       message: `好的，我将为您清除聊天历史。
@@ -155,57 +422,6 @@ async function handleWorkflowIntent(message: string, context: any, isDemoMode: b
     }
   }
 
-  // 检测大纲生成意图
-  if (lowerMessage.includes('大纲') || lowerMessage.includes('outline')) {
-    return {
-      message: `好的，我将为您生成课程大纲。
-
-**当前工作流：** 大纲生成
-**状态：** 准备开始
-
-请在工作流工具面板中点击"大纲生成器"，我将帮助您：
-
-1. 收集课程需求
-2. 生成结构化大纲
-3. 提供编辑建议
-
-准备好开始了吗？`,
-      toolsUsed: ['outline_generation'],
-      metadata: {
-        workflowType: 'outline_generation',
-        intent: 'generate_outline',
-        currentStep: 'ready_to_start',
-        userRole: context?.userRole || 'teacher'
-      }
-    }
-  }
-
-  // 检测A2A优化意图
-  if (lowerMessage.includes('a2a') || lowerMessage.includes('优化') || lowerMessage.includes('改进')) {
-    return {
-      message: `好的，我将使用A2A双智能体为您优化内容。
-
-**当前工作流：** A2A会话优化
-**状态：** 准备开始
-
-A2A优化流程：
-1. **教师代理** - 生成教学内容
-2. **学生代理** - 提供批判性反馈
-3. **迭代优化** - 最多3轮优化
-4. **质量评估** - 确保内容质量
-
-请在工作流工具面板中点击"A2A优化"开始。`,
-      toolsUsed: ['a2a_session'],
-      metadata: {
-        workflowType: 'a2a_session',
-        intent: 'optimize_content',
-        suggestedIterations: 3,
-        userRole: context?.userRole || 'teacher'
-      }
-    }
-  }
-
-  // 默认响应
   return null
 }
 
