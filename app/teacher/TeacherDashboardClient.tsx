@@ -87,7 +87,7 @@ export function TeacherDashboardClient({
       <div className="px-8 py-6">
         <div className="flex gap-6">
           {/* Main Content */}
-          <div className="flex-1 space-y-6">
+          <div className="flex-1 space-y-6 max-h-[calc(100vh-120px)] overflow-y-auto">
             {/* Welcome Header */}
             <div className="mb-2">
               <h1
