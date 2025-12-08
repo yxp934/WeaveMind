@@ -1,0 +1,100 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "返回首页" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - text: 返回首页
+        - heading "智能AI助手" [level=1] [ref=e11]
+      - generic [ref=e12]:
+        - img [ref=e13]
+        - generic [ref=e15]: AI驱动的工作流助手
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - heading "与AI助手对话" [level=2] [ref=e20]
+          - paragraph [ref=e21]: 告诉我你想要做什么，我会智能识别你的意图并引导你完成整个流程
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - img [ref=e26]
+              - generic [ref=e29]:
+                - heading "WeaveMind 智能助手" [level=3] [ref=e30]
+                - paragraph [ref=e31]: AI驱动的工作流助手
+            - button "重新开始" [ref=e32] [cursor=pointer]
+          - generic [ref=e34]:
+            - img [ref=e36]
+            - generic [ref=e39]:
+              - generic [ref=e40]:
+                - text: 你好！我是WeaveMind的智能AI助手。我可以帮你完成教育工作：
+                - text: • 🎯 创建完整课程（8步引导式流程）
+                - text: • 📋 生成课程大纲
+                - text: • 📝 创建作业（测验/写作/研究）
+                - text: • 🔄 A2A内容优化
+                - text: • 📚 生成教学内容
+                - text: 请告诉我你想要做什么，我会智能识别你的意图并引导你完成整个流程！
+              - generic [ref=e41]: 12:00:47 AM
+          - generic [ref=e42]:
+            - generic [ref=e43]:
+              - textbox "输入你的需求，例如：'我想要创建一个Python编程课程' 或 '生成数学课程的大纲'" [active] [ref=e44]: 测试消息
+              - button "发送" [ref=e45] [cursor=pointer]:
+                - img [ref=e46]
+                - text: 发送
+            - generic [ref=e49]: 💡 智能提示：你可以直接说"创建课程"、"生成大纲"、"创建作业"等，我会智能识别你的意图并引导完成整个流程
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - heading "快速开始" [level=3] [ref=e52]:
+            - img [ref=e53]
+            - text: 快速开始
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - generic [ref=e59]: 🎯 创建课程
+              - generic [ref=e60]: 8步引导式流程，完整规划你的课程
+            - generic [ref=e61]:
+              - generic [ref=e62]: 📋 生成大纲
+              - generic [ref=e63]: 基于主题和节数自动生成详细大纲
+            - generic [ref=e64]:
+              - generic [ref=e65]: 📝 创建作业
+              - generic [ref=e66]: 测验、写作、研究三种类型作业
+        - generic [ref=e67]:
+          - heading "AI能力" [level=3] [ref=e68]:
+            - img [ref=e69]
+            - text: AI能力
+          - generic [ref=e71]:
+            - generic [ref=e74]:
+              - generic [ref=e75]: 智能意图识别
+              - generic [ref=e76]: 自动理解你的真实需求
+            - generic [ref=e79]:
+              - generic [ref=e80]: 引导式流程
+              - generic [ref=e81]: 步骤化指导，确保完成任务
+            - generic [ref=e84]:
+              - generic [ref=e85]: 上下文理解
+              - generic [ref=e86]: 记住对话历史，提供连贯体验
+            - generic [ref=e89]:
+              - generic [ref=e90]: 实时工具调用
+              - generic [ref=e91]: 直接执行各种教育工具
+        - generic [ref=e92]:
+          - heading "示例对话" [level=3] [ref=e93]:
+            - img [ref=e94]
+            - text: 示例对话
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - generic [ref=e99]: 用户：
+              - generic [ref=e100]: "\"我想创建一个Python编程课程\""
+            - generic [ref=e101]:
+              - generic [ref=e102]: AI助手：
+              - generic [ref=e103]: "\"好的！我来帮你创建Python编程课程。让我们开始第一步...\""
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - img [ref=e106]
+            - generic [ref=e108]: 系统状态
+          - generic [ref=e109]:
+            - generic [ref=e112]: AI模型已连接
+            - generic [ref=e115]: 数据库已就绪
+            - generic [ref=e118]: 工作流系统正常
+  - alert [ref=e119]
+```
