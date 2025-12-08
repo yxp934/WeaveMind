@@ -36,13 +36,16 @@ interface GetConversationResponse {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<GetConversationResponse>> {
   const requestId = crypto.randomUUID()
 
   try {
+    // 等待params解析 (Next.js 15要求)
+    const { id } = await params
+
     // 验证路径参数
-    const pathValidation = conversationIdSchema.safeParse({ id: params.id })
+    const pathValidation = conversationIdSchema.safeParse({ id })
     if (!pathValidation.success) {
       return NextResponse.json({
         success: false,

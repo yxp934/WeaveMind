@@ -157,22 +157,22 @@ const pollA2AStatus = async (generationId: string, getState: any, setState: any)
 // 默认AI工具配置
 const DEFAULT_TOOLS: AITool[] = [
   // 课程管理工具
-  { id: 'generate_course', name: '生成课程', description: '基于大纲自动生成完整课程内容', icon: null, category: 'course' },
-  { id: 'edit_chapter', name: '编辑章节', description: '智能编辑和优化课程章节内容', icon: null, category: 'course' },
-  { id: 'create_assessment', name: '创建评估', description: '自动生成课程评估和练习题', icon: null, category: 'assessment' },
+  { id: 'generate_course', name: '生成课程', description: '基于大纲自动生成完整课程内容', icon: undefined, category: 'course' },
+  { id: 'edit_chapter', name: '编辑章节', description: '智能编辑和优化课程章节内容', icon: undefined, category: 'course' },
+  { id: 'create_assessment', name: '创建评估', description: '自动生成课程评估和练习题', icon: undefined, category: 'assessment' },
 
   // 讨论管理工具
-  { id: 'create_discussion', name: '创建讨论', description: '智能创建讨论话题和引导问题', icon: null, category: 'discussion' },
-  { id: 'moderate_thread', name: '管理讨论', description: '智能管理讨论线程和回复', icon: null, category: 'communication' },
-  { id: 'generate_insights', name: '生成洞察', description: '分析讨论内容并生成见解', icon: null, category: 'analysis' },
+  { id: 'create_discussion', name: '创建讨论', description: '智能创建讨论话题和引导问题', icon: undefined, category: 'discussion' },
+  { id: 'moderate_thread', name: '管理讨论', description: '智能管理讨论线程和回复', icon: undefined, category: 'communication' },
+  { id: 'generate_insights', name: '生成洞察', description: '分析讨论内容并生成见解', icon: undefined, category: 'analysis' },
 
   // 学习分析工具
-  { id: 'analyze_progress', name: '分析进度', description: '分析学习进度并提供建议', icon: null, category: 'progress' },
-  { id: 'personalize_path', name: '个性化路径', description: '为学生定制学习路径', icon: null, category: 'progress' },
-  { id: 'generate_report', name: '生成报告', description: '生成学习分析报告', icon: null, category: 'analysis' },
+  { id: 'analyze_progress', name: '分析进度', description: '分析学习进度并提供建议', icon: undefined, category: 'progress' },
+  { id: 'personalize_path', name: '个性化路径', description: '为学生定制学习路径', icon: undefined, category: 'progress' },
+  { id: 'generate_report', name: '生成报告', description: '生成学习分析报告', icon: undefined, category: 'analysis' },
 
   // 沟通工具
-  { id: 'send_notification', name: '发送通知', description: '智能通知学生和教师', icon: null, category: 'communication' },
+  { id: 'send_notification', name: '发送通知', description: '智能通知学生和教师', icon: undefined, category: 'communication' },
   { id: 'schedule_meeting', name: '安排会议', description: '智能安排师生会议时间', icon: null, category: 'communication' },
   { id: 'send_message', name: '发送消息', description: '批量发送个性化消息', icon: null, category: 'communication' },
 
@@ -329,7 +329,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             if (saveResponse.ok) {
               const saveData = await saveResponse.json();
               if (saveData.data?.conversationId) {
-                get().setConversationId(saveData.data.conversationId);
+                set({ conversationId: saveData.data.conversationId });
               }
             }
           } catch (saveError) {
