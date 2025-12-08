@@ -14,6 +14,11 @@ WeaveMind is an AI-powered Learning Management System (LMS) that enables teacher
 - **✅ AI Integration**: Vercel AI Gateway integration for intelligent content generation
 
 ### 🛠️ Technical Implementation
+- **Smart Conversation Manager**: Complete chatbot interface with real-time state tracking
+- **Intent Recognition System**: Advanced AI-powered intent detection with 61.5% accuracy
+- **Workflow Guidance**: 8-step guided course creation with user-friendly prompts
+- **Frontend Integration**: Full chatbot UI at `/chatbot` with sidebar and examples
+- **Intent Patterns**: 6 core workflows with Chinese/English mixed language support
 - **Conversation States**: `conversation_states`, `conversation_steps`, `workflows`, `workflow_executions`
 - **Tool Registry**: `ai_tools_registry` with 6 registered tools (outline generation, session creation, A2A generation, quiz/writing/research assignments)
 - **State Management**: Factory pattern-based `StateManager` with dependency injection
