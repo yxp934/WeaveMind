@@ -295,47 +295,47 @@ export const useChatbotStore = create<ChatbotStore>()(
             get().setSessionId(data.sessionId);
           }
 
-          // 保存对话到数据库 - 临时禁用以修复测试问题
-          // try {
-          //   const messages = [...get().messages]; // 创建副本以避免状态竞争
-          //   const conversationId = get().conversationId;
-          //   const context = {
-          //     userRole: get().userRole || 'teacher',
-          //     organizationId: metadata.organizationId,
-          //     courseId: metadata.courseId,
-          //     classId: metadata.classId,
-          //     ...metadata
-          //   };
+          // 保存对话到数据库 - 修复测试问题
+          try {
+            const messages = [...get().messages]; // 创建副本以避免状态竞争
+            const conversationId = get().conversationId;
+            const context = {
+              userRole: get().userRole || 'teacher',
+              organizationId: metadata.organizationId,
+              courseId: metadata.courseId,
+              classId: metadata.classId,
+              ...metadata
+            };
 
-          //   const saveResponse = await fetch('/api/ai/conversations/save', {
-          //     method: 'POST',
-          //     headers: {
-          //       'Content-Type': 'application/json',
-          //     },
-          //     body: JSON.stringify({
-          //       conversationId,
-          //       title: conversationId ? undefined : (messages[0]?.content?.slice(0, 50) || 'AI对话') + '...',
-          //       messages: messages.map(msg => ({
-          //         role: msg.role,
-          //         content: msg.content,
-          //         timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
-          //         metadata: msg.metadata,
-          //         toolsUsed: msg.toolCalls?.map(tool => tool.tool) || []
-          //       })),
-          //       context
-          //     })
-          //   });
+            const saveResponse = await fetch('/api/ai/conversations/save', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                conversationId,
+                title: conversationId ? undefined : (messages[0]?.content?.slice(0, 50) || 'AI对话') + '...',
+                messages: messages.map(msg => ({
+                  role: msg.role,
+                  content: msg.content,
+                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
+                  metadata: msg.metadata,
+                  toolsUsed: msg.toolCalls?.map(tool => tool.tool) || []
+                })),
+                context
+              })
+            });
 
-//             if (saveResponse.ok) {
-//               const saveData = await saveResponse.json();
-//               if (saveData.data?.conversationId) {
-//                 set({ conversationId: saveData.data.conversationId });
-//               }
-//             }
-//           } catch (saveError) {
-//             console.warn('保存对话失败:', saveError);
-//             // 不影响主流程，继续执行
-//           }
+            if (saveResponse.ok) {
+              const saveData = await saveResponse.json();
+              if (saveData.data?.conversationId) {
+                set({ conversationId: saveData.data.conversationId });
+              }
+            }
+          } catch (saveError) {
+            console.warn('保存对话失败:', saveError);
+            // 不影响主流程，继续执行
+          }
 
         } catch (error) {
           console.error('发送消息失败:', error);

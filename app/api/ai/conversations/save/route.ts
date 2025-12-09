@@ -91,7 +91,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<SaveConve
         .from('organization_members')
         .select('organization_id')
         .eq('user_id', user.id)
-        .eq('role', 'owner')
         .limit(1)
         .single()
 
@@ -100,18 +99,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<SaveConve
       }
     }
 
+    // 临时支持无组织用户的演示模式
     if (!organizationId) {
-      return NextResponse.json({
-        success: false,
-        error: {
-          code: 'NO_ORGANIZATION',
-          message: '用户没有组织权限'
-        },
-        metadata: {
-          timestamp: new Date().toISOString(),
-          requestId
-        }
-      }, { status: 403 })
+      // 为没有组织的用户创建一个临时演示对话记录
+      organizationId = 'demo-organization-' + user.id
     }
 
     let conversationRecordId = conversationId
