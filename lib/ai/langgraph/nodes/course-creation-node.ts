@@ -255,33 +255,51 @@ export async function continueWorkflowNode(state: ChatbotState): Promise<Partial
 }
 
 /**
- * 大纲生成节点 - 导出版本
+ * 大纲生成节点 - 纯AI模型驱动版本
+ * 使用messages格式传递完整对话历史
  */
 export async function outlineGenerationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
-  const prompt = `
-你是一个专业的课程大纲生成助手。
+  try {
+    // 构建完整的对话历史作为messages格式
+    const conversationMessages = state.messages.map(msg => {
+      if (msg instanceof HumanMessage) {
+        return { role: 'user' as const, content: msg.content.toString() }
+      } else {
+        return { role: 'assistant' as const, content: msg.content.toString() }
+      }
+    })
 
-当前状态：
+    const systemPrompt = `你是一个专业的课程大纲生成助手。你需要基于完整的对话历史和用户的需求，生成详细的课程大纲。
+
+## 当前状态
 - 用户角色：${state.userRole}
-- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
-- 用户最新消息：${state.messages[state.messages.length - 1].content}
+- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
+- 当前工作流：${state.currentWorkflow ? JSON.stringify(state.currentWorkflow) : '无'}
 
-任务：基于用户提供的信息，生成详细的课程大纲。
+## 你的任务
+1. 理解完整的对话历史
+2. 分析用户已经提供的所有课程信息
+3. 基于这些信息生成详细的课程大纲
+4. 确保大纲内容完整、结构清晰
 
-请返回JSON格式：
+## 输出格式（严格JSON）
 {
   "message": "生成的大纲说明",
   "outline": "具体的课程大纲内容",
   "suggestions": ["建议的改进点"],
   "nextActions": ["下一步操作"]
 }
-`
 
-  try {
+注意：
+- 使用中文回复
+- 生成详细、实用的课程大纲
+- 记住用户在整个对话中提供的所有信息`
+
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
-      prompt,
-      maxTokens: 1000,
+      system: systemPrompt,
+      messages: conversationMessages,
+      maxTokens: 1200,
       temperature: 0.7
     })
 
@@ -313,6 +331,7 @@ export async function outlineGenerationNode(state: ChatbotState): Promise<Partia
       }
     }
   } catch (error) {
+    console.error('大纲生成失败:', error)
     return {
       ...state,
       metadata: {
@@ -326,25 +345,34 @@ export async function outlineGenerationNode(state: ChatbotState): Promise<Partia
 }
 
 /**
- * 作业创建节点 - 导出版本
+ * 作业创建节点 - 纯AI模型驱动版本
+ * 使用messages格式传递完整对话历史
  */
 export async function assignmentCreationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
-  const prompt = `
-你是一个专业的作业创建助手。
+  try {
+    // 构建完整的对话历史作为messages格式
+    const conversationMessages = state.messages.map(msg => {
+      if (msg instanceof HumanMessage) {
+        return { role: 'user' as const, content: msg.content.toString() }
+      } else {
+        return { role: 'assistant' as const, content: msg.content.toString() }
+      }
+    })
 
-当前状态：
+    const systemPrompt = `你是一个专业的作业创建助手。你需要基于完整的对话历史和用户的需求，创建相应的作业。
+
+## 当前状态
 - 用户角色：${state.userRole}
-- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
-- 用户最新消息：${state.messages[state.messages.length - 1].content}
+- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
+- 当前工作流：${state.currentWorkflow ? JSON.stringify(state.currentWorkflow) : '无'}
 
-任务：根据用户需求创建相应的作业。
+## 你的任务
+1. 理解完整的对话历史
+2. 分析用户已经提供的所有信息
+3. 根据用户需求创建相应的作业
+4. 支持的作业类型：测验题目、写作作业、研究作业
 
-支持的作业类型：
-1. 测验题目 (quiz) - 多项选择题
-2. 写作作业 (writing) - 论文、报告等
-3. 研究作业 (research) - 调研、分析类作业
-
-请返回JSON格式：
+## 输出格式（严格JSON）
 {
   "message": "作业创建说明",
   "assignmentType": "作业类型",
@@ -352,13 +380,17 @@ export async function assignmentCreationNode(state: ChatbotState): Promise<Parti
   "requirements": ["具体要求"],
   "nextActions": ["下一步操作"]
 }
-`
 
-  try {
+注意：
+- 使用中文回复
+- 创建实用、有挑战性的作业
+- 记住用户在整个对话中提供的所有信息`
+
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
-      prompt,
-      maxTokens: 1000,
+      system: systemPrompt,
+      messages: conversationMessages,
+      maxTokens: 1200,
       temperature: 0.7
     })
 
@@ -407,23 +439,34 @@ export async function assignmentCreationNode(state: ChatbotState): Promise<Parti
 }
 
 /**
- * A2A优化节点 - 导出版本
+ * A2A优化节点 - 纯AI模型驱动版本
+ * 使用messages格式传递完整对话历史
  */
 export async function a2aOptimizationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
-  const prompt = `
-你是一个专业的A2A（AI对AI）内容优化助手。
+  try {
+    // 构建完整的对话历史作为messages格式
+    const conversationMessages = state.messages.map(msg => {
+      if (msg instanceof HumanMessage) {
+        return { role: 'user' as const, content: msg.content.toString() }
+      } else {
+        return { role: 'assistant' as const, content: msg.content.toString() }
+      }
+    })
 
-当前状态：
+    const systemPrompt = `你是一个专业的A2A（AI对AI）内容优化助手。你需要基于完整的对话历史和用户的需求，使用A2A方式优化课程内容质量。
+
+## 当前状态
 - 用户角色：${state.userRole}
-- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
-- 用户最新消息：${state.messages[state.messages.length - 1].content}
+- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
+- 当前工作流：${state.currentWorkflow ? JSON.stringify(state.currentWorkflow) : '无'}
 
-任务：使用A2A方式优化课程内容质量，包括：
-1. Builder Agent生成内容
-2. Critic Agent提供反馈
-3. 迭代优化直到满意
+## 你的任务
+1. 理解完整的对话历史
+2. 分析用户已经提供的所有信息
+3. 使用A2A方式优化内容：Builder Agent生成内容，Critic Agent提供反馈
+4. 迭代优化直到满意
 
-请返回JSON格式：
+## 输出格式（严格JSON）
 {
   "message": "A2A优化说明",
   "originalContent": "原始内容",
@@ -432,12 +475,16 @@ export async function a2aOptimizationNode(state: ChatbotState): Promise<Partial<
   "qualityScore": "质量评分(1-10)",
   "nextActions": ["下一步操作"]
 }
-`
 
-  try {
+注意：
+- 使用中文回复
+- 生成高质量、实用的优化内容
+- 记住用户在整个对话中提供的所有信息`
+
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
-      prompt,
+      system: systemPrompt,
+      messages: conversationMessages,
       maxTokens: 1200,
       temperature: 0.7
     })
@@ -489,24 +536,33 @@ export async function a2aOptimizationNode(state: ChatbotState): Promise<Partial<
 }
 
 /**
- * 内容生成节点 - 导出版本
+ * 内容生成节点 - 纯AI模型驱动版本
+ * 使用messages格式传递完整对话历史
  */
 export async function contentGenerationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
-  const prompt = `
-你是一个专业的教学内容生成助手。
+  try {
+    // 构建完整的对话历史作为messages格式
+    const conversationMessages = state.messages.map(msg => {
+      if (msg instanceof HumanMessage) {
+        return { role: 'user' as const, content: msg.content.toString() }
+      } else {
+        return { role: 'assistant' as const, content: msg.content.toString() }
+      }
+    })
 
-当前状态：
+    const systemPrompt = `你是一个专业的教学内容生成助手。你需要基于完整的对话历史和用户的需求，生成具体的教学内容。
+
+## 当前状态
 - 用户角色：${state.userRole}
-- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
-- 用户最新消息：${state.messages[state.messages.length - 1].content}
+- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
+- 当前工作流：${state.currentWorkflow ? JSON.stringify(state.currentWorkflow) : '无'}
 
-任务：生成具体的教学内容，包括：
-1. PPT讲义
-2. 练习题
-3. 教学资料
-4. 学习材料
+## 你的任务
+1. 理解完整的对话历史
+2. 分析用户已经提供的所有信息
+3. 生成具体的教学内容：PPT讲义、练习题、教学资料、学习材料等
 
-请返回JSON格式：
+## 输出格式（严格JSON）
 {
   "message": "内容生成说明",
   "contentType": "内容类型",
@@ -515,12 +571,16 @@ export async function contentGenerationNode(state: ChatbotState): Promise<Partia
   "resources": ["相关资源"],
   "nextActions": ["下一步操作"]
 }
-`
 
-  try {
+注意：
+- 使用中文回复
+- 生成详细、实用的教学内容
+- 记住用户在整个对话中提供的所有信息`
+
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
-      prompt,
+      system: systemPrompt,
+      messages: conversationMessages,
       maxTokens: 1200,
       temperature: 0.7
     })
