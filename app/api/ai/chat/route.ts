@@ -189,8 +189,198 @@ async function handleWorkflowIntent(message: string, context: any, isDemoMode: b
   const knownInfo = parseConversationHistory(conversationHistory);
   const intentDetection = detectIntent(message)
 
-  // 如果意图不明，返回默认响应
+  // 如果当前消息意图不明，检查是否有活跃的工作流
   if (intentDetection.intent === 'unknown') {
+    // 检查是否有活跃的课程创建工作流
+    const hasActiveCourseWorkflow = conversationHistory.some(msg =>
+      msg.content?.includes('课程创建助手') || msg.content?.includes('帮我创建') && msg.content?.includes('课程')
+    );
+
+    if (hasActiveCourseWorkflow) {
+      // 继续处理课程创建工作流
+      const topic = knownInfo.courseTopic || '课程';
+      const classId = crypto.randomUUID();
+      const workflowId = `workflow_${Date.now()}`;
+
+      // 重新计算缺失信息
+      const missingInfo = [];
+      if (!knownInfo.courseDuration) missingInfo.push('course_duration');
+      if (!knownInfo.sessionsPerWeek) missingInfo.push('sessions_per_week');
+      if (!knownInfo.targetAudience) missingInfo.push('target_audience');
+      if (!knownInfo.difficultyLevel) missingInfo.push('difficulty_level');
+      if (!knownInfo.courseType) missingInfo.push('course_type');
+
+      // 解析当前消息中的信息
+      const lowerMessage = message.toLowerCase();
+
+      // 解析课程节数
+      if (!knownInfo.courseDuration && (lowerMessage.includes('4') || lowerMessage.includes('6') || lowerMessage.includes('8') || lowerMessage.includes('10') || lowerMessage.includes('12') || lowerMessage.includes('16') || lowerMessage.includes('节'))) {
+        if (lowerMessage.includes('4') || lowerMessage.includes('6')) {
+          knownInfo.courseDuration = '4-6节';
+        } else if (lowerMessage.includes('8') || lowerMessage.includes('10')) {
+          knownInfo.courseDuration = '8-10节';
+        } else if (lowerMessage.includes('12') || lowerMessage.includes('16')) {
+          knownInfo.courseDuration = '12-16节';
+        } else {
+          const match = lowerMessage.match(/(\d+)节/);
+          if (match) {
+            knownInfo.courseDuration = `${match[1]}节`;
+          }
+        }
+      }
+
+      // 解析每周课次
+      if (!knownInfo.sessionsPerWeek && (lowerMessage.includes('每周一次') || lowerMessage.includes('每周两次') || lowerMessage.includes('每周三次'))) {
+        if (lowerMessage.includes('每周一次')) {
+          knownInfo.sessionsPerWeek = '每周一次';
+        } else if (lowerMessage.includes('每周两次')) {
+          knownInfo.sessionsPerWeek = '每周两次';
+        } else if (lowerMessage.includes('每周三次')) {
+          knownInfo.sessionsPerWeek = '每周三次';
+        }
+      }
+
+      // 解析目标学员
+      if (!knownInfo.targetAudience && (lowerMessage.includes('初学者') || lowerMessage.includes('基础') || lowerMessage.includes('进阶'))) {
+        if (lowerMessage.includes('初学者') || lowerMessage.includes('零基础')) {
+          knownInfo.targetAudience = '零基础初学者';
+        } else if (lowerMessage.includes('基础') && !lowerMessage.includes('零基础')) {
+          knownInfo.targetAudience = '有一定基础的学习者';
+        } else if (lowerMessage.includes('进阶')) {
+          knownInfo.targetAudience = '进阶学习者';
+        }
+      }
+
+      // 解析难度级别
+      if (!knownInfo.difficultyLevel && (lowerMessage.includes('入门') || lowerMessage.includes('基础') || lowerMessage.includes('中级') || lowerMessage.includes('高级'))) {
+        if (lowerMessage.includes('入门') || lowerMessage.includes('基础')) {
+          knownInfo.difficultyLevel = '入门级';
+        } else if (lowerMessage.includes('中级')) {
+          knownInfo.difficultyLevel = '中级';
+        } else if (lowerMessage.includes('高级')) {
+          knownInfo.difficultyLevel = '高级';
+        }
+      }
+
+      // 解析课程类型
+      if (!knownInfo.courseType && (lowerMessage.includes('理论') || lowerMessage.includes('实践'))) {
+        if (lowerMessage.includes('理论') && !lowerMessage.includes('实践')) {
+          knownInfo.courseType = '理论讲解为主';
+        } else if (lowerMessage.includes('实践') && !lowerMessage.includes('理论')) {
+          knownInfo.courseType = '实践应用为主';
+        } else if (lowerMessage.includes('理论') && lowerMessage.includes('实践')) {
+          knownInfo.courseType = '理论与实践并重';
+        }
+      }
+
+      // 重新计算剩余缺失信息
+      const remainingMissing = [];
+      if (!knownInfo.courseDuration) remainingMissing.push('course_duration');
+      if (!knownInfo.sessionsPerWeek) remainingMissing.push('sessions_per_week');
+      if (!knownInfo.targetAudience) remainingMissing.push('target_audience');
+      if (!knownInfo.difficultyLevel) remainingMissing.push('difficulty_level');
+      if (!knownInfo.courseType) remainingMissing.push('course_type');
+
+      // 如果还有缺失信息，继续确认
+      if (remainingMissing.length > 0) {
+        let nextQuestion = '';
+
+        if (remainingMissing.includes('difficulty_level')) {
+          nextQuestion = `很好！我已经记录了您提供的信息：
+
+✅ **已确认信息**：
+- 课程主题：${topic}
+- 课程节数：${knownInfo.courseDuration || '待确认'}
+- 每周频率：${knownInfo.sessionsPerWeek || '待确认'}
+- 目标学员：${knownInfo.targetAudience || '待确认'}
+
+**下一个问题：课程难度**
+
+您希望这门课程设置为：
+A) 入门级（基础概念和简单应用）
+B) 中级（深入理解和实践）
+C) 高级（复杂应用和创新思维）
+
+请告诉我您的选择！`;
+        } else if (remainingMissing.includes('course_type')) {
+          nextQuestion = `非常好！我已经记录了您的大部分信息：
+
+✅ **已确认信息**：
+- 课程主题：${topic}
+- 课程节数：${knownInfo.courseDuration}
+- 每周频率：${knownInfo.sessionsPerWeek}
+- 目标学员：${knownInfo.targetAudience}
+- 课程难度：${knownInfo.difficultyLevel}
+
+**最后一个问题：课程类型**
+
+您希望这门课程重点关注：
+A) 理论讲解为主（概念、原理、理论框架）
+B) 实践应用为主（案例、练习、项目实战）
+C) 理论与实践并重（平衡发展）
+
+请告诉我您的选择！`;
+        }
+
+        return {
+          message: nextQuestion,
+          toolsUsed: ['course_creation', 'workflow_manager'],
+          metadata: {
+            workflowType: 'create_course',
+            intent: 'create_course',
+            workflowId,
+            currentStep: 'info_collection',
+            classId,
+            courseTopic: topic,
+            userRole: context?.userRole || 'teacher',
+            knownInfo,
+            missingInfo: remainingMissing,
+            suggestedActions: ['continue_workflow'],
+            progress: Math.round((6 - remainingMissing.length) / 6 * 80)
+          }
+        };
+      }
+
+      // 如果所有必要信息都已收集完成，开始生成课程
+      return {
+        message: `🎉 **完美！所有必要信息已收集完成**
+
+✅ **课程信息确认**：
+- 课程主题：${topic}
+- 课程节数：${knownInfo.courseDuration}
+- 每周频率：${knownInfo.sessionsPerWeek}
+- 目标学员：${knownInfo.targetAudience}
+- 课程难度：${knownInfo.difficultyLevel}
+- 课程类型：${knownInfo.courseType}
+
+现在开始为您生成"${topic}课程"的具体内容！
+
+🔄 **课程生成中...**
+我将根据您的需求创建：
+- 详细的课程大纲
+- 每节课的教学计划
+- 配套的练习和作业
+- 评估标准
+
+这将需要几分钟时间，请稍等...`,
+        toolsUsed: ['course_creation', 'course_generator', 'workflow_manager'],
+        metadata: {
+          workflowType: 'create_course',
+          intent: 'create_course',
+          workflowId,
+          currentStep: 'course_generation',
+          classId,
+          courseTopic: topic,
+          userRole: context?.userRole || 'teacher',
+          knownInfo,
+          missingInfo: [],
+          suggestedActions: ['view_generated_course'],
+          progress: 100
+        }
+      };
+    }
+
+    // 如果没有活跃工作流，返回默认响应
     return {
       message: `您好！我是您的AI学习助手。
 
