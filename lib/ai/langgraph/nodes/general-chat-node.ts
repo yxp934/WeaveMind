@@ -1,11 +1,10 @@
 import { ChatbotState } from '../chatbot-state'
 import { HumanMessage } from '@langchain/core/messages'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
 
-const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GATEWAY_KEY || process.env.OPENAI_API_KEY
-})
+// 初始化AI模型 - 使用Vercel AI Gateway
+const openai = createGatewayOpenAI()
 
 /**
  * 通用聊天节点 - 处理一般性对话
@@ -88,7 +87,7 @@ ${conversationHistory}
 
     // 调用AI模型
     const { text } = await generateText({
-      model: openai('gpt-4-turbo'),
+      model: openai.chat(DEFAULT_MODEL),
       prompt,
       maxTokens: 800,
       temperature: 0.8

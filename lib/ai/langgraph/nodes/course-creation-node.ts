@@ -1,11 +1,10 @@
 import { ChatbotState } from '../chatbot-state'
 import { HumanMessage } from '@langchain/core/messages'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
 
-const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GATEWAY_KEY || process.env.OPENAI_API_KEY
-})
+// 初始化AI模型 - 使用Vercel AI Gateway
+const openai = createGatewayOpenAI()
 
 /**
  * 课程创建节点 - 使用AI处理课程创建流程
@@ -80,7 +79,7 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 
     // 调用AI模型
     const { text } = await generateText({
-      model: openai('gpt-4-turbo'),
+      model: openai.chat(DEFAULT_MODEL),
       prompt,
       maxTokens: 1000,
       temperature: 0.7

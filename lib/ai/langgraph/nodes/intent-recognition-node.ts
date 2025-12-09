@@ -1,13 +1,11 @@
 import { StateGraph, END } from '@langchain/langgraph'
 import { ChatbotState } from '../chatbot-state'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
 
-// 初始化AI模型
-const openai = createOpenAI({
-  apiKey: process.env.VERCEL_GAVEWAY_KEY || process.env.OPENAI_API_KEY
-})
+// 初始化AI模型 - 使用Vercel AI Gateway
+const openai = createGatewayOpenAI()
 
 /**
  * 意图识别节点 - 使用AI模型分析用户意图
@@ -55,7 +53,7 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
 
     // 使用AI模型进行意图识别
     const { text } = await generateText({
-      model: openai('gpt-4-turbo'),
+      model: openai.chat(DEFAULT_MODEL),
       prompt: intentPrompt,
       maxTokens: 500,
       temperature: 0.1
