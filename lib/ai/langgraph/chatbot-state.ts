@@ -50,17 +50,23 @@ export interface ChatbotState {
 }
 
 // 初始状态创建函数
+// 关键修复：sessionId 必须与 conversationId 一致，确保上下文连续性
 export function createInitialState(
   conversationId: string,
   userRole: 'teacher' | 'student' | 'self_learner',
-  userId?: string
+  userId?: string,
+  existingSessionId?: string  // 新增：允许传入已有的 sessionId
 ): ChatbotState {
+  // 使用传入的 sessionId 或 conversationId，而不是生成新的随机 ID
+  // 这样可以保持多轮对话的上下文连续性
+  const sessionId = existingSessionId || conversationId
+
   return {
     messages: [],
     userRole,
     userId,
     conversationId,
-    sessionId: crypto.randomUUID(),
+    sessionId,  // 使用固定的 sessionId，不再生成随机值
     metadata: {
       timestamp: new Date().toISOString(),
       toolsUsed: [],

@@ -1,13 +1,14 @@
 import { StateGraph, END } from '@langchain/langgraph'
 import { ChatbotState, createInitialState } from './chatbot-state'
 import { intentRecognitionNode, routeDecisionNode } from './nodes/intent-recognition-node'
-import { courseCreationNode, continueWorkflowNode } from './nodes/course-creation-node'
+import { courseCreationNode, continueWorkflowNode, outlineGenerationNode, assignmentCreationNode, a2aOptimizationNode, contentGenerationNode } from './nodes/course-creation-node'
 import { generalChatNode } from './nodes/general-chat-node'
 import { responseGeneratorNode } from './nodes/response-generator-node'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
 
 /**
- * 创建聊天机器人图
+ * 创建聊天机器人图 - 增强版本
+ * 支持六个核心工作流：course_creation, outline_generation, assignment_creation, a2a_optimization, content_generation, continue_workflow
  */
 export function createChatbotGraph(): StateGraph<ChatbotState> {
   // 创建状态图
@@ -28,9 +29,13 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
     }
   })
 
-  // 添加节点
+  // 添加节点 - 为所有六个核心工作流添加专门节点
   workflow.addNode('intent_recognition', intentRecognitionNode)
   workflow.addNode('course_creation', courseCreationNode)
+  workflow.addNode('outline_generation', outlineGenerationNode)
+  workflow.addNode('assignment_creation', assignmentCreationNode)
+  workflow.addNode('a2a_optimization', a2aOptimizationNode)
+  workflow.addNode('content_generation', contentGenerationNode)
   workflow.addNode('continue_workflow', continueWorkflowNode)
   workflow.addNode('general_chat', generalChatNode)
   workflow.addNode('response_generator', responseGeneratorNode)
@@ -38,16 +43,16 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
   // 添加边和条件
   workflow.addEdge('__start__', 'intent_recognition')
 
-  // 意图识别后路由到不同节点
+  // 意图识别后路由到不同节点 - 完善所有六个工作流的路由
   workflow.addConditionalEdges(
     'intent_recognition',
     routeDecisionNode,
     {
       'course_creation': 'course_creation',
-      'outline_generation': 'continue_workflow',
-      'assignment_creation': 'continue_workflow',
-      'a2a_optimization': 'continue_workflow',
-      'content_generation': 'continue_workflow',
+      'outline_generation': 'outline_generation',
+      'assignment_creation': 'assignment_creation',
+      'a2a_optimization': 'a2a_optimization',
+      'content_generation': 'content_generation',
       'continue_workflow': 'continue_workflow',
       'general_chat': 'general_chat',
       '__end__': 'response_generator'
@@ -62,13 +67,25 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
       if (metadata?.toolsUsed?.includes('course_generator')) {
         return 'response_generator'
       }
-      return 'continue_workflow'
+      return 'response_generator'
     },
     {
       'continue_workflow': 'continue_workflow',
       'response_generator': 'response_generator'
     }
   )
+
+  // 大纲生成后路由
+  workflow.addEdge('outline_generation', 'response_generator')
+
+  // 作业创建后路由
+  workflow.addEdge('assignment_creation', 'response_generator')
+
+  // A2A优化后路由
+  workflow.addEdge('a2a_optimization', 'response_generator')
+
+  // 内容生成后路由
+  workflow.addEdge('content_generation', 'response_generator')
 
   // 继续工作流后路由
   workflow.addConditionalEdges(
@@ -101,6 +118,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
 export class LangGraphChatbot {
   private graph: StateGraph<ChatbotState>
   private app: any
+  private stateManager: any
 
   constructor() {
     this.graph = createChatbotGraph()
@@ -108,7 +126,7 @@ export class LangGraphChatbot {
   }
 
   /**
-   * 处理聊天消息
+   * 处理聊天消息 - 修复版本
    */
   async processMessage(
     message: string,
@@ -118,10 +136,16 @@ export class LangGraphChatbot {
     conversationHistory: any[] = []
   ): Promise<any> {
     try {
-      // 创建初始状态
-      let state = createInitialState(conversationId, userRole, userId)
+      // 关键修复1: 使用conversationId作为固定的sessionId，保持状态连续性
+      const fixedSessionId = conversationId
 
-      // 添加历史消息到状态
+      // 关键修复2: 创建状态时保持sessionId一致性
+      let state = createInitialState(fixedSessionId, userRole, userId)
+
+      // 关键修复3: 正确设置sessionId与conversationId一致
+      state.sessionId = fixedSessionId
+
+      // 关键修复4: 保留完整的对话历史上下文
       for (const msg of conversationHistory) {
         if (msg.role === 'user') {
           state = {
@@ -136,16 +160,16 @@ export class LangGraphChatbot {
         }
       }
 
-      // 添加当前消息
+      // 关键修复5: 添加当前用户消息
       state = {
         ...state,
         messages: [...state.messages, new HumanMessage(message)]
       }
 
-      // 运行图
+      // 关键修复6: 运行LangGraph处理流程
       const result = await this.app.invoke(state)
 
-      // 获取最终响应
+      // 关键修复7: 获取最终响应并确保正确格式
       const finalState = result as ChatbotState
       const response = responseGeneratorNode(finalState)
 
@@ -157,23 +181,34 @@ export class LangGraphChatbot {
           conversationId,
           sessionId: finalState.sessionId,
           intent: finalState.intent?.type,
-          workflow: finalState.currentWorkflow
+          workflow: finalState.currentWorkflow,
+          contextPreserved: true,
+          messagesCount: finalState.messages.length
         }
       }
 
     } catch (error) {
       console.error('聊天处理失败:', error)
 
+      // 关键修复8: 改进错误处理，保持状态一致性
       return {
         success: false,
         data: {
-          message: `抱歉，处理您的请求时出现了错误：${(error as Error).message}。请重新描述您的需求，或尝试其他操作。`,
+          message: `抱歉，处理您的请求时出现了错误：${(error as Error).message}。让我重新理解您的需求，请再次描述您想要什么帮助。`,
           toolsUsed: [],
           metadata: {
             intent: 'error',
             userRole,
-            availableActions: ['restart', 'support'],
-            suggestions: ['重新开始', '联系技术支持']
+            availableActions: ['restart', 'support', 'course_creation', 'outline_generation'],
+            suggestions: ['我想创建一个课程', '帮我生成大纲', '创建作业', '重新开始'],
+            workflowType: null,
+            currentStep: null,
+            classId: crypto.randomUUID(),
+            courseTopic: null,
+            knownInfo: null,
+            missingInfo: ['all'],
+            suggestedActions: ['continue_workflow'],
+            progress: 0
           }
         },
         error: {

@@ -186,6 +186,7 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 
 /**
  * 继续工作流节点 - 处理正在进行的工作流
+ * 修复版本：完善所有六个核心工作流的实现
  */
 export async function continueWorkflowNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
   const lastMessage = state.messages[state.messages.length - 1]
@@ -201,34 +202,20 @@ export async function continueWorkflowNode(state: ChatbotState): Promise<Partial
         return await courseCreationNode(state)
 
       case 'outline_generation':
-        // TODO: 实现大纲生成逻辑
-        return {
-          ...state,
-          metadata: {
-            ...state.metadata,
-            timestamp: new Date().toISOString(),
-            toolsUsed: ['outline_generation'],
-            suggestions: ['生成大纲']
-          }
-        }
+        return await outlineGenerationNode(state)
 
       case 'assignment_creation':
-        // TODO: 实现作业创建逻辑
-        return {
-          ...state,
-          metadata: {
-            ...state.metadata,
-            timestamp: new Date().toISOString(),
-            toolsUsed: ['assignment_creation'],
-            suggestions: ['创建作业']
-          }
-        }
+        return await assignmentCreationNode(state)
+
+      case 'a2a_optimization':
+        return await a2aOptimizationNode(state)
+
+      case 'content_generation':
+        return await contentGenerationNode(state)
 
       default:
-        return {
-          ...state,
-          currentWorkflow: undefined
-        }
+        // 如果没有特定工作流，返回通用继续逻辑
+        return await generalContinueNode(state)
     }
   } catch (error) {
     console.error('继续工作流失败:', error)
@@ -239,7 +226,345 @@ export async function continueWorkflowNode(state: ChatbotState): Promise<Partial
         ...state.currentWorkflow,
         status: 'paused',
         step: 'error'
+      },
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        suggestions: ['重新开始', '联系技术支持']
       }
+    }
+  }
+}
+
+/**
+ * 大纲生成节点 - 导出版本
+ */
+export async function outlineGenerationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
+  const prompt = `
+你是一个专业的课程大纲生成助手。
+
+当前状态：
+- 用户角色：${state.userRole}
+- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
+- 用户最新消息：${state.messages[state.messages.length - 1].content}
+
+任务：基于用户提供的信息，生成详细的课程大纲。
+
+请返回JSON格式：
+{
+  "message": "生成的大纲说明",
+  "outline": "具体的课程大纲内容",
+  "suggestions": ["建议的改进点"],
+  "nextActions": ["下一步操作"]
+}
+`
+
+  try {
+    const { text } = await generateText({
+      model: openai.chat(DEFAULT_MODEL),
+      prompt,
+      maxTokens: 1000,
+      temperature: 0.7
+    })
+
+    const result = JSON.parse(text)
+
+    const aiMessage = new AIMessage({
+      content: result.message || '课程大纲已生成完成！',
+      additional_kwargs: {
+        outline: result.outline,
+        suggestions: result.suggestions,
+        nextActions: result.nextActions
+      }
+    })
+
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      currentWorkflow: {
+        type: 'outline_generation',
+        status: 'completed',
+        step: 'generated',
+        data: { outline: result.outline }
+      },
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['outline_generation'],
+        suggestions: result.suggestions || []
+      }
+    }
+  } catch (error) {
+    return {
+      ...state,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['outline_generation'],
+        suggestions: ['请提供更多课程信息']
+      }
+    }
+  }
+}
+
+/**
+ * 作业创建节点 - 导出版本
+ */
+export async function assignmentCreationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
+  const prompt = `
+你是一个专业的作业创建助手。
+
+当前状态：
+- 用户角色：${state.userRole}
+- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
+- 用户最新消息：${state.messages[state.messages.length - 1].content}
+
+任务：根据用户需求创建相应的作业。
+
+支持的作业类型：
+1. 测验题目 (quiz) - 多项选择题
+2. 写作作业 (writing) - 论文、报告等
+3. 研究作业 (research) - 调研、分析类作业
+
+请返回JSON格式：
+{
+  "message": "作业创建说明",
+  "assignmentType": "作业类型",
+  "assignmentContent": "具体的作业内容",
+  "requirements": ["具体要求"],
+  "nextActions": ["下一步操作"]
+}
+`
+
+  try {
+    const { text } = await generateText({
+      model: openai.chat(DEFAULT_MODEL),
+      prompt,
+      maxTokens: 1000,
+      temperature: 0.7
+    })
+
+    const result = JSON.parse(text)
+
+    const aiMessage = new AIMessage({
+      content: result.message || '作业已创建完成！',
+      additional_kwargs: {
+        assignmentType: result.assignmentType,
+        assignmentContent: result.assignmentContent,
+        requirements: result.requirements,
+        nextActions: result.nextActions
+      }
+    })
+
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      currentWorkflow: {
+        type: 'assignment_creation',
+        status: 'completed',
+        step: 'created',
+        data: {
+          assignmentType: result.assignmentType,
+          assignmentContent: result.assignmentContent
+        }
+      },
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['assignment_creation'],
+        suggestions: result.requirements || []
+      }
+    }
+  } catch (error) {
+    return {
+      ...state,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['assignment_creation'],
+        suggestions: ['请明确作业类型和要求']
+      }
+    }
+  }
+}
+
+/**
+ * A2A优化节点 - 导出版本
+ */
+export async function a2aOptimizationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
+  const prompt = `
+你是一个专业的A2A（AI对AI）内容优化助手。
+
+当前状态：
+- 用户角色：${state.userRole}
+- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
+- 用户最新消息：${state.messages[state.messages.length - 1].content}
+
+任务：使用A2A方式优化课程内容质量，包括：
+1. Builder Agent生成内容
+2. Critic Agent提供反馈
+3. 迭代优化直到满意
+
+请返回JSON格式：
+{
+  "message": "A2A优化说明",
+  "originalContent": "原始内容",
+  "optimizedContent": "优化后的内容",
+  "improvements": ["具体的改进点"],
+  "qualityScore": "质量评分(1-10)",
+  "nextActions": ["下一步操作"]
+}
+`
+
+  try {
+    const { text } = await generateText({
+      model: openai.chat(DEFAULT_MODEL),
+      prompt,
+      maxTokens: 1200,
+      temperature: 0.7
+    })
+
+    const result = JSON.parse(text)
+
+    const aiMessage = new AIMessage({
+      content: result.message || 'A2A内容优化完成！',
+      additional_kwargs: {
+        originalContent: result.originalContent,
+        optimizedContent: result.optimizedContent,
+        improvements: result.improvements,
+        qualityScore: result.qualityScore,
+        nextActions: result.nextActions
+      }
+    })
+
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      currentWorkflow: {
+        type: 'a2a_optimization',
+        status: 'completed',
+        step: 'optimized',
+        data: {
+          originalContent: result.originalContent,
+          optimizedContent: result.optimizedContent,
+          qualityScore: result.qualityScore
+        }
+      },
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['a2a_optimization'],
+        suggestions: result.improvements || []
+      }
+    }
+  } catch (error) {
+    return {
+      ...state,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['a2a_optimization'],
+        suggestions: ['请提供需要优化的具体内容']
+      }
+    }
+  }
+}
+
+/**
+ * 内容生成节点 - 导出版本
+ */
+export async function contentGenerationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
+  const prompt = `
+你是一个专业的教学内容生成助手。
+
+当前状态：
+- 用户角色：${state.userRole}
+- 已收集的信息：${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
+- 用户最新消息：${state.messages[state.messages.length - 1].content}
+
+任务：生成具体的教学内容，包括：
+1. PPT讲义
+2. 练习题
+3. 教学资料
+4. 学习材料
+
+请返回JSON格式：
+{
+  "message": "内容生成说明",
+  "contentType": "内容类型",
+  "contentTitle": "内容标题",
+  "contentBody": "具体内容",
+  "resources": ["相关资源"],
+  "nextActions": ["下一步操作"]
+}
+`
+
+  try {
+    const { text } = await generateText({
+      model: openai.chat(DEFAULT_MODEL),
+      prompt,
+      maxTokens: 1200,
+      temperature: 0.7
+    })
+
+    const result = JSON.parse(text)
+
+    const aiMessage = new AIMessage({
+      content: result.message || '教学内容生成完成！',
+      additional_kwargs: {
+        contentType: result.contentType,
+        contentTitle: result.contentTitle,
+        contentBody: result.contentBody,
+        resources: result.resources,
+        nextActions: result.nextActions
+      }
+    })
+
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      currentWorkflow: {
+        type: 'content_generation',
+        status: 'completed',
+        step: 'generated',
+        data: {
+          contentType: result.contentType,
+          contentTitle: result.contentTitle,
+          contentBody: result.contentBody
+        }
+      },
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['content_generation'],
+        suggestions: result.resources || []
+      }
+    }
+  } catch (error) {
+    return {
+      ...state,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: ['content_generation'],
+        suggestions: ['请明确需要生成的内容类型']
+      }
+    }
+  }
+}
+
+/**
+ * 通用继续节点
+ */
+async function generalContinueNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
+  return {
+    ...state,
+    currentWorkflow: undefined,
+    metadata: {
+      ...state.metadata,
+      timestamp: new Date().toISOString(),
+      suggestions: ['请重新描述您的需求', '创建课程', '生成大纲']
     }
   }
 }

@@ -2,13 +2,22 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Plus, Bot, User, BookOpen, Calendar, FileText, X, Users, Clock, CheckCircle } from 'lucide-react';
+import { Send, Plus, Bot, User, BookOpen, Calendar, FileText, X, Users, Clock, CheckCircle, ChevronRight } from 'lucide-react';
+
+// 选择题选项接口
+interface Choice {
+  id: string;
+  text: string;
+  description?: string;
+}
 
 interface Message {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: Date;
+  // 新增：支持选择题
+  choices?: Choice[];
   functionResult?: {
     type: 'class' | 'session' | 'assignment' | 'student' | 'schedule' | 'deadline' | 'progress';
     data: any;
@@ -380,12 +389,16 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       const data = await response.json();
 
       if (data.success) {
+        // 关键修复：提取响应中的choices数组
+        const responseData = data.data || {};
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: data.data?.message || 'Response received.',
+          text: responseData.message || 'Response received.',
           isUser: false,
           timestamp: new Date(),
-          functionResult: undefined, // LangGraph doesn't return function results in the same format
+          // 新增：从响应中提取choices
+          choices: responseData.choices || undefined,
+          functionResult: undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -406,6 +419,81 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       }
     } catch (error) {
       // 处理网络错误
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: '网络错误，请检查连接后重试。',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  // 处理选择题点击 - 新增函数
+  const handleChoiceClick = async (choice: Choice) => {
+    // 以用户身份发送选择的选项
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: choice.text,
+      isUser: true,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsTyping(true);
+
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: choice.text,
+          context: {
+            ...selectedContext,
+            userRole: 'teacher',
+            choiceId: choice.id, // 传递选择的ID
+            conversationHistory: messages.map(msg => ({
+              role: msg.isUser ? 'user' : 'assistant',
+              content: msg.text,
+              timestamp: msg.timestamp.toISOString(),
+              toolsUsed: [],
+              metadata: {}
+            }))
+          },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const responseData = data.data || {};
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: responseData.message || 'Response received.',
+          isUser: false,
+          timestamp: new Date(),
+          choices: responseData.choices || undefined,
+          functionResult: undefined,
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        let errorText = '抱歉，我遇到了一个错误。请重试。';
+        if (typeof data.error === 'string') {
+          errorText = data.error;
+        } else if (data.error?.message) {
+          errorText = data.error.message;
+        }
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: errorText,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: '网络错误，请检查连接后重试。',
@@ -453,12 +541,16 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       const data = await response.json();
 
       if (data.success) {
+        // 关键修复：提取响应中的choices数组
+        const responseData = data.data || {};
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: data.data?.message || 'Response received.',
+          text: responseData.message || 'Response received.',
           isUser: false,
           timestamp: new Date(),
-          functionResult: undefined, // LangGraph doesn't return function results in the same format
+          // 新增：从响应中提取choices
+          choices: responseData.choices || undefined,
+          functionResult: undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -557,6 +649,37 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
                     }`}
                   >
                     <p className="text-[14px] whitespace-pre-wrap">{message.text}</p>
+
+                    {/* 关键修复：渲染选择题选项 */}
+                    {message.choices && message.choices.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {message.choices.map((choice) => (
+                          <motion.button
+                            key={choice.id}
+                            onClick={() => handleChoiceClick(choice)}
+                            disabled={isTyping}
+                            className="w-full text-left px-3 py-2.5 bg-white/60 hover:bg-white/80 border border-[#B882B1]/30 hover:border-[#B882B1] rounded-lg transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <span className="text-[13px] font-medium text-[#101828] group-hover:text-[#B882B1]">
+                                  {choice.text}
+                                </span>
+                                {choice.description && (
+                                  <p className="text-[11px] text-[#6a7282] mt-0.5">
+                                    {choice.description}
+                                  </p>
+                                )}
+                              </div>
+                              <ChevronRight className="size-4 text-[#6a7282] group-hover:text-[#B882B1] transition-colors" />
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                    )}
+
                     {message.functionResult && (
                       <FunctionResultCard
                         type={message.functionResult.type}
