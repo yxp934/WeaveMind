@@ -180,6 +180,13 @@ export default function SmartConversationManager({ className = '' }: SmartConver
         toolCalls: assistantMessage.toolCalls?.length
       });
 
+      console.log('🔍 [HANDLE] 助手消息内容预览:', assistantMessage.content.substring(0, 200) + '...');
+      console.log('📝 [HANDLE] 消息类型检查:', {
+        isString: typeof assistantMessage.content === 'string',
+        hasContent: assistantMessage.content.length > 0,
+        firstChars: assistantMessage.content.substring(0, 50)
+      });
+
       setMessages(prev => [...prev, assistantMessage]);
       setIsLoading(false);
 
