@@ -37,6 +37,7 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
               currentStep: state.currentWorkflow.step
             }
           },
+          currentWorkflow: state.currentWorkflow, // 关键修复：确保currentWorkflow保持不变
           metadata: {
             ...state.metadata,
             timestamp: new Date().toISOString(),
