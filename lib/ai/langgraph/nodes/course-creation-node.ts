@@ -214,8 +214,24 @@ export async function continueWorkflowNode(state: ChatbotState): Promise<Partial
         return await contentGenerationNode(state)
 
       default:
-        // 如果没有特定工作流，返回通用继续逻辑
-        return await generalContinueNode(state)
+        // 如果没有特定工作流，尝试从对话历史推断
+        const inferredState = await generalContinueNode(state)
+
+        // 如果推断出了工作流，继续执行该工作流
+        if (inferredState.currentWorkflow?.type === 'course_creation') {
+          return await courseCreationNode(inferredState)
+        } else if (inferredState.currentWorkflow?.type === 'outline_generation') {
+          return await outlineGenerationNode(inferredState)
+        } else if (inferredState.currentWorkflow?.type === 'assignment_creation') {
+          return await assignmentCreationNode(inferredState)
+        } else if (inferredState.currentWorkflow?.type === 'a2a_optimization') {
+          return await a2aOptimizationNode(inferredState)
+        } else if (inferredState.currentWorkflow?.type === 'content_generation') {
+          return await contentGenerationNode(inferredState)
+        }
+
+        // 如果无法推断，提供通用响应
+        return inferredState
     }
   } catch (error) {
     console.error('继续工作流失败:', error)
@@ -555,16 +571,55 @@ export async function contentGenerationNode(state: ChatbotState): Promise<Partia
 }
 
 /**
- * 通用继续节点
+ * 通用继续节点 - 修复版本
+ * 不清除工作流状态，而是尝试从对话历史推断当前状态
  */
 async function generalContinueNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
+  // 检查是否可以从对话历史推断工作流
+  const conversationHistory = state.messages.slice(-6)
+  let inferredWorkflow = null
+
+  // 检查对话历史中的课程创建线索
+  const hasCourseCreation = conversationHistory.some(msg => {
+    const content = msg.content.toString().toLowerCase()
+    return content.includes('创建课程') || content.includes('编程') ||
+           content.includes('python') || content.includes('神经科学') ||
+           content.includes('10周') || content.includes('8周') ||
+           content.includes('大学生') || content.includes('入门') ||
+           content.includes('课程') || content.includes('教学大纲')
+  })
+
+  if (hasCourseCreation) {
+    // 如果检测到课程创建相关的内容，推断为课程创建工作流
+    inferredWorkflow = {
+      type: 'course_creation',
+      status: 'active',
+      step: 'generating_outline',
+      data: { inferredFromHistory: true }
+    }
+
+    return {
+      ...state,
+      currentWorkflow: inferredWorkflow,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        reasoning: '从对话历史推断用户想要继续课程创建工作流',
+        workflowContinued: true,
+        inferredFromHistory: true,
+        suggestions: ['正在生成课程大纲...', '请稍等片刻']
+      }
+    }
+  }
+
+  // 如果无法推断，提供通用的继续提示
   return {
     ...state,
-    currentWorkflow: undefined,
     metadata: {
       ...state.metadata,
       timestamp: new Date().toISOString(),
-      suggestions: ['请重新描述您的需求', '创建课程', '生成大纲']
+      reasoning: '无法识别当前工作流，提供通用继续选项',
+      suggestions: ['继续之前的对话', '创建新课程', '生成大纲', '创建作业']
     }
   }
 }
