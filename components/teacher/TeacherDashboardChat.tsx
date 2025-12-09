@@ -23,6 +23,19 @@ interface Message {
     data: any;
     success: boolean;
   };
+  // 关键修复：存储AI响应的metadata用于上下文管理
+  metadata?: {
+    intent?: string;
+    workflowType?: string | null;
+    currentStep?: string | null;
+    workflowStatus?: string;
+    courseTopic?: string | null;
+    knownInfo?: Record<string, any> | null;
+    progress?: number;
+    conversationId?: string;
+    sessionId?: string;
+    [key: string]: any;
+  };
 }
 
 interface TeacherDashboardChatProps {
@@ -375,12 +388,13 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           context: {
             ...selectedContext,
             userRole: 'teacher',
+            // 关键修复：传递正确的metadata用于上下文恢复
             conversationHistory: messages.map(msg => ({
               role: msg.isUser ? 'user' : 'assistant',
               content: msg.text,
               timestamp: msg.timestamp.toISOString(),
               toolsUsed: [],
-              metadata: {}
+              metadata: msg.metadata || {}
             }))
           },
         }),
@@ -389,7 +403,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       const data = await response.json();
 
       if (data.success) {
-        // 关键修复：提取响应中的choices数组
+        // 关键修复：提取响应中的choices数组和metadata
         const responseData = data.data || {};
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -399,6 +413,8 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           // 新增：从响应中提取choices
           choices: responseData.choices || undefined,
           functionResult: undefined,
+          // 关键修复：存储AI响应的metadata用于上下文管理
+          metadata: responseData.metadata || undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -454,12 +470,13 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
             ...selectedContext,
             userRole: 'teacher',
             choiceId: choice.id, // 传递选择的ID
+            // 关键修复：传递正确的metadata用于上下文恢复
             conversationHistory: messages.map(msg => ({
               role: msg.isUser ? 'user' : 'assistant',
               content: msg.text,
               timestamp: msg.timestamp.toISOString(),
               toolsUsed: [],
-              metadata: {}
+              metadata: msg.metadata || {}
             }))
           },
         }),
@@ -476,6 +493,8 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           timestamp: new Date(),
           choices: responseData.choices || undefined,
           functionResult: undefined,
+          // 关键修复：存储AI响应的metadata用于上下文管理
+          metadata: responseData.metadata || undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -527,12 +546,13 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           context: {
             ...selectedContext,
             userRole: 'teacher',
+            // 关键修复：传递正确的metadata用于上下文恢复
             conversationHistory: messages.map(msg => ({
               role: msg.isUser ? 'user' : 'assistant',
               content: msg.text,
               timestamp: msg.timestamp.toISOString(),
               toolsUsed: [],
-              metadata: {}
+              metadata: msg.metadata || {}
             }))
           },
         }),
@@ -541,7 +561,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       const data = await response.json();
 
       if (data.success) {
-        // 关键修复：提取响应中的choices数组
+        // 关键修复：提取响应中的choices数组和metadata
         const responseData = data.data || {};
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -551,6 +571,8 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           // 新增：从响应中提取choices
           choices: responseData.choices || undefined,
           functionResult: undefined,
+          // 关键修复：存储AI响应的metadata用于上下文管理
+          metadata: responseData.metadata || undefined,
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
