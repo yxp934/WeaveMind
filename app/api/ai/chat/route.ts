@@ -12,9 +12,17 @@ export const runtime = 'edge'
 function detectIntent(message: string): { intent: string; workflowType: string; confidence: number } {
   const lowerMessage = message.toLowerCase().trim()
 
-  // 课程创建意图
-  if ((lowerMessage.includes('创建') || lowerMessage.includes('新建')) && lowerMessage.includes('课程')) {
+  // 课程创建意图 - 修复识别逻辑，支持更多课程相关词汇
+  const hasCreateIntent = lowerMessage.includes('创建') || lowerMessage.includes('新建') || lowerMessage.includes('做个') || lowerMessage.includes('做一个') || lowerMessage.includes('开设') || lowerMessage.includes('设置')
+  const hasCourseWords = lowerMessage.includes('课程') || lowerMessage.includes('课') || lowerMessage.includes('教学') || lowerMessage.includes('科目') || lowerMessage.includes('培训') || lowerMessage.includes('专业') || lowerMessage.includes('学科')
+
+  if (hasCreateIntent && hasCourseWords) {
     return { intent: 'create_course', workflowType: 'create_course', confidence: 0.95 }
+  }
+
+  // 单独的创建意图 + 课程相关词（如"入门课"、"基础课"等）
+  if (hasCreateIntent && (lowerMessage.includes('神经科学') || lowerMessage.includes('入门') || lowerMessage.includes('基础') || lowerMessage.includes('初级') || lowerMessage.includes('高级') || lowerMessage.includes('专业'))) {
+    return { intent: 'create_course', workflowType: 'create_course', confidence: 0.9 }
   }
 
   // 课程节次创建意图
@@ -57,7 +65,8 @@ function extractCourseTopic(message: string): string {
     'python', 'java', 'javascript', 'typescript', 'react', 'vue', 'node.js',
     '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治',
     '艺术', '音乐', '体育', '心理学', '哲学', '经济学', '管理学',
-    '机器学习', '人工智能', '数据科学', '网络安全', '区块链'
+    '机器学习', '人工智能', '数据科学', '网络安全', '区块链',
+    '神经科学', '社会学', '人类学', '考古学', '文学', '语言学'
   ]
 
   for (const topic of topics) {
@@ -76,6 +85,18 @@ function extractCourseTopic(message: string): string {
   const match2 = lowerMessage.match(/^(.+?)课程/)
   if (match2) {
     return match2[1].trim()
+  }
+
+  // 提取"XXX的入门课"中的XXX
+  const match3 = lowerMessage.match(/(.+?)的入门课/)
+  if (match3) {
+    return match3[1].trim()
+  }
+
+  // 提取"XXX的基础课"中的XXX
+  const match4 = lowerMessage.match(/(.+?)的基础课/)
+  if (match4) {
+    return match4[1].trim()
   }
 
   return '通用'
