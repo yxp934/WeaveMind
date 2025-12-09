@@ -48,13 +48,62 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
       }
     }
 
-    // 关键修复2: 构建更完整的对话历史上下文（最近10条消息）
+    // 关键修复2: 检查用户输入是否为继续指令，并从对话历史推断当前工作流
+    const userInput = lastMessage.content.toString().toLowerCase()
+    const continueKeywords = ['继续', '下一步', '好的', '明白了', '可以', '继续吧', '好的，继续', 'continue', 'next']
+    const wantsToContinue = continueKeywords.some(keyword => userInput.includes(keyword))
+
+    if (wantsToContinue) {
+      // 从对话历史中推断当前可能的工作流
+      const conversationHistory = state.messages.slice(-6) // 最近6条消息
+      let likelyWorkflow = null
+
+      // 检查对话历史中是否有创建课程的迹象
+      const hasCourseCreation = conversationHistory.some(msg => {
+        const content = msg.content.toString().toLowerCase()
+        return content.includes('创建课程') || content.includes('神经科学') ||
+               content.includes('8周') || content.includes('大学生') ||
+               content.includes('课程') || content.includes('课程大纲')
+      })
+
+      if (hasCourseCreation) {
+        likelyWorkflow = {
+          type: 'course_creation',
+          status: 'active',
+          step: 'generating_outline',
+          data: { inferredFromHistory: true }
+        }
+
+        return {
+          ...state,
+          intent: {
+            type: 'continue_workflow',
+            confidence: 0.9,
+            parameters: {
+              currentWorkflowType: 'course_creation',
+              currentStep: 'generating_outline',
+              inferredFromHistory: true
+            }
+          },
+          currentWorkflow: likelyWorkflow,
+          metadata: {
+            ...state.metadata,
+            timestamp: new Date().toISOString(),
+            reasoning: `从对话历史推断用户想要继续课程创建工作流`,
+            workflowContinued: true,
+            inferredFromHistory: true
+          }
+        }
+      }
+    }
+
+    // 关键修复3: 构建更完整的对话历史上下文（最近10条消息）
     const conversationHistory = state.messages.slice(-10)
     const historyText = conversationHistory.map(msg =>
       `${msg instanceof HumanMessage ? '用户' : '助手'}: ${msg.content}`
     ).join('\n')
 
-    // 关键修复3: 增强版意图识别提示，包含更多上下文和规则
+    // 关键修复4: 增强版意图识别提示，包含更多上下文和规则
     const intentPrompt = `
 你是一个专业的AI教育助手意图识别系统。你需要精确识别用户的真实意图。
 
@@ -136,7 +185,7 @@ ${lastMessage.content}
 重要：返回纯JSON，不要包含任何其他文本或markdown格式。
 `
 
-    // 关键修复4: 使用AI模型进行智能意图识别
+    // 关键修复5: 使用AI模型进行智能意图识别
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
       prompt: intentPrompt,
@@ -144,7 +193,7 @@ ${lastMessage.content}
       temperature: 0.1  // 降低temperature以获得更一致的结果
     })
 
-    // 关键修复5: 更强的JSON解析和错误处理
+    // 关键修复6: 更强的JSON解析和错误处理
     let intentResult
     try {
       // 尝试清理可能的markdown格式
