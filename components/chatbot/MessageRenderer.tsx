@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react';
-import { CheckCircle, AlertCircle, Loader2, Tool } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Wrench } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -129,7 +129,7 @@ export default function MessageRenderer({ message }: MessageRendererProps) {
                 key={tool.id}
                 className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full text-xs"
               >
-                <Tool className="w-3 h-3" />
+                <Wrench className="w-3 h-3" />
                 <span>{tool.name}</span>
                 {tool.status === 'completed' && <CheckCircle className="w-3 h-3 text-green-500" />}
                 {tool.status === 'failed' && <AlertCircle className="w-3 h-3 text-red-500" />}

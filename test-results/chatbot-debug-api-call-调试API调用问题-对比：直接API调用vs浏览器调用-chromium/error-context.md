@@ -1,0 +1,51 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e7]:
+          - paragraph [ref=e10]: WeaveMind
+          - paragraph [ref=e13]: WeaveMind
+          - paragraph [ref=e16]: WeaveMind
+        - generic [ref=e17]:
+          - link "🤖 AI助手" [ref=e18] [cursor=pointer]:
+            - /url: /chatbot
+          - link "Login" [ref=e19] [cursor=pointer]:
+            - /url: /auth/login
+          - link "Start Free Trial" [ref=e20] [cursor=pointer]:
+            - /url: /auth/signup
+    - generic [ref=e27] [cursor=pointer]:
+      - generic [ref=e28]:
+        - heading "Intelligent Content. Intelligent Content. Intelligent Content. Woven. Woven. Woven." [level=1] [ref=e29]:
+          - generic [ref=e31]:
+            - paragraph [ref=e34]: Intelligent Content.
+            - paragraph [ref=e37]: Intelligent Content.
+            - paragraph [ref=e40]: Intelligent Content.
+          - generic [ref=e42]:
+            - paragraph [ref=e45]: Woven.
+            - paragraph [ref=e48]: Woven.
+            - paragraph [ref=e51]: Woven.
+        - generic [ref=e54]: AI-Powered Learning Management
+        - paragraph [ref=e55]: WeaveMind bridges the gap between teaching and learning through AI-driven content creation. We empower educators to design high-quality materials efficiently, while enabling students to navigate personalized learning paths that adapt to their unique needs.
+        - link "Start Free Trial" [ref=e57]:
+          - /url: /auth/signup
+          - generic [ref=e58]: Start Free Trial
+          - img [ref=e59]
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - img [ref=e65]
+          - generic [ref=e67]:
+            - generic [ref=e68]: Teacher
+            - generic [ref=e69]: I need a slideshow about photosynthesis for 9th graders. Make it engaging with visuals.
+        - generic [ref=e70]:
+          - img [ref=e72]
+          - generic [ref=e75]:
+            - generic [ref=e76]: EduAI
+            - generic [ref=e77]: I will create a 15-slide presentation covering light reaction, dark reaction, and real-world applications...
+        - button "Click Me" [ref=e79]:
+          - generic [ref=e80]: Click Me
+          - img [ref=e82]
+  - alert [ref=e84]
+```
