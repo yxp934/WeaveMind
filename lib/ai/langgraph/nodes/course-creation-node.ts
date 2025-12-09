@@ -7,7 +7,8 @@ import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
 const openai = createGatewayOpenAI()
 
 /**
- * 课程创建节点 - 使用AI处理课程创建流程
+ * 课程创建节点 - 纯AI模型驱动版本
+ * 使用messages格式传递完整对话历史，让AI理解上下文
  */
 export async function courseCreationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
   const lastMessage = state.messages[state.messages.length - 1]
@@ -17,39 +18,39 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
   }
 
   try {
-    // 构建上下文信息
-    const contextInfo = {
-      currentWorkflow: state.currentWorkflow,
-      courseInfo: state.courseInfo,
-      intent: state.intent,
-      userRole: state.userRole
-    }
+    // 构建完整的对话历史作为messages格式（关键修复）
+    const conversationMessages = state.messages.map(msg => {
+      if (msg instanceof HumanMessage) {
+        return { role: 'user' as const, content: msg.content.toString() }
+      } else {
+        return { role: 'assistant' as const, content: msg.content.toString() }
+      }
+    })
 
-    // 构建AI提示
-    const prompt = `
-你是一个专业的课程创建助手。你需要根据用户的需求和提供的信息，帮助用户创建课程。
+    // 系统提示
+    const systemPrompt = `你是一个专业的课程创建助手。你需要根据完整的对话历史和用户的需求，帮助用户创建课程。
 
-当前状态：
+## 当前状态
 - 用户角色：${state.userRole}
 - 当前工作流：${state.currentWorkflow ? JSON.stringify(state.currentWorkflow) : '无'}
 - 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
-- 用户最新消息：${lastMessage.content}
 
-你的任务：
-1. 分析用户的课程创建需求
-2. 如果需要更多信息，向用户询问关键信息
-3. 如果信息足够，开始生成课程
-4. 保持对话的自然流畅
+## 你的任务
+1. 理解完整的对话历史
+2. 分析用户已经提供的所有课程信息
+3. 如果需要更多信息，向用户询问关键信息
+4. 如果信息足够，开始生成课程
+5. 保持对话的自然流畅，记住用户之前说过的所有内容
 
-课程创建需要的关键信息：
-- 课程主题
-- 课程时长（节数）
-- 每周课次
-- 目标学员
-- 难度级别
-- 课程类型（理论/实践/并重）
+## 课程创建需要的关键信息
+- 课程主题 (topic)
+- 课程时长/节数 (duration)
+- 每周课次 (sessionsPerWeek)
+- 目标学员 (targetAudience)
+- 难度级别 (difficultyLevel)
+- 课程类型 (courseType)
 
-请以JSON格式返回你的响应：
+## 输出格式（严格JSON）
 {
   "message": "你要发送给用户的消息",
   "action": "ask_info|generate_course|continue_collection",
@@ -73,14 +74,14 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 注意：
 - 使用中文回复
 - 保持友好和专业的语调
-- 根据缺失信息的数量决定下一步行动
-- 如果所有信息都收集完成，开始课程生成
-`
+- 记住用户在整个对话中提供的所有信息
+- 不要重复询问用户已经回答过的问题`
 
-    // 调用AI模型
+    // 使用messages格式调用AI
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
-      prompt,
+      system: systemPrompt,
+      messages: conversationMessages,
       maxTokens: 1000,
       temperature: 0.7
     })
@@ -571,55 +572,109 @@ export async function contentGenerationNode(state: ChatbotState): Promise<Partia
 }
 
 /**
- * 通用继续节点 - 修复版本
- * 不清除工作流状态，而是尝试从对话历史推断当前状态
+ * 通用继续节点 - 纯AI模型驱动版本
+ * 使用AI模型分析对话历史，智能判断应该继续哪个工作流
+ * 不使用任何硬编码关键词检测
  */
 async function generalContinueNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
-  // 检查是否可以从对话历史推断工作流
-  const conversationHistory = state.messages.slice(-6)
-  let inferredWorkflow = null
+  try {
+    // 构建完整的对话历史作为messages格式
+    const conversationMessages = state.messages.map(msg => {
+      if (msg instanceof HumanMessage) {
+        return { role: 'user' as const, content: msg.content.toString() }
+      } else {
+        return { role: 'assistant' as const, content: msg.content.toString() }
+      }
+    })
 
-  // 检查对话历史中的课程创建线索
-  const hasCourseCreation = conversationHistory.some(msg => {
-    const content = msg.content.toString().toLowerCase()
-    return content.includes('创建课程') || content.includes('编程') ||
-           content.includes('python') || content.includes('神经科学') ||
-           content.includes('10周') || content.includes('8周') ||
-           content.includes('大学生') || content.includes('入门') ||
-           content.includes('课程') || content.includes('教学大纲')
-  })
+    // 让AI分析对话历史并判断应该继续什么
+    const systemPrompt = `你是WeaveMind的智能工作流分析系统。用户发送了一个"继续"类型的消息，你需要分析完整的对话历史，判断用户想要继续什么工作流。
 
-  if (hasCourseCreation) {
-    // 如果检测到课程创建相关的内容，推断为课程创建工作流
-    inferredWorkflow = {
-      type: 'course_creation',
-      status: 'active',
-      step: 'generating_outline',
-      data: { inferredFromHistory: true }
+## 当前状态
+- 用户角色: ${state.userRole}
+- 已收集的课程信息: ${state.courseInfo ? JSON.stringify(state.courseInfo) : '无'}
+
+## 你的任务
+分析对话历史，判断用户最可能想要继续的工作流类型：
+- course_creation - 课程创建
+- outline_generation - 大纲生成
+- assignment_creation - 作业创建
+- a2a_optimization - A2A优化
+- content_generation - 内容生成
+- unknown - 无法判断
+
+## 输出格式（严格JSON）
+{
+  "workflowType": "工作流类型",
+  "confidence": 0.0-1.0,
+  "reasoning": "判断理由",
+  "suggestedNextAction": "建议的下一步"
+}
+
+只返回JSON。`
+
+    const { text } = await generateText({
+      model: openai.chat(DEFAULT_MODEL),
+      system: systemPrompt,
+      messages: conversationMessages,
+      maxTokens: 500,
+      temperature: 0.1
+    })
+
+    let result
+    try {
+      let cleanText = text.trim()
+      if (cleanText.startsWith('```json')) cleanText = cleanText.slice(7)
+      if (cleanText.startsWith('```')) cleanText = cleanText.slice(3)
+      if (cleanText.endsWith('```')) cleanText = cleanText.slice(0, -3)
+      result = JSON.parse(cleanText.trim())
+    } catch (e) {
+      console.error('解析工作流分析结果失败:', e)
+      result = { workflowType: 'unknown', confidence: 0.3, reasoning: '解析失败' }
     }
 
+    console.log('🔄 AI工作流分析结果:', result)
+
+    if (result.workflowType && result.workflowType !== 'unknown') {
+      return {
+        ...state,
+        currentWorkflow: {
+          type: result.workflowType,
+          status: 'active',
+          step: 'continuing',
+          data: { inferredByAI: true }
+        },
+        metadata: {
+          ...state.metadata,
+          timestamp: new Date().toISOString(),
+          reasoning: result.reasoning,
+          workflowContinued: true,
+          inferredByAI: true
+        }
+      }
+    }
+
+    // 如果AI也无法判断，提供通用响应
     return {
       ...state,
-      currentWorkflow: inferredWorkflow,
       metadata: {
         ...state.metadata,
         timestamp: new Date().toISOString(),
-        reasoning: '从对话历史推断用户想要继续课程创建工作流',
-        workflowContinued: true,
-        inferredFromHistory: true,
-        suggestions: ['正在生成课程大纲...', '请稍等片刻']
+        reasoning: result.reasoning || 'AI无法确定要继续的工作流',
+        suggestions: ['请告诉我您想继续做什么']
       }
     }
-  }
 
-  // 如果无法推断，提供通用的继续提示
-  return {
-    ...state,
-    metadata: {
-      ...state.metadata,
-      timestamp: new Date().toISOString(),
-      reasoning: '无法识别当前工作流，提供通用继续选项',
-      suggestions: ['继续之前的对话', '创建新课程', '生成大纲', '创建作业']
+  } catch (error) {
+    console.error('工作流分析失败:', error)
+    return {
+      ...state,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        reasoning: '工作流分析失败',
+        error: (error as Error).message
+      }
     }
   }
 }
