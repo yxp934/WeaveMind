@@ -4,6 +4,24 @@
 
 ### ✅ 已完成任务
 
+#### Chatbot 上下文管理修复
+- ✅ **前端上下文存储修复** (`components/teacher/TeacherDashboardChat.tsx`)
+  - 扩展 Message 接口添加 metadata 字段
+  - 修复 handleSendMessage 函数正确存储和传递 metadata
+  - 修复 handleChoiceClick 函数处理上下文传递
+  - 修复 handleSuggestionClick 函数保持一致性
+
+- ✅ **上下文传递机制修复**
+  - 修复 conversationHistory 传递空 metadata 问题
+  - 确保后端能正确恢复工作流状态
+  - 实现多轮对话的完美上下文保持
+
+- ✅ **验证测试通过**
+  - 第一条消息：✅ 创建工作流状态
+  - 第二条消息：✅ 接收并保持上下文
+  - 第三条消息：✅ 继续工作流，课程信息完整保持
+  - 多轮测试：✅ 无上下文丢失，workflowActive: true 维持
+
 #### Phase 6: 学生AI助手 - 聊天机器人系统
 - ✅ **智能意图识别系统** (`/lib/prompt-engineering/intent-recognition.ts`)
   - 实现6个核心工作流的意图识别
