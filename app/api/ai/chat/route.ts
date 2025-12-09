@@ -193,8 +193,12 @@ async function handleWorkflowIntent(message: string, context: any, isDemoMode: b
   if (intentDetection.intent === 'unknown') {
     // 检查是否有活跃的课程创建工作流
     const hasActiveCourseWorkflow = conversationHistory.some(msg =>
-      msg.content?.includes('课程创建助手') || msg.content?.includes('帮我创建') && msg.content?.includes('课程')
+      (msg.content?.includes('课程创建助手')) ||
+      (msg.content?.includes('帮我创建') && msg.content?.includes('课程')) ||
+      (msg.content?.includes('神经科学课程'))
     );
+
+    console.log('🔍 检查活跃工作流:', { hasActiveCourseWorkflow, historyLength: conversationHistory.length });
 
     if (hasActiveCourseWorkflow) {
       // 继续处理课程创建工作流
