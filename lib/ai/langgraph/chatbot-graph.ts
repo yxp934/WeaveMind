@@ -159,15 +159,22 @@ export class LangGraphChatbot {
 
           // 尝试从metadata中恢复状态信息
           if (msg.metadata) {
-            // 恢复工作流状态
-            if (msg.metadata.workflowType && msg.metadata.workflowStatus) {
+            // 恢复工作流状态 - 关键修复：确保status为'active'
+            if (msg.metadata.workflowType) {
+              // 如果有workflowType，但status缺失，默认为'active'
+              const workflowStatus = msg.metadata.workflowStatus || 'active'
               latestWorkflow = {
                 type: msg.metadata.workflowType,
-                status: msg.metadata.workflowStatus,
+                status: workflowStatus,
                 step: msg.metadata.currentStep || 'info_collection',
                 data: {}
               }
               console.log(`✅ 从消息 ${i} 恢复工作流:`, latestWorkflow)
+
+              // 关键修复：如果检测到活跃工作流且没有其他工作流被设置，就使用这个
+              if (!state.currentWorkflow && workflowStatus === 'active') {
+                state.currentWorkflow = latestWorkflow
+              }
             }
 
             // 恢复课程信息
@@ -181,8 +188,19 @@ export class LangGraphChatbot {
           }
         }
 
-        // 恢复找到的状态
-        if (latestWorkflow) {
+        // 如果还没有设置工作流，尝试从intent参数中恢复
+        if (!state.currentWorkflow && state.intent?.parameters?.currentWorkflowType) {
+          state.currentWorkflow = {
+            type: state.intent.parameters.currentWorkflowType,
+            status: 'active',
+            step: state.intent.parameters.currentStep || 'info_collection',
+            data: {}
+          }
+          console.log(`✅ 从intent参数恢复工作流:`, state.currentWorkflow)
+        }
+
+        // 恢复找到的状态（如果还没有设置）
+        if (latestWorkflow && !state.currentWorkflow) {
           state.currentWorkflow = latestWorkflow
         }
 
