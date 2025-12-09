@@ -1,5 +1,5 @@
 import { ChatbotState } from '../chatbot-state'
-import { HumanMessage } from '@langchain/core/messages'
+import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { generateText } from 'ai'
 import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
 
@@ -105,9 +105,23 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
       }
     }
 
+    // 创建AI响应消息
+    const aiMessage = new AIMessage({
+      content: result.message || '我已经理解了您的课程创建需求。',
+      additional_kwargs: {
+        courseInfo: result.updatedCourseInfo,
+        action: result.action,
+        workflowStep: result.workflowStep,
+        missingInfo: result.missingInfo,
+        suggestions: result.suggestions,
+        metadata: result.metadata
+      }
+    })
+
     // 更新状态
     const updatedState: Partial<ChatbotState> = {
       ...state,
+      messages: [...state.messages, aiMessage],
       metadata: {
         ...state.metadata,
         timestamp: new Date().toISOString(),

@@ -1,5 +1,5 @@
 import { ChatbotState } from '../chatbot-state'
-import { HumanMessage } from '@langchain/core/messages'
+import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { generateText } from 'ai'
 import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
 
@@ -116,9 +116,21 @@ ${conversationHistory}
       }
     }
 
+    // 创建AI响应消息
+    const aiMessage = new AIMessage({
+      content: result.message || '您好！我是WeaveMind AI学习助手。',
+      additional_kwargs: {
+        intent: 'general_chat',
+        suggestions: result.suggestions,
+        availableActions: result.availableActions,
+        metadata: result.metadata
+      }
+    })
+
     // 更新状态
     return {
       ...state,
+      messages: [...state.messages, aiMessage],
       intent: {
         type: 'general_chat',
         confidence: result.metadata?.confidence || 1.0,
