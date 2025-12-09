@@ -139,13 +139,59 @@ export class LangGraphChatbot {
       // 关键修复1: 使用conversationId作为固定的sessionId，保持状态连续性
       const fixedSessionId = conversationId
 
-      // 关键修复2: 创建状态时保持sessionId一致性
+      // 关键修复2: 创建初始状态
       let state = createInitialState(fixedSessionId, userRole, userId)
 
       // 关键修复3: 正确设置sessionId与conversationId一致
       state.sessionId = fixedSessionId
 
-      // 关键修复4: 保留完整的对话历史上下文
+      // 关键修复4: 从对话历史中恢复工作流状态和课程信息
+      if (conversationHistory.length > 0) {
+        console.log('🔄 从对话历史中恢复状态，消息数量:', conversationHistory.length)
+
+        // 查找最新的工作流状态和课程信息
+        let latestWorkflow = null
+        let latestCourseInfo = null
+
+        // 从最新的消息开始向前搜索
+        for (let i = conversationHistory.length - 1; i >= 0; i--) {
+          const msg = conversationHistory[i]
+
+          // 尝试从metadata中恢复状态信息
+          if (msg.metadata) {
+            // 恢复工作流状态
+            if (msg.metadata.workflowType && msg.metadata.workflowStatus) {
+              latestWorkflow = {
+                type: msg.metadata.workflowType,
+                status: msg.metadata.workflowStatus,
+                step: msg.metadata.currentStep || 'info_collection',
+                data: {}
+              }
+              console.log(`✅ 从消息 ${i} 恢复工作流:`, latestWorkflow)
+            }
+
+            // 恢复课程信息
+            if (msg.metadata.courseTopic || (msg.metadata.knownInfo && Object.keys(msg.metadata.knownInfo).length > 0)) {
+              latestCourseInfo = msg.metadata.knownInfo || {}
+              if (!latestCourseInfo.topic && msg.metadata.courseTopic) {
+                latestCourseInfo.topic = msg.metadata.courseTopic
+              }
+              console.log(`✅ 从消息 ${i} 恢复课程信息:`, latestCourseInfo)
+            }
+          }
+        }
+
+        // 恢复找到的状态
+        if (latestWorkflow) {
+          state.currentWorkflow = latestWorkflow
+        }
+
+        if (latestCourseInfo) {
+          state.courseInfo = latestCourseInfo
+        }
+      }
+
+      // 关键修复5: 保留完整的对话历史上下文
       for (const msg of conversationHistory) {
         if (msg.role === 'user') {
           state = {
@@ -160,7 +206,7 @@ export class LangGraphChatbot {
         }
       }
 
-      // 关键修复5: 添加当前用户消息
+      // 关键修复6: 添加当前用户消息
       state = {
         ...state,
         messages: [...state.messages, new HumanMessage(message)]

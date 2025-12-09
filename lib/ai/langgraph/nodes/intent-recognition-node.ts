@@ -47,168 +47,33 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
       }
     }
 
-    // 测试模式：使用启发式匹配替代AI Gateway
-    console.log('🎯 使用启发式意图识别（测试模式）')
-    const heuristicResult = performHeuristicIntentRecognition(lastMessage.content, state)
+    // 关键修复2: 暂时使用改进的启发式匹配，确保状态正确传递
+    console.log('🎯 使用改进的启发式意图识别')
+    console.log('当前状态:', {
+      workflow: state.currentWorkflow,
+      messagesCount: state.messages.length,
+      lastMessage: lastMessage.content
+    })
+
+    const heuristicResult = performHeuristicIntentRecognition(lastMessage.content.toString(), state)
+    console.log('启发式识别结果:', heuristicResult)
+
+    // 关键修复3: 确保状态正确传递
     return {
-      ...state,
-      intent: heuristicResult.intent,
+      ...state,  // 保留所有原有状态
+      intent: {
+        type: heuristicResult.intent,
+        confidence: heuristicResult.confidence || 0.7,
+        parameters: heuristicResult.parameters || {}
+      },
       metadata: {
         ...state.metadata,
         timestamp: new Date().toISOString(),
         reasoning: heuristicResult.reasoning,
         suggestedResponse: heuristicResult.suggestedResponse,
-        missingInfo: heuristicResult.missingInfo,
-        mode: 'heuristic_test'
-      }
-    }
-
-    // 关键修复2: 构建更完整的对话历史上下文（最近10条消息）
-    const conversationHistory = state.messages.slice(-10)
-    const historyText = conversationHistory.map(msg =>
-      `${msg instanceof HumanMessage ? '用户' : '助手'}: ${msg.content}`
-    ).join('\n')
-
-    // 关键修复3: 增强版意图识别提示，包含更多上下文和规则
-    const intentPrompt = `
-你是一个专业的AI教育助手意图识别系统。你需要精确识别用户的真实意图。
-
-## 当前会话状态：
-- 会话ID：${state.sessionId}
-- 用户角色：${state.userRole}
-- 当前工作流：${state.currentWorkflow ? `${state.currentWorkflow.type} (状态: ${state.currentWorkflow.status}, 步骤: ${state.currentWorkflow.step})` : '无'}
-- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
-- 消息总数：${state.messages.length}
-
-## 完整对话历史（最近10条消息）：
-${historyText}
-
-## 用户最新消息：
-${lastMessage.content}
-
-## 六个核心工作流类型及识别规则：
-
-1. **课程创建 (course_creation)**
-   - 触发词：创建课程、新课程、开设课程、设计课程、我想上课、教XX课
-   - 用户想要从头创建一个完整的教学课程
-   - 需要收集：主题、时长、频率、受众、难度、类型
-
-2. **大纲生成 (outline_generation)**
-   - 触发词：生成大纲、课程大纲、教学大纲、课程结构、章节规划
-   - 用户想要基于主题生成详细的教学大纲
-   - 需要收集：主题、描述、目标受众、时长
-
-3. **作业创建 (assignment_creation)**
-   - 触发词：创建作业、布置作业、设计测验、考试题目、写作任务
-   - 用户想要创建各类作业（测验、写作、研究）
-   - 需要收集：类型、主题、难度、截止日期
-
-4. **A2A优化 (a2a_optimization)**
-   - 触发词：优化内容、改进课程、A2A、AI优化、内容审核
-   - 用户想要使用AI对AI的方式优化现有内容
-   - 需要收集：待优化内容、优化目标
-
-5. **内容生成 (content_generation)**
-   - 触发词：生成内容、创建材料、PPT、讲义、练习题、学习资料
-   - 用户想要生成具体的教学内容和材料
-   - 需要收集：内容类型、主题、格式
-
-6. **继续工作流 (continue_workflow)**
-   - 当用户在现有工作流中回答问题或提供更多信息时
-   - 当用户说"继续"、"下一步"、"好的"等确认性回复时
-
-7. **通用对话 (general_chat)**
-   - 闲聊、问候、不明确的请求
-   - 需要引导用户选择具体功能
-
-## 意图识别原则：
-1. **上下文优先**：如果对话历史显示正在进行某个工作流，用户的回复很可能是继续该工作流
-2. **明确意图**：只有当用户明确表达新需求时，才切换到新工作流
-3. **参数提取**：尽可能从用户消息中提取所有相关参数
-4. **高置信度**：对于明确的意图，置信度应该>=0.8
-5. **引导性回复**：对于模糊的意图，提供选择题引导用户
-
-请以JSON格式返回识别结果（严格遵循此格式）：
-{
-  "intent": "course_creation|outline_generation|assignment_creation|a2a_optimization|content_generation|continue_workflow|general_chat",
-  "confidence": 0.0-1.0,
-  "parameters": {
-    "courseTopic": "课程主题（如果识别到）",
-    "courseDuration": "课程时长（如果识别到）",
-    "sessionsPerWeek": "每周课次（如果识别到）",
-    "targetAudience": "目标学员（如果识别到）",
-    "difficultyLevel": "难度级别（如果识别到）",
-    "courseType": "课程类型（如果识别到）",
-    "assignmentType": "作业类型（如果识别到）",
-    "contentType": "内容类型（如果识别到）"
-  },
-  "reasoning": "详细的识别逻辑说明",
-  "suggestedResponse": "建议的AI回复内容",
-  "missingInfo": ["缺失的关键信息列表"],
-  "nextStep": "建议的下一步操作"
-}
-
-重要：返回纯JSON，不要包含任何其他文本或markdown格式。
-`
-
-    // 关键修复4: 使用AI模型进行智能意图识别
-    const { text } = await generateText({
-      model: openai.chat(DEFAULT_MODEL),
-      prompt: intentPrompt,
-      maxTokens: 1000,
-      temperature: 0.1  // 降低temperature以获得更一致的结果
-    })
-
-    // 关键修复5: 更强的JSON解析和错误处理
-    let intentResult
-    try {
-      // 尝试清理可能的markdown格式
-      let cleanText = text.trim()
-      if (cleanText.startsWith('```json')) {
-        cleanText = cleanText.slice(7)
-      }
-      if (cleanText.startsWith('```')) {
-        cleanText = cleanText.slice(3)
-      }
-      if (cleanText.endsWith('```')) {
-        cleanText = cleanText.slice(0, -3)
-      }
-      intentResult = JSON.parse(cleanText.trim())
-    } catch (e) {
-      console.error('解析意图识别结果失败:', e, 'Raw text:', text)
-
-      // 关键修复6: 增强的启发式fallback逻辑
-      intentResult = performHeuristicIntentRecognition(lastMessage.content.toString(), state)
-    }
-
-    // 关键修复7: 映射中文意图到英文工作流类型
-    const intentMapping: Record<string, string> = {
-      '课程创建': 'course_creation',
-      '大纲生成': 'outline_generation',
-      '作业创建': 'assignment_creation',
-      'A2A优化': 'a2a_optimization',
-      '内容生成': 'content_generation',
-      '继续工作流': 'continue_workflow',
-      '通用对话': 'general_chat'
-    }
-
-    const mappedIntent = intentMapping[intentResult.intent] || intentResult.intent
-
-    // 关键修复8: 更新状态，包含完整的识别信息
-    return {
-      ...state,
-      intent: {
-        type: mappedIntent,
-        confidence: intentResult.confidence || 0.5,
-        parameters: intentResult.parameters || {}
-      },
-      metadata: {
-        ...state.metadata,
-        timestamp: new Date().toISOString(),
-        reasoning: intentResult.reasoning,
-        suggestedResponse: intentResult.suggestedResponse,
-        missingInfo: intentResult.missingInfo || [],
-        nextStep: intentResult.nextStep
+        missingInfo: heuristicResult.missingInfo || [],
+        nextStep: heuristicResult.nextStep,
+        mode: 'enhanced_heuristic'
       }
     }
 
@@ -236,96 +101,159 @@ ${lastMessage.content}
 }
 
 /**
- * 启发式意图识别（fallback）
- * 当AI识别失败时，使用关键词匹配进行基础识别
+ * 启发式意图识别（增强版）
+ * 基于对话历史和上下文的智能意图识别
  */
 function performHeuristicIntentRecognition(userMessage: string, state: ChatbotState): any {
   const message = userMessage.toLowerCase()
 
-  // 如果有活跃工作流且用户回复较短，可能是继续工作流
-  if (state.currentWorkflow?.status === 'active' && userMessage.length < 100) {
-    const continueKeywords = ['好的', '可以', '是的', '没问题', '继续', '下一步', 'ok', 'yes', 'sure']
+  console.log('🔍 分析消息:', message)
+  console.log('📋 当前工作流状态:', state.currentWorkflow)
+
+  // 1. 如果有活跃工作流，优先考虑继续工作流
+  if (state.currentWorkflow?.status === 'active') {
+    console.log('✅ 检测到活跃工作流，继续当前流程')
+
+    // 检查用户是否想要继续
+    const continueKeywords = ['好的', '可以', '是的', '没问题', '继续', '下一步', 'ok', 'yes', 'sure', '明白了']
     if (continueKeywords.some(k => message.includes(k))) {
       return {
         intent: 'continue_workflow',
-        confidence: 0.8,
-        parameters: {},
-        reasoning: '用户确认性回复，继续当前工作流',
-        suggestedResponse: '好的，让我们继续。',
+        confidence: 0.9,
+        parameters: {
+          currentWorkflowType: state.currentWorkflow.type,
+          currentStep: state.currentWorkflow.step
+        },
+        reasoning: `检测到活跃工作流 ${state.currentWorkflow.type}，用户确认继续`,
+        suggestedResponse: `好的，让我们继续${getWorkflowDisplayName(state.currentWorkflow.type)}流程。`,
         missingInfo: []
       }
     }
-  }
 
-  // 课程创建关键词
-  if (message.includes('创建课程') || message.includes('新课程') ||
-      message.includes('开设课程') || message.includes('设计课程') ||
-      (message.includes('课程') && message.includes('创建'))) {
+    // 检查是否要结束当前工作流
+    const exitKeywords = ['取消', '停止', '退出', '结束', '重新开始', '换一个', '不要了', 'cancel', 'stop', 'exit']
+    if (exitKeywords.some(k => message.includes(k))) {
+      return {
+        intent: 'general_chat',
+        confidence: 0.8,
+        parameters: {},
+        reasoning: '用户想要结束当前工作流',
+        suggestedResponse: '好的，我们结束当前流程。请告诉我您想做什么其他的事情。',
+        missingInfo: ['user_intent']
+      }
+    }
+
+    // 如果用户在回答工作流中的问题，继续当前工作流
     return {
-      intent: 'course_creation',
-      confidence: 0.7,
-      parameters: extractCourseParameters(message),
-      reasoning: '关键词匹配：包含课程创建相关词汇',
-      suggestedResponse: '我来帮您创建课程。请告诉我课程的主题是什么？',
-      missingInfo: ['course_topic', 'course_duration']
+      intent: 'continue_workflow',
+      confidence: 0.8,
+      parameters: {
+        currentWorkflowType: state.currentWorkflow.type,
+        currentStep: state.currentWorkflow.step
+      },
+      reasoning: `用户正在工作流 ${state.currentWorkflow.type} 中提供信息`,
+      suggestedResponse: `好的，我记录了您的信息。让我继续${getWorkflowDisplayName(state.currentWorkflow.type)}流程。`,
+      missingInfo: []
     }
   }
 
-  // 大纲生成关键词
-  if (message.includes('大纲') || message.includes('课程结构') || message.includes('章节')) {
+  // 2. 基于对话历史判断意图
+  const recentMessages = state.messages.slice(-4) // 最近4条消息
+  const hasRecentCourseCreation = recentMessages.some(msg =>
+    msg.content && msg.content.toLowerCase().includes('课程')
+  )
+
+  // 3. 课程创建意图
+  if (message.includes('创建课程') || message.includes('新课程') ||
+      message.includes('开设课程') || message.includes('设计课程') ||
+      (message.includes('课程') && message.includes('创建')) ||
+      message.includes('我要上课') || message.includes('做课程') ||
+      message.includes('python') || message.includes('数学') ||
+      message.includes('物理') || message.includes('英语')) {
+
+    const topic = extractCourseTopic(message)
+    return {
+      intent: 'course_creation',
+      confidence: 0.8,
+      parameters: {
+        courseTopic: topic,
+        ...extractCourseParameters(message)
+      },
+      reasoning: `关键词匹配：包含课程创建相关词汇，检测到主题: ${topic}`,
+      suggestedResponse: topic ?
+        `好的！我来帮您创建一个${topic}课程。` :
+        '好的！我来帮您创建课程。请告诉我课程的主题是什么？',
+      missingInfo: topic ? ['course_duration', 'sessions_per_week'] : ['course_topic', 'course_duration']
+    }
+  }
+
+  // 4. 大纲生成意图
+  if (message.includes('大纲') || message.includes('课程结构') || message.includes('章节') ||
+      message.includes('课程规划') || message.includes('教学设计')) {
     return {
       intent: 'outline_generation',
-      confidence: 0.7,
+      confidence: 0.8,
       parameters: {},
       reasoning: '关键词匹配：包含大纲相关词汇',
-      suggestedResponse: '我来帮您生成课程大纲。请告诉我课程主题和目标受众。',
+      suggestedResponse: '好的！我来帮您生成课程大纲。请告诉我课程主题和目标受众。',
       missingInfo: ['course_topic', 'target_audience']
     }
   }
 
-  // 作业创建关键词
-  if (message.includes('作业') || message.includes('测验') || message.includes('考试') || message.includes('练习')) {
+  // 5. 作业创建意图
+  if (message.includes('作业') || message.includes('测验') || message.includes('考试') ||
+      message.includes('练习') || message.includes('题目') || message.includes('布置') ||
+      message.includes('创建作业') || message.includes('做作业')) {
+    const assignmentType = detectAssignmentType(message)
     return {
       intent: 'assignment_creation',
-      confidence: 0.7,
-      parameters: {},
-      reasoning: '关键词匹配：包含作业相关词汇',
-      suggestedResponse: '我来帮您创建作业。请告诉我您想创建什么类型的作业？',
-      missingInfo: ['assignment_type', 'topic']
+      confidence: 0.8,
+      parameters: {
+        assignmentType: assignmentType
+      },
+      reasoning: `关键词匹配：包含作业相关词汇，检测到类型: ${assignmentType}`,
+      suggestedResponse: `好的！我来帮您创建${assignmentType}作业。请告诉我作业主题。`,
+      missingInfo: ['topic', 'difficulty']
     }
   }
 
-  // A2A优化关键词
-  if (message.includes('优化') || message.includes('改进') || message.includes('a2a')) {
+  // 6. A2A优化意图
+  if (message.includes('优化') || message.includes('改进') || message.includes('a2a') ||
+      message.includes('完善') || message.includes('提升质量')) {
     return {
       intent: 'a2a_optimization',
-      confidence: 0.6,
+      confidence: 0.7,
       parameters: {},
       reasoning: '关键词匹配：包含优化相关词汇',
-      suggestedResponse: '我来帮您优化内容。请提供需要优化的内容。',
+      suggestedResponse: '好的！我将使用A2A方式帮您优化内容。请提供需要优化的内容。',
       missingInfo: ['content_to_optimize']
     }
   }
 
-  // 内容生成关键词
-  if (message.includes('生成') || message.includes('ppt') || message.includes('讲义') || message.includes('材料')) {
+  // 7. 内容生成意图
+  if (message.includes('生成') || message.includes('ppt') || message.includes('讲义') ||
+      message.includes('材料') || message.includes('课件') || message.includes('资料')) {
+    const contentType = detectContentType(message)
     return {
       intent: 'content_generation',
-      confidence: 0.6,
-      parameters: {},
-      reasoning: '关键词匹配：包含内容生成相关词汇',
-      suggestedResponse: '我来帮您生成教学内容。请告诉我您需要什么类型的内容？',
-      missingInfo: ['content_type', 'topic']
+      confidence: 0.7,
+      parameters: {
+        contentType: contentType
+      },
+      reasoning: `关键词匹配：包含内容生成相关词汇，检测到类型: ${contentType}`,
+      suggestedResponse: `好的！我来帮您生成${contentType}。请告诉我具体需求。`,
+      missingInfo: ['topic', 'requirements']
     }
   }
 
-  // 默认：通用对话
+  // 8. 默认：通用对话
+  console.log('⚠️ 未匹配到特定意图，使用通用对话')
   return {
     intent: 'general_chat',
-    confidence: 0.5,
+    confidence: 0.4,
     parameters: {},
     reasoning: '未匹配到特定意图，使用通用对话',
-    suggestedResponse: '我很乐意帮您！请选择以下选项之一，或直接描述您的需求：\n\n1. 创建新课程\n2. 生成课程大纲\n3. 创建作业\n4. A2A内容优化\n5. 生成教学内容',
+    suggestedResponse: '我很乐意帮您！请告诉我您想要做什么：\n\n• 创建新课程\n• 生成课程大纲\n• 创建作业\n• 优化课程内容\n• 生成教学内容\n\n请描述您的具体需求，我会引导您完成。',
     missingInfo: ['user_intent']
   }
 }
@@ -358,6 +286,95 @@ function extractCourseParameters(message: string): Record<string, string> {
   }
 
   return params
+}
+
+/**
+ * 从消息中提取课程主题
+ */
+function extractCourseTopic(message: string): string {
+  // 常见课程主题关键词
+  const topics = ['python', 'java', 'javascript', '数学', '物理', '化学', '英语', '语文',
+                 '历史', '地理', '生物', '编程', '机器学习', '人工智能', '数据科学',
+                 'web开发', '前端', '后端', '数据库', '算法', '数据结构']
+
+  const lowerMessage = message.toLowerCase()
+  for (const topic of topics) {
+    if (lowerMessage.includes(topic)) {
+      return topic
+    }
+  }
+
+  // 尝试从消息中提取主题
+  const topicPatterns = [
+    /关于(.+?)的/,
+    /主题是(.+)/,
+    /教(.+?)课/,
+    /(.+?)课程/
+  ]
+
+  for (const pattern of topicPatterns) {
+    const match = message.match(pattern)
+    if (match) {
+      return match[1].trim()
+    }
+  }
+
+  return ''
+}
+
+/**
+ * 检测作业类型
+ */
+function detectAssignmentType(message: string): string {
+  const lowerMessage = message.toLowerCase()
+
+  if (lowerMessage.includes('测验') || lowerMessage.includes('选择题') || lowerMessage.includes('考试')) {
+    return '测验'
+  }
+  if (lowerMessage.includes('写作') || lowerMessage.includes('作文') || lowerMessage.includes('论文')) {
+    return '写作'
+  }
+  if (lowerMessage.includes('研究') || lowerMessage.includes('调研') || lowerMessage.includes('项目')) {
+    return '研究'
+  }
+
+  return '通用作业'
+}
+
+/**
+ * 检测内容类型
+ */
+function detectContentType(message: string): string {
+  const lowerMessage = message.toLowerCase()
+
+  if (lowerMessage.includes('ppt') || lowerMessage.includes('幻灯片')) {
+    return 'PPT课件'
+  }
+  if (lowerMessage.includes('讲义') || lowerMessage.includes('教案')) {
+    return '教学讲义'
+  }
+  if (lowerMessage.includes('练习') || lowerMessage.includes('习题')) {
+    return '练习题'
+  }
+  if (lowerMessage.includes('考试') || lowerMessage.includes('测试')) {
+    return '考试题目'
+  }
+
+  return '教学材料'
+}
+
+/**
+ * 获取工作流显示名称
+ */
+function getWorkflowDisplayName(workflowType: string): string {
+  const names: Record<string, string> = {
+    'course_creation': '创建课程',
+    'outline_generation': '生成大纲',
+    'assignment_creation': '创建作业',
+    'a2a_optimization': 'A2A优化',
+    'content_generation': '内容生成'
+  }
+  return names[workflowType] || '工作流'
 }
 
 /**
