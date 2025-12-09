@@ -74,13 +74,14 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
   workflow.addConditionalEdges(
     'continue_workflow',
     (state: ChatbotState) => {
-      if (!state.currentWorkflow || state.currentWorkflow.status === 'completed') {
+      const metadata = state.metadata
+      if (metadata?.toolsUsed?.includes('course_generator')) {
         return 'response_generator'
       }
-      return 'continue_workflow'
+      // 如果没有使用course_generator工具，说明需要更多信息，结束等待用户输入
+      return 'response_generator'
     },
     {
-      'continue_workflow': 'continue_workflow',
       'response_generator': 'response_generator'
     }
   )

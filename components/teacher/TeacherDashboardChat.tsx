@@ -358,12 +358,22 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     setIsTyping(true);
 
     try {
-      const response = await fetch('/api/ai/teacher-assistant', {
+      const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageText,
-          context: selectedContext,
+          context: {
+            ...selectedContext,
+            userRole: 'teacher',
+            conversationHistory: messages.map(msg => ({
+              role: msg.isUser ? 'user' : 'assistant',
+              content: msg.text,
+              timestamp: msg.timestamp.toISOString(),
+              toolsUsed: [],
+              metadata: {}
+            }))
+          },
         }),
       });
 
@@ -372,12 +382,10 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       if (data.success) {
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: data.data?.message || data.data?.response || 'Response received.',
+          text: data.data?.message || 'Response received.',
           isUser: false,
           timestamp: new Date(),
-          functionResult: data.data?.functionResults && data.data.functionResults.length > 0
-            ? data.data.functionResults[0] // Use first function result as the main card
-            : undefined,
+          functionResult: undefined, // LangGraph doesn't return function results in the same format
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
@@ -423,12 +431,22 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     setIsTyping(true);
 
     try {
-      const response = await fetch('/api/ai/teacher-assistant', {
+      const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: suggestion,
-          context: selectedContext,
+          context: {
+            ...selectedContext,
+            userRole: 'teacher',
+            conversationHistory: messages.map(msg => ({
+              role: msg.isUser ? 'user' : 'assistant',
+              content: msg.text,
+              timestamp: msg.timestamp.toISOString(),
+              toolsUsed: [],
+              metadata: {}
+            }))
+          },
         }),
       });
 
@@ -437,12 +455,10 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       if (data.success) {
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
-          text: data.data?.message || data.data?.response || 'Response received.',
+          text: data.data?.message || 'Response received.',
           isUser: false,
           timestamp: new Date(),
-          functionResult: data.data?.functionResults && data.data.functionResults.length > 0
-            ? data.data.functionResults[0] // Use first function result as the main card
-            : undefined,
+          functionResult: undefined, // LangGraph doesn't return function results in the same format
         };
         setMessages(prev => [...prev, aiMessage]);
       } else {
