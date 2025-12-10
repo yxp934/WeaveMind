@@ -81,8 +81,9 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
       model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       messages: conversationMessages,
-      maxTokens: 1000,
-      temperature: 0.1
+      maxTokens: 2000,
+      temperature: 0.1,
+      timeout: 120000 // 120秒超时，适应复杂模型
     })
 
     // 解析AI响应

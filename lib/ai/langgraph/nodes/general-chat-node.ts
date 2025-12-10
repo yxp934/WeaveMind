@@ -89,8 +89,9 @@ ${conversationHistory}
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
       prompt,
-      maxTokens: 800,
-      temperature: 0.8
+      maxTokens: 1500,
+      temperature: 0.8,
+      timeout: 120000 // 120秒超时，适应复杂模型
     })
 
     // 解析AI响应
