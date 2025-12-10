@@ -303,29 +303,55 @@ async function handleStreamResponse(
   onMessage: (data: any) => void,
   onComplete: () => void,
   onError: (error: string) => void
-) {
-  if (!response.ok) {
-    onError(`HTTP ${response.status}: ${response.statusText}`);
-    return;
-  }
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!response.ok) {
+      onError(`HTTP ${response.status}: ${response.statusText}`);
+      reject(new Error(`HTTP ${response.status}: ${response.statusText}`));
+      return;
+    }
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    onError('无法读取响应流');
-    return;
-  }
+    const reader = response.body?.getReader();
+    if (!reader) {
+      onError('无法读取响应流');
+      reject(new Error('无法读取响应流'));
+      return;
+    }
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
+    const processStream = async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
 
-      if (done) {
-        // 处理剩余的buffer内容
-        if (buffer.trim()) {
+          if (done) {
+            // 处理剩余的buffer内容
+            if (buffer.trim()) {
+              const lines = buffer.split('\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    onMessage(data);
+                  } catch (e) {
+                    console.error('解析流数据失败:', e);
+                  }
+                }
+              }
+            }
+            onComplete();
+            resolve();
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // 处理完整的SSE消息
           const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 保存不完整的行
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
@@ -337,33 +363,17 @@ async function handleStreamResponse(
             }
           }
         }
-        break;
+      } catch (error) {
+        console.error('流式响应处理失败:', error);
+        onError('流式响应处理失败');
+        reject(error);
+      } finally {
+        reader.releaseLock();
       }
+    };
 
-      buffer += decoder.decode(value, { stream: true });
-
-      // 处理完整的SSE消息
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // 保存不完整的行
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            onMessage(data);
-          } catch (e) {
-            console.error('解析流数据失败:', e);
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('流式响应处理失败:', error);
-    onError('流式响应处理失败');
-  } finally {
-    reader.releaseLock();
-    onComplete();
-  }
+    processStream();
+  });
 }
 
 export function TeacherDashboardChat({ classes, sessions, assignments }: TeacherDashboardChatProps) {
