@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
-import { getAIResponse } from '@/lib/ai/langgraph/config/openai-gateway'
+import { generateText } from 'ai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 
 export const runtime = 'edge'
 
@@ -25,7 +26,7 @@ const chatStreamRequestSchema = z.object({
 
 /**
  * 真正的流式AI对话API端点
- * 直接调用AI模型并实时流式返回响应
+ * 使用正确的generateText函数调用AI模型
  */
 export async function POST(request: NextRequest): Promise<Response> {
   const requestId = crypto.randomUUID()
@@ -67,16 +68,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     // 3. 构建对话历史
     const conversationHistory = context?.conversationHistory || []
-    const messages = [
-      ...conversationHistory.map(h => ({
-        role: h.role as 'user' | 'assistant',
-        content: h.content
-      })),
-      {
-        role: 'user' as const,
-        content: message
-      }
-    ]
+    const userRole = context?.userRole || 'teacher'
 
     // 4. 创建流式响应
     const stream = new ReadableStream({
@@ -105,10 +97,49 @@ export async function POST(request: NextRequest): Promise<Response> {
             timestamp: new Date().toISOString()
           })}\n\n`))
 
-          // 直接调用AI模型
-          const aiResponse = await getAIResponse(messages, {
+          // 构建对话历史文本
+          const conversationText = conversationHistory
+            .slice(-10) // 只保留最近10条消息
+            .map(h => {
+              if (h.role === 'user') {
+                return `用户: ${h.content}`
+              } else {
+                return `助手: ${h.content}`
+              }
+            })
+            .join('\n')
+
+          // 构建AI提示
+          const prompt = `
+你是一个专业的AI学习助手，名为WeaveMind。你需要与用户进行自然、友好的对话。
+
+用户角色：${userRole}
+当前时间：${new Date().toLocaleString('zh-CN')}
+
+对话历史：
+${conversationText}
+
+用户最新消息：${message}
+
+请根据用户角色和对话历史，提供一个恰当的回复。你的回复应该：
+
+1. **友好亲切**：使用温暖、友好的语调
+2. **专业准确**：提供准确、实用的信息
+3. **主动引导**：根据用户角色提供相关的建议和帮助
+4. **简洁明了**：保持回复简洁但信息丰富
+
+请直接回复用户，不需要包含"用户角色"或其他格式化的标签。
+`
+
+          console.log('🤖 开始调用AI模型...')
+
+          // 直接调用AI模型 - 使用正确的generateText函数
+          const { text: aiResponse } = await generateText({
+            model: createGatewayOpenAI().chat(DEFAULT_MODEL),
+            prompt,
             maxTokens: 2000,
-            temperature: 0.7
+            temperature: 0.8,
+            abortSignal: AbortSignal.timeout(30000) // 30秒超时
           })
 
           console.log('🤖 AI模型响应:', {
@@ -160,7 +191,7 @@ export async function POST(request: NextRequest): Promise<Response> {
               choices: undefined,
               metadata: {
                 intent: 'general_chat',
-                userRole: context?.userRole || 'teacher',
+                userRole: userRole,
                 conversationId: context?.organizationId || 'default-conversation',
                 isDemoMode
               }
