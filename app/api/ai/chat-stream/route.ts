@@ -102,14 +102,39 @@ export async function POST(request: NextRequest): Promise<Response> {
 
           if (result.success) {
             const responseData = result.data
+            const aiMessage = responseData.message || '响应完成'
 
             // 发送进度更新
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'progress',
-              progress: 50,
+              progress: 30,
               message: 'AI正在生成响应...',
               timestamp: new Date().toISOString()
             })}\n\n`))
+
+            // 模拟字符级流式输出 - 逐字符发送
+            const characters = aiMessage.split('')
+            let currentText = ''
+
+            for (let i = 0; i < characters.length; i++) {
+              currentText += characters[i]
+
+              // 每几个字符发送一次更新，实现流畅的流式效果
+              if (i % 3 === 0 || i === characters.length - 1) {
+                // 发送流式内容更新
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'streaming',
+                  content: currentText,
+                  progress: 30 + Math.floor((i / characters.length) * 60), // 30%到90%的进度
+                  timestamp: new Date().toISOString()
+                })}\n\n`))
+
+                // 添加小延迟以实现真正的流式效果
+                if (i < characters.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 50)) // 50ms延迟
+                }
+              }
+            }
 
             // 发送完整的AI响应
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({

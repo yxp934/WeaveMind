@@ -544,6 +544,16 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
                   : msg
               ));
             }
+          } else if (data.type === 'streaming') {
+            // 新的流式内容事件 - 实时更新AI响应内容
+            console.log('流式内容更新:', data.content);
+            if (aiMessageCreated) {
+              setMessages(prev => prev.map(msg =>
+                msg.id === currentMessageId
+                  ? { ...msg, text: `🤖 ${data.content}` }
+                  : msg
+              ));
+            }
           } else if (data.type === 'complete') {
             // 完整的AI响应，替换占位符
             const responseData = data.data || {};
