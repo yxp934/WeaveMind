@@ -91,8 +91,16 @@ export async function POST(request: NextRequest): Promise<Response> {
             timestamp: new Date().toISOString()
           })}\n\n`))
 
-          // 处理AI响应 - 使用流式处理
-          const result = await chatbot.processMessage(
+          // 立即发送处理开始信号 - 不等待AI处理
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'progress',
+            progress: 10,
+            message: '🤖 正在分析您的需求...',
+            timestamp: new Date().toISOString()
+          })}\n\n`))
+
+          // 开始AI处理（异步）
+          const aiPromise = chatbot.processMessage(
             message,
             conversationId,
             userRole,
@@ -100,17 +108,34 @@ export async function POST(request: NextRequest): Promise<Response> {
             context?.conversationHistory || []
           )
 
+          // 在AI处理过程中发送进度更新
+          for (let i = 0; i < 8; i++) {
+            await new Promise(resolve => setTimeout(resolve, 1000)) // 每秒更新
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'progress',
+              progress: 20 + i * 10,
+              message: `🤖 正在思考${'.'.repeat((i % 3) + 1)}`,
+              timestamp: new Date().toISOString()
+            })}\n\n`))
+          }
+
+          // 等待AI处理完成
+          const result = await aiPromise
+
           if (result.success) {
             const responseData = result.data
             const aiMessage = responseData.message || '响应完成'
 
-            // 发送进度更新
+            // 发送进度更新到90%
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'progress',
-              progress: 30,
-              message: 'AI正在生成响应...',
+              progress: 90,
+              message: '🤖 正在整理答案...',
               timestamp: new Date().toISOString()
             })}\n\n`))
+
+            // 等待一下让用户看到"整理答案"
+            await new Promise(resolve => setTimeout(resolve, 500))
 
             // 模拟字符级流式输出 - 逐字符发送
             const characters = aiMessage.split('')
@@ -119,19 +144,19 @@ export async function POST(request: NextRequest): Promise<Response> {
             for (let i = 0; i < characters.length; i++) {
               currentText += characters[i]
 
-              // 每几个字符发送一次更新，实现流畅的流式效果
-              if (i % 3 === 0 || i === characters.length - 1) {
+              // 每几个字符发送一次更新
+              if (i % 2 === 0 || i === characters.length - 1) {
                 // 发送流式内容更新
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'streaming',
                   content: currentText,
-                  progress: 30 + Math.floor((i / characters.length) * 60), // 30%到90%的进度
+                  progress: 90 + Math.floor((i / characters.length) * 10), // 90%到100%的进度
                   timestamp: new Date().toISOString()
                 })}\n\n`))
 
-                // 添加小延迟以实现真正的流式效果
+                // 添加小延迟以实现流畅效果
                 if (i < characters.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 50)) // 50ms延迟
+                  await new Promise(resolve => setTimeout(resolve, 30)) // 30ms延迟
                 }
               }
             }
