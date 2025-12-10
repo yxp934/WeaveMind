@@ -268,10 +268,40 @@ function FunctionResultCard({ type, data, success }: FunctionResultCardProps) {
   );
 }
 
+// 重试配置
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1秒
+
+// 重试函数 - 最多重试3次，不使用fallback
+async function retryApiCall<T>(
+  apiCall: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES
+): Promise<T> {
+  let lastError: Error;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt === maxRetries) {
+        throw error;
+      }
+
+      // 等待重试间隔
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+
+  throw lastError!;
+}
+
 export function TeacherDashboardChat({ classes, sessions, assignments }: TeacherDashboardChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Context menu state
@@ -363,7 +393,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     }
   };
 
-  // 发送消息
+  // 发送消息 - 使用重试机制
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -378,26 +408,36 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     const messageText = inputValue;
     setInputValue('');
     setIsTyping(true);
+    setRetryCount(0);
 
     try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: messageText,
-          context: {
-            ...selectedContext,
-            userRole: 'teacher',
-            // 关键修复：传递正确的metadata用于上下文恢复
-            conversationHistory: messages.map(msg => ({
-              role: msg.isUser ? 'user' : 'assistant',
-              content: msg.text,
-              timestamp: msg.timestamp.toISOString(),
-              toolsUsed: [],
-              metadata: msg.metadata || {}
-            }))
-          },
-        }),
+      // 使用重试机制发送API请求
+      const response = await retryApiCall(async () => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: messageText,
+            context: {
+              ...selectedContext,
+              userRole: 'teacher',
+              // 关键修复：传递正确的metadata用于上下文恢复
+              conversationHistory: messages.map(msg => ({
+                role: msg.isUser ? 'user' : 'assistant',
+                content: msg.text,
+                timestamp: msg.timestamp.toISOString(),
+                toolsUsed: [],
+                metadata: msg.metadata || {}
+              }))
+            },
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        return res;
       });
 
       const data = await response.json();
@@ -434,20 +474,22 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
-      // 处理网络错误
+      // 重试失败后的错误处理
+      console.error('消息发送失败，已重试3次:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: '网络错误，请检查连接后重试。',
+        text: '抱歉，发送消息失败。我已尝试多次，请稍后重试。',
         isUser: false,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
+      setRetryCount(0);
     }
   };
 
-  // 处理选择题点击 - 新增函数
+  // 处理选择题点击 - 使用重试机制
   const handleChoiceClick = async (choice: Choice) => {
     // 以用户身份发送选择的选项
     const userMessage: Message = {
@@ -459,27 +501,37 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
 
     setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
+    setRetryCount(0);
 
     try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: choice.text,
-          context: {
-            ...selectedContext,
-            userRole: 'teacher',
-            choiceId: choice.id, // 传递选择的ID
-            // 关键修复：传递正确的metadata用于上下文恢复
-            conversationHistory: messages.map(msg => ({
-              role: msg.isUser ? 'user' : 'assistant',
-              content: msg.text,
-              timestamp: msg.timestamp.toISOString(),
-              toolsUsed: [],
-              metadata: msg.metadata || {}
-            }))
-          },
-        }),
+      // 使用重试机制发送API请求
+      const response = await retryApiCall(async () => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: choice.text,
+            context: {
+              ...selectedContext,
+              userRole: 'teacher',
+              choiceId: choice.id, // 传递选择的ID
+              // 关键修复：传递正确的metadata用于上下文恢复
+              conversationHistory: messages.map(msg => ({
+                role: msg.isUser ? 'user' : 'assistant',
+                content: msg.text,
+                timestamp: msg.timestamp.toISOString(),
+                toolsUsed: [],
+                metadata: msg.metadata || {}
+              }))
+            },
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        return res;
       });
 
       const data = await response.json();
@@ -513,19 +565,22 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
+      // 重试失败后的错误处理
+      console.error('选择题响应失败，已重试3次:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: '网络错误，请检查连接后重试。',
+        text: '抱歉，响应选项失败。我已尝试多次，请稍后重试。',
         isUser: false,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
+      setRetryCount(0);
     }
   };
 
-  // 建议点击处理 - 直接发送消息
+  // 建议点击处理 - 使用重试机制
   const handleSuggestionClick = async (suggestion: string) => {
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -536,26 +591,36 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
 
     setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
+    setRetryCount(0);
 
     try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: suggestion,
-          context: {
-            ...selectedContext,
-            userRole: 'teacher',
-            // 关键修复：传递正确的metadata用于上下文恢复
-            conversationHistory: messages.map(msg => ({
-              role: msg.isUser ? 'user' : 'assistant',
-              content: msg.text,
-              timestamp: msg.timestamp.toISOString(),
-              toolsUsed: [],
-              metadata: msg.metadata || {}
-            }))
-          },
-        }),
+      // 使用重试机制发送API请求
+      const response = await retryApiCall(async () => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: suggestion,
+            context: {
+              ...selectedContext,
+              userRole: 'teacher',
+              // 关键修复：传递正确的metadata用于上下文恢复
+              conversationHistory: messages.map(msg => ({
+                role: msg.isUser ? 'user' : 'assistant',
+                content: msg.text,
+                timestamp: msg.timestamp.toISOString(),
+                toolsUsed: [],
+                metadata: msg.metadata || {}
+              }))
+            },
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        return res;
       });
 
       const data = await response.json();
@@ -592,15 +657,18 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
+      // 重试失败后的错误处理
+      console.error('建议响应失败，已重试3次:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Network error, please check your connection and try again.',
+        text: '抱歉，响应建议失败。我已尝试多次，请稍后重试。',
         isUser: false,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
+      setRetryCount(0);
     }
   };
 
