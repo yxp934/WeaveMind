@@ -473,7 +473,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     }
   };
 
-  // 流式发送消息 - 使用Server-Sent Events
+  // 流式发送消息 - 真正的实时流式显示
   const handleSendMessageStream = async () => {
     if (!inputValue.trim()) return;
 
@@ -513,29 +513,64 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
       });
 
       let currentMessageId = (Date.now() + 1).toString();
+      let aiMessageCreated = false; // 标记是否已创建AI消息
 
       // 处理流式响应
       await handleStreamResponse(
         response,
-        // onMessage - 处理每个数据块
+        // onMessage - 处理每个数据块，实现真正的实时显示
         (data) => {
           if (data.type === 'start') {
             console.log('流式响应开始:', data);
-          } else if (data.type === 'progress') {
-            console.log('处理进度:', data.progress, data.message);
-          } else if (data.type === 'complete') {
-            // 完整的AI响应
-            const responseData = data.data || {};
-            const aiMessage: Message = {
+            // 立即创建AI消息占位符
+            const placeholderMessage: Message = {
               id: currentMessageId,
-              text: responseData.message || '响应完成',
+              text: '',
               isUser: false,
               timestamp: new Date(),
-              choices: responseData.choices || undefined,
+              choices: undefined,
               functionResult: undefined,
-              metadata: responseData.metadata || undefined,
+              metadata: undefined,
             };
-            setMessages(prev => [...prev, aiMessage]);
+            setMessages(prev => [...prev, placeholderMessage]);
+            aiMessageCreated = true;
+          } else if (data.type === 'progress') {
+            console.log('处理进度:', data.progress, data.message);
+            // 更新进度信息
+            if (aiMessageCreated) {
+              setMessages(prev => prev.map(msg =>
+                msg.id === currentMessageId
+                  ? { ...msg, text: `🤖 ${data.message}` }
+                  : msg
+              ));
+            }
+          } else if (data.type === 'complete') {
+            // 完整的AI响应，替换占位符
+            const responseData = data.data || {};
+            if (aiMessageCreated) {
+              setMessages(prev => prev.map(msg =>
+                msg.id === currentMessageId
+                  ? {
+                      ...msg,
+                      text: responseData.message || '响应完成',
+                      choices: responseData.choices || undefined,
+                      metadata: responseData.metadata || undefined,
+                    }
+                  : msg
+              ));
+            } else {
+              // 如果还没创建，就创建一个新消息
+              const aiMessage: Message = {
+                id: currentMessageId,
+                text: responseData.message || '响应完成',
+                isUser: false,
+                timestamp: new Date(),
+                choices: responseData.choices || undefined,
+                functionResult: undefined,
+                metadata: responseData.metadata || undefined,
+              };
+              setMessages(prev => [...prev, aiMessage]);
+            }
             setStreamingMessage(''); // 清空流式消息
           } else if (data.type === 'error') {
             // 处理错误
