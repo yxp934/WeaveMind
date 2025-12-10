@@ -82,9 +82,9 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
       model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       messages: conversationMessages,
-      maxTokens: 2500,
+      maxTokens: 1800, // 适度降低以提高响应速度
       temperature: 0.7,
-      timeout: 120000 // 120秒超时，适应复杂模型
+      abortSignal: AbortSignal.timeout(30000) // 30秒超时，支持动态控制
     })
 
     // 解析AI响应
@@ -300,7 +300,7 @@ export async function outlineGenerationNode(state: ChatbotState): Promise<Partia
       model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       messages: conversationMessages,
-      maxTokens: 2500,
+      maxTokens: 1800, // 适度降低以提高响应速度
       temperature: 0.7
     })
 
@@ -391,7 +391,7 @@ export async function assignmentCreationNode(state: ChatbotState): Promise<Parti
       model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       messages: conversationMessages,
-      maxTokens: 2500,
+      maxTokens: 1800, // 适度降低以提高响应速度
       temperature: 0.7
     })
 
@@ -486,7 +486,7 @@ export async function a2aOptimizationNode(state: ChatbotState): Promise<Partial<
       model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       messages: conversationMessages,
-      maxTokens: 2500,
+      maxTokens: 1800, // 适度降低以提高响应速度
       temperature: 0.7
     })
 
@@ -582,7 +582,7 @@ export async function contentGenerationNode(state: ChatbotState): Promise<Partia
       model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       messages: conversationMessages,
-      maxTokens: 2500,
+      maxTokens: 1800, // 适度降低以提高响应速度
       temperature: 0.7
     })
 

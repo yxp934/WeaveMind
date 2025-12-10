@@ -83,7 +83,7 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
       messages: conversationMessages,
       maxTokens: 2000,
       temperature: 0.1,
-      timeout: 120000 // 120秒超时，适应复杂模型
+      abortSignal: AbortSignal.timeout(25000) // 25秒超时，接近Vercel限制但保留缓冲
     })
 
     // 解析AI响应

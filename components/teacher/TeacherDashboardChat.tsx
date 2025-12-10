@@ -474,11 +474,26 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
-      // 重试失败后的错误处理
+      // 重试失败后的错误处理 - 改进超时错误提示
       console.error('消息发送失败，已重试3次:', error);
+
+      // 检查是否是超时错误
+      const isTimeoutError = error instanceof Error && (
+        error.message.includes('timeout') ||
+        error.message.includes('25s') ||
+        error.message.includes('abort') ||
+        error.name === 'AbortError'
+      );
+
+      let errorText = '抱歉，发送消息失败。我已尝试多次，请稍后重试。';
+
+      if (isTimeoutError) {
+        errorText = '抱歉，AI响应超时。系统可能正在处理复杂请求，请稍后重试或简化您的问题。';
+      }
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: '抱歉，发送消息失败。我已尝试多次，请稍后重试。',
+        text: errorText,
         isUser: false,
         timestamp: new Date(),
       };

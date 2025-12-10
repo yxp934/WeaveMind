@@ -91,7 +91,7 @@ ${conversationHistory}
       prompt,
       maxTokens: 1500,
       temperature: 0.8,
-      timeout: 120000 // 120秒超时，适应复杂模型
+      abortSignal: AbortSignal.timeout(30000) // 30秒超时，支持动态控制
     })
 
     // 解析AI响应
