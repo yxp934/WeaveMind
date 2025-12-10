@@ -297,11 +297,81 @@ async function retryApiCall<T>(
   throw lastError!;
 }
 
+// 流式响应处理函数
+async function handleStreamResponse(
+  response: Response,
+  onMessage: (data: any) => void,
+  onComplete: () => void,
+  onError: (error: string) => void
+) {
+  if (!response.ok) {
+    onError(`HTTP ${response.status}: ${response.statusText}`);
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    onError('无法读取响应流');
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        // 处理剩余的buffer内容
+        if (buffer.trim()) {
+          const lines = buffer.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                onMessage(data);
+              } catch (e) {
+                console.error('解析流数据失败:', e);
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // 处理完整的SSE消息
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // 保存不完整的行
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            onMessage(data);
+          } catch (e) {
+            console.error('解析流数据失败:', e);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('流式响应处理失败:', error);
+    onError('流式响应处理失败');
+  } finally {
+    reader.releaseLock();
+    onComplete();
+  }
+}
+
 export function TeacherDashboardChat({ classes, sessions, assignments }: TeacherDashboardChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [streamingMessage, setStreamingMessage] = useState<string>(''); // 流式响应内容
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Context menu state
@@ -390,6 +460,115 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
         return <Calendar className="size-3" />;
       case 'assignment':
         return <FileText className="size-3" />;
+    }
+  };
+
+  // 流式发送消息 - 使用Server-Sent Events
+  const handleSendMessageStream = async () => {
+    if (!inputValue.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: inputValue,
+      isUser: true,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    const messageText = inputValue;
+    setInputValue('');
+    setIsTyping(true);
+    setRetryCount(0);
+    setStreamingMessage(''); // 重置流式消息
+
+    try {
+      // 使用流式API发送请求
+      const response = await fetch('/api/ai/chat-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          context: {
+            ...selectedContext,
+            userRole: 'teacher',
+            conversationHistory: messages.map(msg => ({
+              role: msg.isUser ? 'user' : 'assistant',
+              content: msg.text,
+              timestamp: msg.timestamp.toISOString(),
+              toolsUsed: [],
+              metadata: msg.metadata || {}
+            }))
+          },
+        }),
+      });
+
+      let currentMessageId = (Date.now() + 1).toString();
+
+      // 处理流式响应
+      await handleStreamResponse(
+        response,
+        // onMessage - 处理每个数据块
+        (data) => {
+          if (data.type === 'start') {
+            console.log('流式响应开始:', data);
+          } else if (data.type === 'progress') {
+            console.log('处理进度:', data.progress, data.message);
+          } else if (data.type === 'complete') {
+            // 完整的AI响应
+            const responseData = data.data || {};
+            const aiMessage: Message = {
+              id: currentMessageId,
+              text: responseData.message || '响应完成',
+              isUser: false,
+              timestamp: new Date(),
+              choices: responseData.choices || undefined,
+              functionResult: undefined,
+              metadata: responseData.metadata || undefined,
+            };
+            setMessages(prev => [...prev, aiMessage]);
+            setStreamingMessage(''); // 清空流式消息
+          } else if (data.type === 'error') {
+            // 处理错误
+            const errorMessage: Message = {
+              id: currentMessageId,
+              text: data.error || '处理失败，请重试',
+              isUser: false,
+              timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, errorMessage]);
+            setStreamingMessage(''); // 清空流式消息
+          }
+        },
+        // onComplete - 流完成
+        () => {
+          console.log('流式响应完成');
+        },
+        // onError - 发生错误
+        (error) => {
+          console.error('流式响应错误:', error);
+          const errorMessage: Message = {
+            id: currentMessageId,
+            text: `流式响应错误: ${error}`,
+            isUser: false,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setStreamingMessage(''); // 清空流式消息
+        }
+      );
+
+    } catch (error) {
+      console.error('发送消息失败:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: '发送消息失败，请重试',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      setStreamingMessage(''); // 清空流式消息
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -691,7 +870,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      handleSendMessageStream();
     }
   };
 
@@ -878,7 +1057,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           </button>
 
           <button
-            onClick={handleSendMessage}
+            onClick={handleSendMessageStream}
             disabled={!inputValue.trim() || isTyping}
             className="size-9 bg-[#B882B1] hover:bg-[#a06e9d] disabled:bg-gray-300 disabled:cursor-not-allowed rounded-[8px] flex items-center justify-center transition-colors"
           >
