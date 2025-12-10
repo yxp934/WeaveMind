@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { chatbot } from '@/lib/ai/langgraph/chatbot-graph'
 import { z } from 'zod'
+import { getAIResponse } from '@/lib/ai/langgraph/config/openai-gateway'
 
 export const runtime = 'edge'
 
@@ -24,8 +24,8 @@ const chatStreamRequestSchema = z.object({
 })
 
 /**
- * 基于LangGraph的流式AI对话API端点
- * 使用Server-Sent Events (SSE)实现实时流式响应
+ * 真正的流式AI对话API端点
+ * 直接调用AI模型并实时流式返回响应
  */
 export async function POST(request: NextRequest): Promise<Response> {
   const requestId = crypto.randomUUID()
@@ -65,18 +65,18 @@ export async function POST(request: NextRequest): Promise<Response> {
       user = { id: 'demo-user', email: 'demo@example.com' }
     }
 
-    // 3. 使用LangGraph聊天机器人处理消息
-    const conversationId = ctx?.organizationId || 'default-conversation'
-    const userRole = context?.userRole || (isDemoMode ? 'teacher' : 'student')
-    const userId = user?.id || 'demo-user'
-
-    console.log('🤖 使用LangGraph流式处理聊天:', {
-      requestId,
-      conversationId,
-      userRole,
-      messageLength: message.length,
-      historyLength: context?.conversationHistory?.length || 0
-    })
+    // 3. 构建对话历史
+    const conversationHistory = context?.conversationHistory || []
+    const messages = [
+      ...conversationHistory.map(h => ({
+        role: h.role as 'user' | 'assistant',
+        content: h.content
+      })),
+      {
+        role: 'user' as const,
+        content: message
+      }
+    ]
 
     // 4. 创建流式响应
     const stream = new ReadableStream({
@@ -84,6 +84,12 @@ export async function POST(request: NextRequest): Promise<Response> {
         const encoder = new TextEncoder()
 
         try {
+          console.log('🚀 开始流式AI处理:', {
+            requestId,
+            messageLength: message.length,
+            historyLength: conversationHistory.length
+          })
+
           // 发送开始信号
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'start',
@@ -91,7 +97,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             timestamp: new Date().toISOString()
           })}\n\n`))
 
-          // 立即发送处理开始信号 - 不等待AI处理
+          // 立即发送处理开始信号
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'progress',
             progress: 10,
@@ -99,94 +105,85 @@ export async function POST(request: NextRequest): Promise<Response> {
             timestamp: new Date().toISOString()
           })}\n\n`))
 
-          // 开始AI处理（异步）
-          const aiPromise = chatbot.processMessage(
-            message,
-            conversationId,
-            userRole,
-            userId,
-            context?.conversationHistory || []
-          )
+          // 直接调用AI模型
+          const aiResponse = await getAIResponse(messages, {
+            maxTokens: 2000,
+            temperature: 0.7
+          })
 
-          // 在AI处理过程中发送进度更新
-          for (let i = 0; i < 8; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1000)) // 每秒更新
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'progress',
-              progress: 20 + i * 10,
-              message: `🤖 正在思考${'.'.repeat((i % 3) + 1)}`,
-              timestamp: new Date().toISOString()
-            })}\n\n`))
-          }
+          console.log('🤖 AI模型响应:', {
+            requestId,
+            responseLength: aiResponse.length,
+            processingTime: Date.now() - startTime
+          })
 
-          // 等待AI处理完成
-          const result = await aiPromise
+          // 发送进度更新到90%
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'progress',
+            progress: 90,
+            message: '🤖 正在整理答案...',
+            timestamp: new Date().toISOString()
+          })}\n\n`))
 
-          if (result.success) {
-            const responseData = result.data
-            const aiMessage = responseData.message || '响应完成'
+          // 等待一下让用户看到"整理答案"
+          await new Promise(resolve => setTimeout(resolve, 500))
 
-            // 发送进度更新到90%
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'progress',
-              progress: 90,
-              message: '🤖 正在整理答案...',
-              timestamp: new Date().toISOString()
-            })}\n\n`))
+          // 真正的字符级流式输出
+          const characters = aiResponse.split('')
+          let currentText = ''
 
-            // 等待一下让用户看到"整理答案"
-            await new Promise(resolve => setTimeout(resolve, 500))
+          for (let i = 0; i < characters.length; i++) {
+            currentText += characters[i]
 
-            // 模拟字符级流式输出 - 逐字符发送
-            const characters = aiMessage.split('')
-            let currentText = ''
+            // 每几个字符发送一次更新
+            if (i % 2 === 0 || i === characters.length - 1) {
+              // 发送流式内容更新
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'streaming',
+                content: currentText,
+                progress: 90 + Math.floor((i / characters.length) * 10), // 90%到100%的进度
+                timestamp: new Date().toISOString()
+              })}\n\n`))
 
-            for (let i = 0; i < characters.length; i++) {
-              currentText += characters[i]
-
-              // 每几个字符发送一次更新
-              if (i % 2 === 0 || i === characters.length - 1) {
-                // 发送流式内容更新
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                  type: 'streaming',
-                  content: currentText,
-                  progress: 90 + Math.floor((i / characters.length) * 10), // 90%到100%的进度
-                  timestamp: new Date().toISOString()
-                })}\n\n`))
-
-                // 添加小延迟以实现流畅效果
-                if (i < characters.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 30)) // 30ms延迟
-                }
+              // 添加小延迟以实现流畅效果
+              if (i < characters.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 30)) // 30ms延迟
               }
             }
-
-            // 发送完整的AI响应
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'complete',
-              data: responseData,
-              metadata: {
-                timestamp: new Date().toISOString(),
-                requestId,
-                mode: isDemoMode ? 'demo' : 'production',
-                processingTime: Date.now() - startTime
-              }
-            })}\n\n`))
-
-          } else {
-            // 发送错误信息
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'error',
-              error: result.error?.message || '聊天处理失败',
-              details: result.error
-            })}\n\n`))
           }
 
+          // 发送完整的AI响应
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'complete',
+            data: {
+              message: aiResponse,
+              choices: undefined,
+              metadata: {
+                intent: 'general_chat',
+                userRole: context?.userRole || 'teacher',
+                conversationId: context?.organizationId || 'default-conversation',
+                isDemoMode
+              }
+            },
+            metadata: {
+              timestamp: new Date().toISOString(),
+              requestId,
+              mode: isDemoMode ? 'demo' : 'production',
+              processingTime: Date.now() - startTime
+            }
+          })}\n\n`))
+
+          console.log('✅ 流式处理完成:', {
+            requestId,
+            totalProcessingTime: Date.now() - startTime
+          })
+
         } catch (error: any) {
-          console.error('流式处理失败:', error)
+          console.error('🚨 流式处理失败:', error)
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'error',
-            error: error.message || '处理请求时发生错误',
+            error: error.message || 'AI处理失败',
+            details: error.stack,
             timestamp: new Date().toISOString()
           })}\n\n`))
         } finally {
