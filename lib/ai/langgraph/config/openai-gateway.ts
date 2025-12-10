@@ -21,4 +21,4 @@ export function createGatewayOpenAI() {
  * 默认的AI模型配置
  * 使用项目中实际可用的模型
  */
-export const DEFAULT_MODEL = 'meituan/longcat-flash-chat'
+export const DEFAULT_MODEL = 'xai/grok-4.1-fast-reasoning'
