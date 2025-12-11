@@ -112,7 +112,12 @@ export default function SidebarChatbot({
   }, [messages]);
 
   const handleSend = async () => {
-    console.log('[DEBUG] handleSend被调用:', { input: input.trim(), isLoading });
+    console.log('[DEBUG] handleSend被调用:', {
+      input: input,
+      inputTrimmed: input.trim(),
+      inputLength: input.length,
+      isLoading
+    });
     if (!input.trim() || isLoading) {
       console.log('[DEBUG] 发送被阻止:', { noInput: !input.trim(), isLoading });
       return;
@@ -419,10 +424,15 @@ export default function SidebarChatbot({
           <input
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              console.log('[DEBUG] onChange触发:', e.target.value);
+              setInput(e.target.value);
+            }}
             onKeyDown={(e) => {
+              console.log('[DEBUG] onKeyDown触发:', e.key, '当前input:', input);
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
+                console.log('[DEBUG] Enter键被按下，调用handleSend，当前input值:', input);
                 handleSend();
               }
             }}
