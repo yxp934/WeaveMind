@@ -249,6 +249,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           });
 
           // 调用AI API - 修复格式以匹配后端期望
+          const enableStream = metadata.stream || false
           const response = await fetch('/api/ai/chat', {
             method: 'POST',
             headers: {
@@ -256,6 +257,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             },
             body: JSON.stringify({
               message: content,
+              stream: enableStream, // 支持流式输出
               context: {
                 courseId: metadata.courseId,
                 classId: metadata.classId,

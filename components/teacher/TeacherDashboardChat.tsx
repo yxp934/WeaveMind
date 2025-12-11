@@ -492,12 +492,13 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     setStreamingMessage(''); // 重置流式消息
 
     try {
-      // 使用流式API发送请求
-      const response = await fetch('/api/ai/chat-stream', {
+      // 使用升级后的流式API（支持LangGraph）发送请求
+      const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageText,
+          stream: true, // 启用流式输出
           context: {
             ...selectedContext,
             userRole: 'teacher',
