@@ -277,7 +277,7 @@ export const useChatbotStore = create<ChatbotStore>()(
                 classId: metadata.classId,
                 organizationId: metadata.organizationId,
                 userRole: get().userRole || 'teacher',
-                conversationHistory: get().messages.slice(-5).map(msg => ({
+                conversationHistory: (get().messages || []).slice(-5).map(msg => ({
                   role: msg.role === 'assistant' ? 'assistant' : 'user',
                   content: msg.content,
                   timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
