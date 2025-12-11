@@ -233,9 +233,9 @@ export const useChatbotStore = create<ChatbotStore>()(
         set({ messages: [] });
       },
 
-      // 发送消息 - 支持真正的流式输出
+      // 发送消息 - 使用后台任务 + 轮询模式解决超时问题
       sendMessage: async (content, metadata = {}) => {
-        const { addMessage, setLoading, setError, setStreamingMessage } = get();
+        const { addMessage, setLoading, setError } = get();
 
         try {
           setLoading(true);
@@ -248,163 +248,124 @@ export const useChatbotStore = create<ChatbotStore>()(
             metadata,
           });
 
-          // 检查是否启用流式模式
-          const enableStream = metadata.stream || false
+          // 创建空的AI消息占位符
+          const aiMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const newMessage: ChatMessage = {
+            id: aiMessageId,
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            metadata: { ...metadata, isPolling: true },
+          };
+          addMessage(newMessage);
 
-          if (enableStream) {
-            // 流式模式 - 使用SSE处理
-            const response = await fetch('/api/ai/chat-stream', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
+          // 使用后台任务API - 立即返回任务ID
+          const response = await fetch('/api/ai/chat-async', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: content,
+              context: {
+                courseId: metadata.courseId,
+                classId: metadata.classId,
+                organizationId: metadata.organizationId,
+                userRole: get().userRole || 'teacher',
+                conversationHistory: get().messages.slice(-5).map(msg => ({
+                  role: msg.role === 'assistant' ? 'assistant' : 'user',
+                  content: msg.content,
+                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
+                })),
               },
-              body: JSON.stringify({
-                message: content,
-                context: {
-                  courseId: metadata.courseId,
-                  classId: metadata.classId,
-                  organizationId: metadata.organizationId,
-                  userRole: get().userRole || 'teacher',
-                  conversationHistory: get().messages.slice(-5).map(msg => ({
-                    role: msg.role === 'assistant' ? 'assistant' : 'user',
-                    content: msg.content,
-                    timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
-                  })),
-                },
-              }),
-            });
+            }),
+          });
 
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            // 处理SSE流式响应
-            const reader = response.body?.getReader();
-            if (!reader) {
-              throw new Error('无法获取响应流');
-            }
-
-            const decoder = new TextDecoder();
-            let streamContent = '';
-            let streamingMessageId: string | null = null;
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              const chunk = decoder.decode(value, { stream: true });
-              const lines = chunk.split('\n');
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const data = JSON.parse(line.slice(6));
-
-                    if (data.type === 'start') {
-                      // 开始流式响应，创建空的AI消息
-                      const newMessage: ChatMessage = {
-                        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        role: 'assistant',
-                        content: '',
-                        timestamp: new Date(),
-                        metadata: { ...metadata, streaming: true },
-                      };
-                      set((state) => ({
-                        messages: [...state.messages, newMessage],
-                      }));
-                      streamingMessageId = newMessage.id;
-                    } else if (data.type === 'streaming' && streamingMessageId) {
-                      // 更新流式内容
-                      streamContent = data.content || streamContent;
-                      setStreamingMessage(streamContent);
-                      // 实时更新消息内容
-                      set((state) => ({
-                        messages: state.messages.map((msg) =>
-                          msg.id === streamingMessageId
-                            ? { ...msg, content: streamContent }
-                            : msg
-                        ),
-                      }));
-                    } else if (data.type === 'complete' && streamingMessageId) {
-                      // 完成流式响应
-                      const finalContent = data.data?.message || streamContent;
-                      set((state) => ({
-                        messages: state.messages.map((msg) =>
-                          msg.id === streamingMessageId
-                            ? {
-                                ...msg,
-                                content: finalContent,
-                                metadata: {
-                                  ...msg.metadata,
-                                  ...data.data?.metadata,
-                                  streaming: false,
-                                },
-                              }
-                            : msg
-                        ),
-                      }));
-                      setStreamingMessage(null);
-                    } else if (data.type === 'error') {
-                      throw new Error(data.error || 'AI处理失败');
-                    }
-                  } catch (parseError) {
-                    // 忽略JSON解析错误，可能是不完整的数据
-                    if (line.slice(6).trim()) {
-                      console.warn('解析SSE数据失败:', parseError);
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            // 非流式模式 - 传统请求
-            const response = await fetch('/api/ai/chat', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                message: content,
-                stream: false,
-                context: {
-                  courseId: metadata.courseId,
-                  classId: metadata.classId,
-                  organizationId: metadata.organizationId,
-                  userRole: get().userRole || 'teacher',
-                  conversationHistory: get().messages.slice(-3).map(msg => ({
-                    role: msg.role === 'assistant' ? 'assistant' : 'user',
-                    content: msg.content,
-                    timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
-                  })),
-                },
-                tools: metadata.tools,
-              }),
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              console.error('API Error:', errorData);
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            // 添加AI响应消息
-            addMessage({
-              role: 'assistant',
-              content: data.data?.message || data.message || '抱歉，我现在无法处理您的请求。请稍后重试。',
-              metadata: {
-                ...metadata,
-                sessionId: data.data?.metadata?.sessionId || data.sessionId,
-              },
-              toolCalls: data.data?.toolsUsed || data.toolsUsed,
-            });
-
-            // 更新会话ID
-            if (data.sessionId) {
-              get().setSessionId(data.sessionId);
-            }
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
+
+          const data = await response.json();
+          const jobId = data.data.jobId;
+
+          // 开始轮询任务状态
+          const pollInterval = setInterval(async () => {
+            try {
+              const statusResponse = await fetch(`/api/ai/chat-status/${jobId}`);
+              if (!statusResponse.ok) {
+                clearInterval(pollInterval);
+                throw new Error('Failed to get job status');
+              }
+
+              const statusData = await statusResponse.json();
+              const job = statusData.data;
+
+              if (job.status === 'completed' && job.result) {
+                // 任务完成，更新消息内容
+                clearInterval(pollInterval);
+                set((state) => ({
+                  messages: state.messages.map((msg) =>
+                    msg.id === aiMessageId
+                      ? {
+                          ...msg,
+                          content: job.result.message,
+                          metadata: {
+                            ...msg.metadata,
+                            ...job.result.metadata,
+                            isPolling: false,
+                          },
+                        }
+                      : msg
+                  ),
+                }));
+                setLoading(false);
+              } else if (job.status === 'failed') {
+                // 任务失败
+                clearInterval(pollInterval);
+                setError(job.error || 'AI处理失败');
+                set((state) => ({
+                  messages: state.messages.map((msg) =>
+                    msg.id === aiMessageId
+                      ? {
+                          ...msg,
+                          content: '抱歉，AI处理失败。请稍后重试。',
+                          metadata: {
+                            ...msg.metadata,
+                            isPolling: false,
+                          },
+                        }
+                      : msg
+                  ),
+                }));
+                setLoading(false);
+              }
+            } catch (pollError) {
+              console.error('轮询状态失败:', pollError);
+            }
+          }, 2000); // 每2秒轮询一次
+
+          // 最多轮询60次（2分钟）
+          setTimeout(() => {
+            clearInterval(pollInterval);
+            if (get().isLoading) {
+              setError('AI处理超时，请重试');
+              setLoading(false);
+              set((state) => ({
+                messages: state.messages.map((msg) =>
+                  msg.id === aiMessageId
+                    ? {
+                        ...msg,
+                        content: '抱歉，AI处理超时。请重试。',
+                        metadata: {
+                          ...msg.metadata,
+                          isPolling: false,
+                        },
+                      }
+                    : msg
+                ),
+              }));
+            }
+          }, 120000);
 
           // 保存对话到数据库（可选，不阻塞主流程）
           try {
@@ -454,9 +415,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             role: 'system',
             content: '抱歉，发送消息时出现错误。请稍后重试。',
           });
-        } finally {
           setLoading(false);
-          setStreamingMessage(null);
         }
       },
 
