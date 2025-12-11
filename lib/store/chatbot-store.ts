@@ -319,6 +319,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           // 保存对话到数据库（后台异步，不阻塞主流程）
           ;(async () => {
             try {
+              console.log('[DEBUG] 开始保存对话到数据库');
               const messages = [...get().messages];
               const conversationId = get().conversationId;
 
@@ -346,14 +347,21 @@ export const useChatbotStore = create<ChatbotStore>()(
                 })
               });
 
+              console.log('[DEBUG] 保存响应状态:', saveResponse.status);
+
               if (saveResponse.ok) {
                 const saveData = await saveResponse.json();
                 if (saveData.data?.conversationId) {
                   set({ conversationId: saveData.data.conversationId });
+                  console.log('[DEBUG] 对话保存成功');
                 }
+              } else {
+                // 保存失败但不阻断主流程
+                const errorText = await saveResponse.text();
+                console.warn('[DEBUG] 保存对话失败:', saveResponse.status, errorText);
               }
             } catch (saveError) {
-              console.warn('保存对话失败:', saveError);
+              console.warn('[DEBUG] 保存对话异常:', saveError);
               // 不影响主流程
             }
           })()
