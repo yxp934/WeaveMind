@@ -121,6 +121,7 @@ export default function SidebarChatbot({
       userRole,
       classId,
       courseId,
+      stream: true, // 启用流式输出
     });
   };
 

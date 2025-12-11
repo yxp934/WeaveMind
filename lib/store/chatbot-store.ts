@@ -233,9 +233,9 @@ export const useChatbotStore = create<ChatbotStore>()(
         set({ messages: [] });
       },
 
-      // 发送消息
+      // 发送消息 - 支持真正的流式输出
       sendMessage: async (content, metadata = {}) => {
-        const { addMessage, setLoading, setError } = get();
+        const { addMessage, setLoading, setError, setStreamingMessage } = get();
 
         try {
           setLoading(true);
@@ -248,66 +248,168 @@ export const useChatbotStore = create<ChatbotStore>()(
             metadata,
           });
 
-          // 调用AI API - 修复格式以匹配后端期望
+          // 检查是否启用流式模式
           const enableStream = metadata.stream || false
-          const response = await fetch('/api/ai/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              message: content,
-              stream: enableStream, // 支持流式输出
-              context: {
-                courseId: metadata.courseId,
-                classId: metadata.classId,
-                organizationId: metadata.organizationId,
-                userRole: get().userRole || 'teacher',
-                conversationHistory: get().messages.slice(-3).map(msg => ({
-                  role: msg.role === 'assistant' ? 'assistant' : 'user',
-                  content: msg.content,
-                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
-                })),
+
+          if (enableStream) {
+            // 流式模式 - 使用SSE处理
+            const response = await fetch('/api/ai/chat-stream', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
               },
-              tools: metadata.tools,
-            }),
-          });
+              body: JSON.stringify({
+                message: content,
+                context: {
+                  courseId: metadata.courseId,
+                  classId: metadata.classId,
+                  organizationId: metadata.organizationId,
+                  userRole: get().userRole || 'teacher',
+                  conversationHistory: get().messages.slice(-5).map(msg => ({
+                    role: msg.role === 'assistant' ? 'assistant' : 'user',
+                    content: msg.content,
+                    timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
+                  })),
+                },
+              }),
+            });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            console.error('API Error:', errorData);
-            throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // 处理SSE流式响应
+            const reader = response.body?.getReader();
+            if (!reader) {
+              throw new Error('无法获取响应流');
+            }
+
+            const decoder = new TextDecoder();
+            let streamContent = '';
+            let streamingMessageId: string | null = null;
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+
+                    if (data.type === 'start') {
+                      // 开始流式响应，创建空的AI消息
+                      const newMessage: ChatMessage = {
+                        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        role: 'assistant',
+                        content: '',
+                        timestamp: new Date(),
+                        metadata: { ...metadata, streaming: true },
+                      };
+                      set((state) => ({
+                        messages: [...state.messages, newMessage],
+                      }));
+                      streamingMessageId = newMessage.id;
+                    } else if (data.type === 'streaming' && streamingMessageId) {
+                      // 更新流式内容
+                      streamContent = data.content || streamContent;
+                      setStreamingMessage(streamContent);
+                      // 实时更新消息内容
+                      set((state) => ({
+                        messages: state.messages.map((msg) =>
+                          msg.id === streamingMessageId
+                            ? { ...msg, content: streamContent }
+                            : msg
+                        ),
+                      }));
+                    } else if (data.type === 'complete' && streamingMessageId) {
+                      // 完成流式响应
+                      const finalContent = data.data?.message || streamContent;
+                      set((state) => ({
+                        messages: state.messages.map((msg) =>
+                          msg.id === streamingMessageId
+                            ? {
+                                ...msg,
+                                content: finalContent,
+                                metadata: {
+                                  ...msg.metadata,
+                                  ...data.data?.metadata,
+                                  streaming: false,
+                                },
+                              }
+                            : msg
+                        ),
+                      }));
+                      setStreamingMessage(null);
+                    } else if (data.type === 'error') {
+                      throw new Error(data.error || 'AI处理失败');
+                    }
+                  } catch (parseError) {
+                    // 忽略JSON解析错误，可能是不完整的数据
+                    if (line.slice(6).trim()) {
+                      console.warn('解析SSE数据失败:', parseError);
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            // 非流式模式 - 传统请求
+            const response = await fetch('/api/ai/chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                message: content,
+                stream: false,
+                context: {
+                  courseId: metadata.courseId,
+                  classId: metadata.classId,
+                  organizationId: metadata.organizationId,
+                  userRole: get().userRole || 'teacher',
+                  conversationHistory: get().messages.slice(-3).map(msg => ({
+                    role: msg.role === 'assistant' ? 'assistant' : 'user',
+                    content: msg.content,
+                    timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
+                  })),
+                },
+                tools: metadata.tools,
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              console.error('API Error:', errorData);
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // 添加AI响应消息
+            addMessage({
+              role: 'assistant',
+              content: data.data?.message || data.message || '抱歉，我现在无法处理您的请求。请稍后重试。',
+              metadata: {
+                ...metadata,
+                sessionId: data.data?.metadata?.sessionId || data.sessionId,
+              },
+              toolCalls: data.data?.toolsUsed || data.toolsUsed,
+            });
+
+            // 更新会话ID
+            if (data.sessionId) {
+              get().setSessionId(data.sessionId);
+            }
           }
 
-          const data = await response.json();
-
-          // 添加AI响应消息
-          addMessage({
-            role: 'assistant',
-            content: data.data?.message || data.message || '抱歉，我现在无法处理您的请求。请稍后重试。',
-            metadata: {
-              ...metadata,
-              sessionId: data.data?.metadata?.sessionId || data.sessionId,
-            },
-            toolCalls: data.data?.toolsUsed || data.toolsUsed,
-          });
-
-          // 更新会话ID
-          if (data.sessionId) {
-            get().setSessionId(data.sessionId);
-          }
-
-          // 保存对话到数据库 - 修复测试问题
+          // 保存对话到数据库（可选，不阻塞主流程）
           try {
-            const messages = [...get().messages]; // 创建副本以避免状态竞争
+            const messages = [...get().messages];
             const conversationId = get().conversationId;
-            const context = {
-              userRole: get().userRole || 'teacher',
-              organizationId: metadata.organizationId,
-              courseId: metadata.courseId,
-              classId: metadata.classId,
-              ...metadata
-            };
 
             const saveResponse = await fetch('/api/ai/conversations/save', {
               method: 'POST',
@@ -324,7 +426,12 @@ export const useChatbotStore = create<ChatbotStore>()(
                   metadata: msg.metadata,
                   toolsUsed: msg.toolCalls?.map(tool => tool.tool) || []
                 })),
-                context
+                context: {
+                  userRole: get().userRole || 'teacher',
+                  organizationId: metadata.organizationId,
+                  courseId: metadata.courseId,
+                  classId: metadata.classId,
+                }
               })
             });
 
@@ -336,7 +443,6 @@ export const useChatbotStore = create<ChatbotStore>()(
             }
           } catch (saveError) {
             console.warn('保存对话失败:', saveError);
-            // 不影响主流程，继续执行
           }
 
         } catch (error) {
@@ -350,6 +456,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           });
         } finally {
           setLoading(false);
+          setStreamingMessage(null);
         }
       },
 
