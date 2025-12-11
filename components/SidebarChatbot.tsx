@@ -112,17 +112,24 @@ export default function SidebarChatbot({
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    console.log('[DEBUG] handleSend被调用:', { input: input.trim(), isLoading });
+    if (!input.trim() || isLoading) {
+      console.log('[DEBUG] 发送被阻止:', { noInput: !input.trim(), isLoading });
+      return;
+    }
 
     const messageContent = input.trim();
+    console.log('[DEBUG] 准备发送消息:', messageContent);
     setInput("");
 
+    console.log('[DEBUG] 调用sendMessage');
     await sendMessage(messageContent, {
       userRole,
       classId,
       courseId,
       stream: true, // 启用流式输出
     });
+    console.log('[DEBUG] sendMessage完成');
   };
 
   const handleSuggestionClick = (suggestion: string) => {
