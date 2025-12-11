@@ -290,25 +290,34 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           const data = await response.json();
           console.log('[DEBUG] API响应:', response.status, data);
+          console.log('[DEBUG] AI消息内容:', data.data?.result?.message);
+          console.log('[DEBUG] aiMessageId:', aiMessageId);
 
           if (data.success && data.data.status === 'completed' && data.data.result) {
             console.log('[DEBUG] AI响应完成，更新消息内容');
             // AI响应完成，更新消息内容
-            set((state) => ({
-              messages: state.messages.map((msg) =>
-                msg.id === aiMessageId
-                  ? {
-                      ...msg,
-                      content: data.data.result.message,
-                      metadata: {
-                        ...msg.metadata,
-                        ...data.data.result.metadata,
-                        isPolling: false,
-                      },
-                    }
-                  : msg
-              ),
-            }));
+            set((state) => {
+              console.log('[DEBUG] 更新前的消息数量:', state.messages.length);
+              const updatedMessages = state.messages.map((msg) => {
+                if (msg.id === aiMessageId) {
+                  console.log('[DEBUG] 找到要更新的消息:', msg.id, '新内容:', data.data.result.message);
+                  return {
+                    ...msg,
+                    content: data.data.result.message,
+                    metadata: {
+                      ...msg.metadata,
+                      ...data.data.result.metadata,
+                      isPolling: false,
+                    },
+                  };
+                }
+                return msg;
+              });
+              console.log('[DEBUG] 更新后的消息数量:', updatedMessages.length);
+              return {
+                messages: updatedMessages,
+              };
+            });
             setLoading(false);
           } else {
             console.log('[DEBUG] AI处理失败:', data.error);
