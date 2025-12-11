@@ -288,8 +288,8 @@ export const useChatbotStore = create<ChatbotStore>()(
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
-          console.log('[DEBUG] API响应:', response.status, data);
           const data = await response.json();
+          console.log('[DEBUG] API响应:', response.status, data);
 
           if (data.success && data.data.status === 'completed' && data.data.result) {
             console.log('[DEBUG] AI响应完成，更新消息内容');
