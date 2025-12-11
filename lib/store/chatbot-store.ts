@@ -235,13 +235,16 @@ export const useChatbotStore = create<ChatbotStore>()(
 
       // 发送消息 - 使用后台任务 + 轮询模式解决超时问题
       sendMessage: async (content, metadata = {}) => {
+        console.log('[DEBUG] sendMessage被调用:', { content, metadata });
         const { addMessage, setLoading, setError } = get();
 
         try {
+          console.log('[DEBUG] 开始处理消息');
           setLoading(true);
           setError(null);
 
           // 添加用户消息
+          console.log('[DEBUG] 添加用户消息到store');
           addMessage({
             role: 'user',
             content,
@@ -285,9 +288,11 @@ export const useChatbotStore = create<ChatbotStore>()(
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
+          console.log('[DEBUG] API响应:', response.status, data);
           const data = await response.json();
 
           if (data.success && data.data.status === 'completed' && data.data.result) {
+            console.log('[DEBUG] AI响应完成，更新消息内容');
             // AI响应完成，更新消息内容
             set((state) => ({
               messages: state.messages.map((msg) =>
@@ -306,6 +311,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             }));
             setLoading(false);
           } else {
+            console.log('[DEBUG] AI处理失败:', data.error);
             // AI处理失败
             throw new Error(data.error || 'AI处理失败');
           }
@@ -353,10 +359,11 @@ export const useChatbotStore = create<ChatbotStore>()(
           })()
 
         } catch (error) {
-          console.error('发送消息失败:', error);
+          console.error('[DEBUG] 发送消息失败:', error);
           setError(error instanceof Error ? error.message : '发送消息失败');
 
           // 添加错误消息
+          console.log('[DEBUG] 添加错误消息');
           addMessage({
             role: 'system',
             content: '抱歉，发送消息时出现错误。请稍后重试。',
