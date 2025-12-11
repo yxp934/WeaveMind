@@ -301,11 +301,13 @@ export const useChatbotStore = create<ChatbotStore>()(
             set((state) => {
               console.log('[DEBUG] 更新前的消息数量:', state.messages.length);
               console.log('[DEBUG] 当前所有消息ID:', state.messages.map(msg => msg.id));
+              console.log('[DEBUG] 要更新的aiMessageId:', aiMessageId);
 
               let messageFound = false;
               const updatedMessages = state.messages.map((msg) => {
+                console.log('[DEBUG] 检查消息ID:', msg.id, 'vs', aiMessageId, '匹配:', msg.id === aiMessageId);
                 if (msg.id === aiMessageId) {
-                  console.log('[DEBUG] 找到要更新的消息:', msg.id, '旧内容:', msg.content, '新内容:', data.data.result.message);
+                  console.log('[DEBUG] 找到要更新的消息:', msg.id, '旧内容长度:', msg.content.length, '新内容长度:', data.data.result.message.length);
                   messageFound = true;
                   return {
                     ...msg,
