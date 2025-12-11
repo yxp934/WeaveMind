@@ -207,7 +207,7 @@ export const useChatbotStore = create<ChatbotStore>()(
       addMessage: (message) => {
         const newMessage: ChatMessage = {
           ...message,
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           timestamp: new Date(),
         };
         set((state) => ({
