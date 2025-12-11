@@ -233,13 +233,14 @@ export const useChatbotStore = create<ChatbotStore>()(
         set({ messages: [] });
       },
 
-      // 发送消息 - 使用后台任务 + 轮询模式解决超时问题
+      // 发送消息 - 使用真正的流式AI + LangGraph逻辑
       sendMessage: async (content, metadata = {}) => {
-        const { addMessage, setLoading, setError } = get();
+        const { addMessage, setLoading, setError, setStreamingMessage } = get();
 
         try {
           setLoading(true);
           setError(null);
+          setStreamingMessage('');
 
           // 添加用户消息
           addMessage({
@@ -250,17 +251,25 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           // 创建空的AI消息占位符
           const aiMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const newMessage: ChatMessage = {
+          addMessage({
             id: aiMessageId,
             role: 'assistant',
             content: '',
             timestamp: new Date(),
-            metadata: { ...metadata, isPolling: true },
-          };
-          addMessage(newMessage);
+            metadata: { ...metadata, isStreaming: true },
+          });
 
-          // 使用后台任务API - 立即返回任务ID
-          const response = await fetch('/api/ai/chat-async', {
+          // 获取对话历史
+          const conversationHistory = (get().messages || []).slice(-10).map(msg => ({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
+            timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
+            toolsUsed: msg.toolCalls?.map(tool => tool.tool) || [],
+            metadata: msg.metadata
+          }));
+
+          // 使用流式API调用AI - 支持LangGraph和流式输出
+          const response = await fetch('/api/ai/chat-stream', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -272,11 +281,7 @@ export const useChatbotStore = create<ChatbotStore>()(
                 classId: metadata.classId,
                 organizationId: metadata.organizationId,
                 userRole: get().userRole || 'teacher',
-                conversationHistory: (get().messages || []).slice(-5).map(msg => ({
-                  role: msg.role === 'assistant' ? 'assistant' : 'user',
-                  content: msg.content,
-                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString()
-                })),
+                conversationHistory,
               },
             }),
           });
@@ -285,34 +290,94 @@ export const useChatbotStore = create<ChatbotStore>()(
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
-          const data = await response.json();
+          // 处理流式响应
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('无法读取流式响应');
+          }
 
-          if (data.success && data.data.status === 'completed' && data.data.result) {
-            // AI响应完成，更新消息内容
-            set((state) => {
-              const updatedMessages = state.messages.map((msg) => {
-                if (msg.id === aiMessageId) {
-                  return {
-                    ...msg,
-                    content: data.data.result.message,
-                    metadata: {
-                      ...msg.metadata,
-                      ...data.data.result.metadata,
-                      isPolling: false,
-                    },
-                  };
+          const decoder = new TextDecoder();
+          let accumulatedContent = '';
+          let streamingMessageId = aiMessageId;
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+
+              if (done) break;
+
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+
+                    switch (data.type) {
+                      case 'start':
+                        console.log('[STREAM] 开始流式处理:', data.requestId);
+                        break;
+
+                      case 'progress':
+                        console.log('[STREAM] 进度更新:', data.progress, data.message);
+                        break;
+
+                      case 'streaming':
+                        // 累积流式内容
+                        accumulatedContent = data.content;
+                        setStreamingMessage(accumulatedContent);
+
+                        // 实时更新消息内容
+                        set((state) => ({
+                          messages: state.messages.map(msg =>
+                            msg.id === streamingMessageId
+                              ? { ...msg, content: accumulatedContent }
+                              : msg
+                          )
+                        }));
+                        break;
+
+                      case 'complete':
+                        // 流式完成，更新最终内容
+                        const finalContent = data.data.message;
+                        console.log('[STREAM] 流式完成，内容长度:', finalContent.length);
+
+                        set((state) => ({
+                          messages: state.messages.map(msg =>
+                            msg.id === streamingMessageId
+                              ? {
+                                  ...msg,
+                                  content: finalContent,
+                                  metadata: {
+                                    ...msg.metadata,
+                                    ...data.data.metadata,
+                                    isStreaming: false,
+                                  }
+                                }
+                              : msg
+                          )
+                        }));
+
+                        setStreamingMessage(null);
+                        setLoading(false);
+                        break;
+
+                      case 'error':
+                        throw new Error(data.error || '流式处理出错');
+
+                      case 'end':
+                        console.log('[STREAM] 流式处理结束');
+                        return;
+                    }
+                  } catch (parseError) {
+                    console.warn('[STREAM] 解析流式数据失败:', parseError, line);
+                  }
                 }
-                return msg;
-              });
-
-              return {
-                messages: updatedMessages,
-              };
-            });
-            setLoading(false);
-          } else {
-            // AI处理失败
-            throw new Error(data.error || 'AI处理失败');
+              }
+            }
+          } finally {
+            reader.releaseLock();
           }
 
           // 保存对话到数据库（后台异步，不阻塞主流程）
@@ -364,6 +429,7 @@ export const useChatbotStore = create<ChatbotStore>()(
         } catch (error) {
           console.error('发送消息失败:', error);
           setError(error instanceof Error ? error.message : '发送消息失败');
+          setStreamingMessage(null);
 
           // 添加错误消息
           addMessage({
