@@ -79,7 +79,7 @@ export async function POST(request: NextRequest): Promise<Response> {
           console.log('🚀 开始流式AI处理:', {
             requestId,
             messageLength: message.length,
-            historyLength: conversationHistory.length
+            historyLength: (conversationHistory || []).length
           })
 
           // 发送开始信号
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest): Promise<Response> {
           })}\n\n`))
 
           // 构建对话历史文本
-          const conversationText = conversationHistory
+          const conversationText = (conversationHistory || [])
             .slice(-10) // 只保留最近10条消息
             .map(h => {
               if (h.role === 'user') {
