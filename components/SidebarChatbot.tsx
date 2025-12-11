@@ -420,9 +420,12 @@ export default function SidebarChatbot({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) =>
-              e.key === "Enter" && handleSend()
-            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="输入您的问题或需求..."
             className="flex-1 outline-none text-[14px] text-[#101828] placeholder:text-[#6a7282]"
             disabled={isLoading}
