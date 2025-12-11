@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     // 直接处理AI调用并返回结果
     try {
       // 构建对话历史文本
-      const recentHistory = context.conversationHistory
+      const recentHistory = (context.conversationHistory || [])
         .slice(-10) // 只保留最近10条消息
         .map(msg => `${msg.role === 'user' ? '用户' : 'AI助手'}: ${msg.content}`)
         .join('\n')
