@@ -235,16 +235,13 @@ export const useChatbotStore = create<ChatbotStore>()(
 
       // 发送消息 - 使用后台任务 + 轮询模式解决超时问题
       sendMessage: async (content, metadata = {}) => {
-        console.log('[DEBUG] sendMessage被调用:', { content, metadata });
         const { addMessage, setLoading, setError } = get();
 
         try {
-          console.log('[DEBUG] 开始处理消息');
           setLoading(true);
           setError(null);
 
           // 添加用户消息
-          console.log('[DEBUG] 添加用户消息到store');
           addMessage({
             role: 'user',
             content,
@@ -253,7 +250,6 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           // 创建空的AI消息占位符
           const aiMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          console.log('[DEBUG] 创建AI消息占位符:', aiMessageId);
           const newMessage: ChatMessage = {
             id: aiMessageId,
             role: 'assistant',
@@ -262,7 +258,6 @@ export const useChatbotStore = create<ChatbotStore>()(
             metadata: { ...metadata, isPolling: true },
           };
           addMessage(newMessage);
-          console.log('[DEBUG] AI消息已添加到store');
 
           // 使用后台任务API - 立即返回任务ID
           const response = await fetch('/api/ai/chat-async', {
@@ -291,24 +286,12 @@ export const useChatbotStore = create<ChatbotStore>()(
           }
 
           const data = await response.json();
-          console.log('[DEBUG] API响应:', response.status, data);
-          console.log('[DEBUG] AI消息内容:', data.data?.result?.message);
-          console.log('[DEBUG] aiMessageId:', aiMessageId);
 
           if (data.success && data.data.status === 'completed' && data.data.result) {
-            console.log('[DEBUG] AI响应完成，更新消息内容');
             // AI响应完成，更新消息内容
             set((state) => {
-              console.log('[DEBUG] 更新前的消息数量:', state.messages.length);
-              console.log('[DEBUG] 当前所有消息ID:', state.messages.map(msg => msg.id));
-              console.log('[DEBUG] 要更新的aiMessageId:', aiMessageId);
-
-              let messageFound = false;
               const updatedMessages = state.messages.map((msg) => {
-                console.log('[DEBUG] 检查消息ID:', msg.id, 'vs', aiMessageId, '匹配:', msg.id === aiMessageId);
                 if (msg.id === aiMessageId) {
-                  console.log('[DEBUG] 找到要更新的消息:', msg.id, '旧内容长度:', msg.content.length, '新内容长度:', data.data.result.message.length);
-                  messageFound = true;
                   return {
                     ...msg,
                     content: data.data.result.message,
@@ -322,16 +305,12 @@ export const useChatbotStore = create<ChatbotStore>()(
                 return msg;
               });
 
-              console.log('[DEBUG] 消息是否找到:', messageFound);
-              console.log('[DEBUG] 更新后的消息数量:', updatedMessages.length);
-
               return {
                 messages: updatedMessages,
               };
             });
             setLoading(false);
           } else {
-            console.log('[DEBUG] AI处理失败:', data.error);
             // AI处理失败
             throw new Error(data.error || 'AI处理失败');
           }
@@ -339,7 +318,6 @@ export const useChatbotStore = create<ChatbotStore>()(
           // 保存对话到数据库（后台异步，不阻塞主流程）
           ;(async () => {
             try {
-              console.log('[DEBUG] 开始保存对话到数据库');
               const messages = [...get().messages];
               const conversationId = get().conversationId;
 
@@ -367,31 +345,27 @@ export const useChatbotStore = create<ChatbotStore>()(
                 })
               });
 
-              console.log('[DEBUG] 保存响应状态:', saveResponse.status);
-
               if (saveResponse.ok) {
                 const saveData = await saveResponse.json();
                 if (saveData.data?.conversationId) {
                   set({ conversationId: saveData.data.conversationId });
-                  console.log('[DEBUG] 对话保存成功');
                 }
               } else {
                 // 保存失败但不阻断主流程
                 const errorText = await saveResponse.text();
-                console.warn('[DEBUG] 保存对话失败:', saveResponse.status, errorText);
+                console.warn('保存对话失败:', saveResponse.status, errorText);
               }
             } catch (saveError) {
-              console.warn('[DEBUG] 保存对话异常:', saveError);
+              console.warn('保存对话异常:', saveError);
               // 不影响主流程
             }
           })()
 
         } catch (error) {
-          console.error('[DEBUG] 发送消息失败:', error);
+          console.error('发送消息失败:', error);
           setError(error instanceof Error ? error.message : '发送消息失败');
 
           // 添加错误消息
-          console.log('[DEBUG] 添加错误消息');
           addMessage({
             role: 'system',
             content: '抱歉，发送消息时出现错误。请稍后重试。',
