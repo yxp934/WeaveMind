@@ -4,20 +4,20 @@ import { z } from 'zod'
 
 // 请求数据验证Schema
 const saveConversationSchema = z.object({
-  conversationId: z.string().uuid().optional(),
+  conversationId: z.string().optional().nullable(),
   title: z.string().optional(),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
     content: z.string(),
-    timestamp: z.string().datetime(),
+    timestamp: z.string(),
     metadata: z.any().optional(),
     toolsUsed: z.array(z.string()).optional()
   })),
   context: z.object({
     userRole: z.string().optional(),
-    organizationId: z.string().uuid().optional(),
-    courseId: z.string().uuid().optional(),
-    classId: z.string().uuid().optional()
+    organizationId: z.string().optional(),
+    courseId: z.string().optional(),
+    classId: z.string().optional()
   }).optional()
 })
 

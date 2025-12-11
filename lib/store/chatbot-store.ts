@@ -367,44 +367,47 @@ export const useChatbotStore = create<ChatbotStore>()(
             }
           }, 120000);
 
-          // 保存对话到数据库（可选，不阻塞主流程）
-          try {
-            const messages = [...get().messages];
-            const conversationId = get().conversationId;
+          // 保存对话到数据库（后台异步，不阻塞主流程）
+          ;(async () => {
+            try {
+              const messages = [...get().messages];
+              const conversationId = get().conversationId;
 
-            const saveResponse = await fetch('/api/ai/conversations/save', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                conversationId,
-                title: conversationId ? undefined : (messages[0]?.content?.slice(0, 50) || 'AI对话') + '...',
-                messages: messages.map(msg => ({
-                  role: msg.role,
-                  content: msg.content,
-                  timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
-                  metadata: msg.metadata,
-                  toolsUsed: msg.toolCalls?.map(tool => tool.tool) || []
-                })),
-                context: {
-                  userRole: get().userRole || 'teacher',
-                  organizationId: metadata.organizationId,
-                  courseId: metadata.courseId,
-                  classId: metadata.classId,
+              const saveResponse = await fetch('/api/ai/conversations/save', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  conversationId,
+                  title: conversationId ? undefined : (messages[0]?.content?.slice(0, 50) || 'AI对话') + '...',
+                  messages: messages.map(msg => ({
+                    role: msg.role,
+                    content: msg.content,
+                    timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : new Date(msg.timestamp).toISOString(),
+                    metadata: msg.metadata,
+                    toolsUsed: msg.toolCalls?.map(tool => tool.tool) || []
+                  })),
+                  context: {
+                    userRole: get().userRole || 'teacher',
+                    organizationId: metadata.organizationId,
+                    courseId: metadata.courseId,
+                    classId: metadata.classId,
+                  }
+                })
+              });
+
+              if (saveResponse.ok) {
+                const saveData = await saveResponse.json();
+                if (saveData.data?.conversationId) {
+                  set({ conversationId: saveData.data.conversationId });
                 }
-              })
-            });
-
-            if (saveResponse.ok) {
-              const saveData = await saveResponse.json();
-              if (saveData.data?.conversationId) {
-                set({ conversationId: saveData.data.conversationId });
               }
+            } catch (saveError) {
+              console.warn('保存对话失败:', saveError);
+              // 不影响主流程
             }
-          } catch (saveError) {
-            console.warn('保存对话失败:', saveError);
-          }
+          })()
 
         } catch (error) {
           console.error('发送消息失败:', error);
