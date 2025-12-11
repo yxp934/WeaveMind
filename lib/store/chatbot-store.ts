@@ -253,6 +253,7 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           // 创建空的AI消息占位符
           const aiMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          console.log('[DEBUG] 创建AI消息占位符:', aiMessageId);
           const newMessage: ChatMessage = {
             id: aiMessageId,
             role: 'assistant',
@@ -261,6 +262,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             metadata: { ...metadata, isPolling: true },
           };
           addMessage(newMessage);
+          console.log('[DEBUG] AI消息已添加到store');
 
           // 使用后台任务API - 立即返回任务ID
           const response = await fetch('/api/ai/chat-async', {
@@ -298,9 +300,13 @@ export const useChatbotStore = create<ChatbotStore>()(
             // AI响应完成，更新消息内容
             set((state) => {
               console.log('[DEBUG] 更新前的消息数量:', state.messages.length);
+              console.log('[DEBUG] 当前所有消息ID:', state.messages.map(msg => msg.id));
+
+              let messageFound = false;
               const updatedMessages = state.messages.map((msg) => {
                 if (msg.id === aiMessageId) {
-                  console.log('[DEBUG] 找到要更新的消息:', msg.id, '新内容:', data.data.result.message);
+                  console.log('[DEBUG] 找到要更新的消息:', msg.id, '旧内容:', msg.content, '新内容:', data.data.result.message);
+                  messageFound = true;
                   return {
                     ...msg,
                     content: data.data.result.message,
@@ -313,7 +319,10 @@ export const useChatbotStore = create<ChatbotStore>()(
                 }
                 return msg;
               });
+
+              console.log('[DEBUG] 消息是否找到:', messageFound);
               console.log('[DEBUG] 更新后的消息数量:', updatedMessages.length);
+
               return {
                 messages: updatedMessages,
               };
