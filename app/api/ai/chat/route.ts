@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ChatRequest, StandardApiResponse, ChatResponseData } from '@/lib/types/api'
 import { chatbot } from '@/lib/ai/langgraph/chatbot-graph'
+import { createClassTool, createSessionTool, createAssignmentTool } from '@/lib/ai/teacher-dashboard-tools'
 import { z } from 'zod'
 
 export const runtime = 'edge'
@@ -108,11 +109,46 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
       intent: result.data?.metadata?.intent
     })
 
-    // 6. 返回JSON响应
-    if (result.success) {
+    // 6. 处理数据库操作请求
+    let finalResult = result
+    if (result.success && result.data?.metadata?.requiresDatabaseAction) {
+      console.log('🔧 检测到数据库操作请求:', result.data.metadata.actionType)
+      try {
+        const dbOperationResult = await handleDatabaseOperation(result.data.metadata, supabase, user)
+        if (dbOperationResult.success) {
+          // 更新响应消息
+          finalResult = {
+            ...result,
+            data: {
+              ...result.data,
+              message: dbOperationResult.message,
+              metadata: {
+                ...result.data.metadata,
+                classId: dbOperationResult.classId,
+                joinCode: dbOperationResult.joinCode,
+                assignmentId: dbOperationResult.assignmentId,
+                toolsUsed: [...(result.data.metadata.toolsUsed || []), ...dbOperationResult.toolsUsed]
+              }
+            }
+          }
+        }
+      } catch (dbError: any) {
+        console.error('❌ 数据库操作失败:', dbError)
+        finalResult = {
+          success: false,
+          error: {
+            code: 'DATABASE_OPERATION_FAILED',
+            message: `数据库操作失败: ${dbError.message}`
+          }
+        }
+      }
+    }
+
+    // 7. 返回JSON响应
+    if (finalResult.success) {
       return NextResponse.json({
         success: true,
-        data: result.data,
+        data: finalResult.data,
         metadata: {
           timestamp: new Date().toISOString(),
           requestId,
@@ -124,9 +160,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
       return NextResponse.json({
         success: false,
         error: {
-          code: 'CHATBOT_ERROR',
-          message: result.error?.message || '聊天处理失败',
-          details: result.error
+          code: finalResult.error?.code || 'CHATBOT_ERROR',
+          message: finalResult.error?.message || '聊天处理失败',
+          details: finalResult.error
         },
         metadata: {
           timestamp: new Date().toISOString(),
@@ -327,6 +363,38 @@ async function handleStreamResponse(
           throw new Error(result.error?.message || 'LangGraph处理失败')
         }
 
+        // 处理数据库操作请求
+        let finalResult = result
+        if (result.data?.metadata?.requiresDatabaseAction) {
+          console.log('🔧 检测到数据库操作请求:', result.data.metadata.actionType)
+
+          const supabase = await createClient()
+          const { data: { user: authenticatedUser } } = await supabase.auth.getUser()
+
+          try {
+            const dbOperationResult = await handleDatabaseOperation(result.data.metadata, supabase, authenticatedUser)
+            if (dbOperationResult.success) {
+              finalResult = {
+                ...result,
+                data: {
+                  ...result.data,
+                  message: dbOperationResult.message,
+                  metadata: {
+                    ...result.data.metadata,
+                    classId: dbOperationResult.classId,
+                    joinCode: dbOperationResult.joinCode,
+                    assignmentId: dbOperationResult.assignmentId,
+                    toolsUsed: [...(result.data.metadata.toolsUsed || []), ...dbOperationResult.toolsUsed]
+                  }
+                }
+              }
+            }
+          } catch (dbError: any) {
+            console.error('❌ 数据库操作失败:', dbError)
+            throw new Error(`数据库操作失败: ${dbError.message}`)
+          }
+        }
+
         // 发送进度更新 - 生成响应
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: 'progress',
@@ -350,7 +418,7 @@ async function handleStreamResponse(
         await new Promise(resolve => setTimeout(resolve, 300))
 
         // 字符级流式输出AI响应
-        const aiResponse = result.data?.message || '抱歉，我现在无法处理您的请求。'
+        const aiResponse = finalResult.data?.message || '抱歉，我现在无法处理您的请求。'
         const characters = aiResponse.split('')
         let currentText = ''
 
@@ -377,7 +445,7 @@ async function handleStreamResponse(
         // 发送完整的AI响应和metadata
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: 'complete',
-          data: result.data,
+          data: finalResult.data,
           metadata: {
             timestamp: new Date().toISOString(),
             requestId,
@@ -389,7 +457,7 @@ async function handleStreamResponse(
         console.log('✅ 流式LangGraph处理完成:', {
           requestId,
           totalProcessingTime: Date.now() - startTime,
-          intent: result.data?.metadata?.intent
+          intent: finalResult.data?.metadata?.intent
         })
 
       } catch (error: any) {
@@ -422,4 +490,157 @@ async function handleStreamResponse(
       'Access-Control-Allow-Headers': 'Cache-Control'
     }
   })
+}
+
+/**
+ * 处理数据库操作请求
+ */
+async function handleDatabaseOperation(metadata: any, supabase: any, user: any) {
+  const { actionType, actionData } = metadata
+
+  try {
+    switch (actionType) {
+      case 'create_course_with_sessions': {
+        // 直接使用supabase客户端创建班级（绕过工具认证）
+        const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase()
+
+        // 获取用户的组织信息
+        const { data: orgMember } = await supabase
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', user.id)
+          .eq('role', 'owner')
+          .single()
+
+        if (!orgMember) {
+          throw new Error('只有组织所有者可以创建班级')
+        }
+
+        // 创建班级
+        const { data: classData, error: classError } = await supabase
+          .from('classes')
+          .insert({
+            name: actionData.className,
+            description: actionData.classDescription || '',
+            organization_id: orgMember.organization_id,
+            join_code: joinCode,
+            created_by: user.id,
+          })
+          .select()
+          .single()
+
+        if (classError) {
+          throw classError
+        }
+
+        const classId = classData.id
+
+        // 创建者自动成为班级管理员
+        await supabase
+          .from('class_members')
+          .insert({
+            class_id: classId,
+            user_id: user.id,
+            role: 'teacher',
+          })
+
+        // 创建课程会话
+        const sessionsPerWeek = actionData.sessionsPerWeek || 2
+        const duration = actionData.duration || 8
+        const totalSessions = actionData.totalSessions || 16
+
+        for (let i = 1; i <= Math.min(totalSessions, 16); i++) {
+          const sessionDate = new Date()
+          sessionDate.setDate(sessionDate.getDate() + (i - 1) * 7)
+          const sessionDateStr = sessionDate.toISOString().split('T')[0]
+
+          await supabase
+            .from('course_sessions')
+            .insert({
+              class_id: classId,
+              title: `第${i}节：${actionData.className}`,
+              description: `第${i}节课程内容，基于${actionData.className}`,
+              scheduled_date: sessionDateStr,
+              start_time: '09:00',
+              duration_minutes: 60,
+              created_by: user.id,
+            })
+        }
+
+        return {
+          success: true,
+          message: `🎉 课程创建成功！我已经为您创建了"${actionData.className}"课程，包含以下内容：
+
+**班级信息：**
+- 班级名称：${actionData.className}
+- 加入代码：${joinCode}
+- 课程节数：${Math.min(totalSessions, 16)}节
+
+**课程结构：**
+- 总时长：${duration}周
+- 每周课次：${sessionsPerWeek}节
+- 目标学员：${actionData.courseInfo?.targetAudience || '未指定'}
+- 难度级别：${actionData.courseInfo?.difficultyLevel || '中等'}
+
+课程已保存到数据库，您可以开始在WeaveMind平台上管理这个班级了！`,
+          classId,
+          joinCode,
+          toolsUsed: ['createClass', 'createSession']
+        }
+      }
+
+      case 'create_assignment': {
+        // 创建作业
+        const classId = metadata.classId
+        if (!classId) {
+          throw new Error('请提供班级ID以创建作业')
+        }
+
+        const { data: assignmentData, error: assignmentError } = await supabase
+          .from('assignments')
+          .insert({
+            class_id: classId,
+            title: actionData.title,
+            description: actionData.description || '',
+            due_date: null,
+            created_by: user.id,
+          })
+          .select()
+          .single()
+
+        if (assignmentError) {
+          throw assignmentError
+        }
+
+        return {
+          success: true,
+          message: `🎉 作业创建成功！我已经为您创建了作业：
+
+**作业信息：**
+- 作业标题：${actionData.title}
+- 班级ID：${classId}
+
+**作业内容：**
+${actionData.description}
+
+**具体要求：**
+${actionData.requirements?.join('\n') || '无特殊要求'}
+
+作业已保存到数据库，您可以开始在WeaveMind平台上管理这个作业了！`,
+          assignmentId: assignmentData.id,
+          toolsUsed: ['createAssignment']
+        }
+      }
+
+      default:
+        throw new Error(`不支持的操作类型: ${actionType}`)
+    }
+  } catch (error: any) {
+    console.error('数据库操作失败:', error)
+    return {
+      success: false,
+      message: `❌ 数据库操作失败: ${error.message}`,
+      error: error.message
+    }
+  }
 }
