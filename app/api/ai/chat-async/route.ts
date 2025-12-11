@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Chat Async] 开始处理任务: ${jobId}`)
 
-    // 直接处理AI调用（同步模式，无Redis依赖）
+    // 直接处理AI调用并返回结果
     try {
       // 构建对话历史文本
       const recentHistory = context.conversationHistory
@@ -67,37 +67,30 @@ ${recentHistory}
 
       console.log(`[Chat Async ${jobId}] AI响应完成，响应长度: ${aiResponse.length}`)
 
-      // 保存成功结果
-      chatJobStore.update(jobId, {
-        status: 'completed',
-        result: {
-          message: aiResponse,
-          metadata: {
-            sessionId: jobId,
+      // 直接返回AI响应结果
+      return NextResponse.json({
+        success: true,
+        data: {
+          jobId,
+          status: 'completed',
+          result: {
+            message: aiResponse,
+            metadata: {
+              sessionId: jobId,
+            },
           },
-        },
+        }
       })
 
     } catch (aiError) {
       console.error(`[Chat Async ${jobId}] AI调用失败:`, aiError)
-      // 保存失败结果
-      chatJobStore.update(jobId, {
-        status: 'failed',
-        error: aiError instanceof Error ? aiError.message : 'AI处理失败',
-      })
+
+      // 返回错误结果
+      return NextResponse.json({
+        success: false,
+        error: aiError instanceof Error ? aiError.message : 'AI处理失败'
+      }, { status: 500 })
     }
-
-    console.log(`[Chat Async] 任务状态已更新: ${jobId}`)
-
-    // 返回任务ID和状态端点
-    return NextResponse.json({
-      success: true,
-      data: {
-        jobId,
-        statusUrl: `/api/ai/chat-status/${jobId}`,
-        status: 'processing',
-      }
-    })
 
   } catch (error) {
     console.error('[Chat Async] API错误:', error)

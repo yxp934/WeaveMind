@@ -286,86 +286,29 @@ export const useChatbotStore = create<ChatbotStore>()(
           }
 
           const data = await response.json();
-          const jobId = data.data.jobId;
 
-          // 开始轮询任务状态
-          const pollInterval = setInterval(async () => {
-            try {
-              const statusResponse = await fetch(`/api/ai/chat-status/${jobId}`);
-              if (!statusResponse.ok) {
-                clearInterval(pollInterval);
-                throw new Error('Failed to get job status');
-              }
-
-              const statusData = await statusResponse.json();
-              const job = statusData.data;
-
-              if (job.status === 'completed' && job.result) {
-                // 任务完成，更新消息内容
-                clearInterval(pollInterval);
-                set((state) => ({
-                  messages: state.messages.map((msg) =>
-                    msg.id === aiMessageId
-                      ? {
-                          ...msg,
-                          content: job.result.message,
-                          metadata: {
-                            ...msg.metadata,
-                            ...job.result.metadata,
-                            isPolling: false,
-                          },
-                        }
-                      : msg
-                  ),
-                }));
-                setLoading(false);
-              } else if (job.status === 'failed') {
-                // 任务失败
-                clearInterval(pollInterval);
-                setError(job.error || 'AI处理失败');
-                set((state) => ({
-                  messages: state.messages.map((msg) =>
-                    msg.id === aiMessageId
-                      ? {
-                          ...msg,
-                          content: '抱歉，AI处理失败。请稍后重试。',
-                          metadata: {
-                            ...msg.metadata,
-                            isPolling: false,
-                          },
-                        }
-                      : msg
-                  ),
-                }));
-                setLoading(false);
-              }
-            } catch (pollError) {
-              console.error('轮询状态失败:', pollError);
-            }
-          }, 2000); // 每2秒轮询一次
-
-          // 最多轮询60次（2分钟）
-          setTimeout(() => {
-            clearInterval(pollInterval);
-            if (get().isLoading) {
-              setError('AI处理超时，请重试');
-              setLoading(false);
-              set((state) => ({
-                messages: state.messages.map((msg) =>
-                  msg.id === aiMessageId
-                    ? {
-                        ...msg,
-                        content: '抱歉，AI处理超时。请重试。',
-                        metadata: {
-                          ...msg.metadata,
-                          isPolling: false,
-                        },
-                      }
-                    : msg
-                ),
-              }));
-            }
-          }, 120000);
+          if (data.success && data.data.status === 'completed' && data.data.result) {
+            // AI响应完成，更新消息内容
+            set((state) => ({
+              messages: state.messages.map((msg) =>
+                msg.id === aiMessageId
+                  ? {
+                      ...msg,
+                      content: data.data.result.message,
+                      metadata: {
+                        ...msg.metadata,
+                        ...data.data.result.metadata,
+                        isPolling: false,
+                      },
+                    }
+                  : msg
+              ),
+            }));
+            setLoading(false);
+          } else {
+            // AI处理失败
+            throw new Error(data.error || 'AI处理失败');
+          }
 
           // 保存对话到数据库（后台异步，不阻塞主流程）
           ;(async () => {
