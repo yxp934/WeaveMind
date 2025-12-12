@@ -8,6 +8,183 @@ import { createClassTool, createSessionTool, createAssignmentTool } from '../../
 const openai = createGatewayOpenAI()
 
 /**
+ * 生成详细的课程会话内容
+ */
+function generateDetailedSessions(courseName: string, totalSessions: number, courseInfo: any): string {
+  const weeks = Math.ceil(totalSessions / (courseInfo.sessionsPerWeek || 2))
+  let detailedContent = ''
+
+  for (let week = 1; week <= weeks; week++) {
+    detailedContent += `\n## 第${week}周：${courseName}基础进阶\n`
+    const sessionsThisWeek = Math.min(courseInfo.sessionsPerWeek || 2, totalSessions - (week - 1) * (courseInfo.sessionsPerWeek || 2))
+
+    for (let session = 1; session <= sessionsThisWeek; session++) {
+      const sessionNum = (week - 1) * (courseInfo.sessionsPerWeek || 2) + session
+      detailedContent += `\n### 第${sessionNum}节：${getSessionTitle(courseName, sessionNum, courseInfo)}\n`
+      detailedContent += `**内容简介：** ${getSessionDescription(courseName, sessionNum, courseInfo)}\n`
+      detailedContent += `**视频时长：** 30分钟\n`
+      detailedContent += `**Quiz题目：** 5道题（包含选择题、填空题和实践题）\n`
+      detailedContent += `**学习目标：** ${getLearningObjectives(courseName, sessionNum, courseInfo)}\n`
+    }
+  }
+
+  return detailedContent
+}
+
+/**
+ * 获取课程会话标题
+ */
+function getSessionTitle(courseName: string, sessionNum: number, courseInfo: any): string {
+  const topic = courseInfo.topic || courseName
+
+  if (topic.toLowerCase().includes('java')) {
+    const javaTopics = [
+      'Java简介与环境搭建',
+      '变量与数据类型',
+      '运算符与表达式',
+      '条件语句与控制流',
+      '循环语句',
+      '数组与方法',
+      '面向对象基础',
+      '类与对象',
+      '继承与多态',
+      '接口与抽象类',
+      '异常处理',
+      '集合框架',
+      '文件操作',
+      '多线程基础',
+      'GUI编程入门',
+      '项目实战与复习'
+    ]
+    return javaTopics[sessionNum - 1] || `${courseName}核心内容${sessionNum}`
+  } else if (topic.toLowerCase().includes('python')) {
+    const pythonTopics = [
+      'Python环境与第一个程序',
+      '变量与数据类型',
+      '运算符与表达式',
+      '字符串操作',
+      '列表与元组',
+      '字典与集合',
+      '条件语句',
+      '循环语句',
+      '函数定义与调用',
+      '文件操作',
+      '异常处理',
+      '面向对象编程',
+      '模块与包',
+      '数据处理',
+      'Web开发入门',
+      '项目实战'
+    ]
+    return pythonTopics[sessionNum - 1] || `${courseName}核心内容${sessionNum}`
+  } else {
+    return `${courseName}第${sessionNum}节：核心概念与实践`
+  }
+}
+
+/**
+ * 获取课程会话描述
+ */
+function getSessionDescription(courseName: string, sessionNum: number, courseInfo: any): string {
+  const topic = courseInfo.topic || courseName
+
+  if (topic.toLowerCase().includes('java')) {
+    const descriptions = [
+      '介绍Java语言的历史、特点和应用领域，安装JDK环境，编写并运行第一个Java程序',
+      '学习Java的基本数据类型、变量声明、常量定义，以及类型转换的规则',
+      '掌握算术运算符、比较运算符、逻辑运算符的使用，以及运算符的优先级',
+      '学习if-else语句、switch语句的使用，理解程序流程控制的逻辑',
+      '掌握for循环、while循环、do-while循环的使用，以及循环控制语句',
+      '学习一维数组、二维数组的创建和使用，理解方法的定义和调用',
+      '理解面向对象编程的基本概念，掌握类和对象的关系',
+      '学习类的定义、构造方法、成员变量、成员方法，以及this关键字的使用',
+      '掌握继承的概念、super关键字的使用、方法重写和多态性',
+      '学习接口的定义、抽象类的使用，以及多态的实际应用',
+      '理解异常处理机制，掌握try-catch-finally语句的使用',
+      '学习Java集合框架，包括ArrayList、HashMap等常用集合类',
+      '掌握文件的读写操作，理解IO流的概念和使用',
+      '学习多线程的基本概念，掌握Thread和Runnable的使用',
+      '介绍Swing或JavaFX GUI编程，创建简单的图形界面应用',
+      '综合运用所学知识，完成一个完整的Java项目开发'
+    ]
+    return descriptions[sessionNum - 1] || `深入学习${courseName}的相关知识和实践应用`
+  } else if (topic.toLowerCase().includes('python')) {
+    const descriptions = [
+      '安装Python环境，配置开发工具，编写并运行第一个Python程序',
+      '学习Python的基本数据类型、变量赋值、运算符的使用',
+      '掌握字符串的创建、格式化、切片和常用方法',
+      '学习列表的创建、索引、切片、增删改查操作',
+      '掌握字典的键值对操作、嵌套结构和实际应用',
+      '学习集合的特点、运算方法和在数据处理中的应用',
+      '掌握if-elif-else条件语句的使用，理解逻辑判断',
+      '学习for循环、while循环的使用，以及循环中的break和continue',
+      '学习函数的定义、参数传递、返回值和作用域',
+      '掌握文件的打开、读取、写入和关闭操作',
+      '理解异常的概念，掌握try-except语句处理错误',
+      '学习类的定义、对象的创建、继承和多态性',
+      '掌握模块的导入、自定义模块和包的使用',
+      '学习数据处理的基本方法，包括CSV、JSON等格式',
+      '介绍Web开发框架，如Flask或Django的基础应用',
+      '综合运用所学知识，完成一个Python项目开发'
+    ]
+    return descriptions[sessionNum - 1] || `深入学习${courseName}的相关知识和实践应用`
+  } else {
+    return `本节课将深入讲解${courseName}的核心概念，包括理论基础、实践操作和案例分析`
+  }
+}
+
+/**
+ * 获取学习目标
+ */
+function getLearningObjectives(courseName: string, sessionNum: number, courseInfo: any): string {
+  const topic = courseInfo.topic || courseName
+
+  if (topic.toLowerCase().includes('java')) {
+    const objectives = [
+      '能够独立安装和配置Java开发环境，熟练使用IDE',
+      '正确使用各种数据类型，理解内存中的数据存储',
+      '熟练运用运算符进行复杂计算和逻辑判断',
+      '能够使用条件语句实现程序的分支逻辑',
+      '掌握循环结构，能够处理重复性任务',
+      '理解数组和方法的结合使用，编写模块化代码',
+      '建立面向对象的编程思维，理解封装的重要性',
+      '能够设计合理的类结构，编写高质量的代码',
+      '理解继承的层次结构，掌握多态的实际应用',
+      '能够设计接口和抽象类，提高代码的可扩展性',
+      '能够处理程序运行中的各种异常情况',
+      '熟练使用集合类进行数据存储和操作',
+      '能够进行文件的读写操作，处理外部数据',
+      '理解多线程的概念，能够编写简单的多线程程序',
+      '能够创建用户友好的图形界面应用',
+      '综合运用Java知识，完成完整的项目开发'
+    ]
+    return objectives[sessionNum - 1] || `掌握${courseName}的核心知识点和实践技能`
+  } else if (topic.toLowerCase().includes('python')) {
+    const objectives = [
+      '能够独立安装Python环境，熟练使用解释器和IDE',
+      '掌握Python的基本语法和数据类型的使用',
+      '熟练进行字符串的处理和格式化操作',
+      '掌握列表的各种操作，能够处理数据集合',
+      '理解字典的结构，能够进行键值对映射操作',
+      '掌握集合的特点和运算，进行数据去重和处理',
+      '能够使用条件语句进行逻辑判断和流程控制',
+      '掌握循环结构，能够处理重复性任务',
+      '理解函数的定义和使用，编写可复用的代码',
+      '能够进行文件的读写操作，处理外部数据',
+      '掌握异常处理机制，提高程序的健壮性',
+      '理解面向对象编程思想，编写面向对象的代码',
+      '能够使用和管理模块，提高代码的组织性',
+      '掌握数据处理的基本方法，分析和操作数据',
+      '了解Web开发的基本概念，能够创建简单的Web应用',
+      '综合运用Python知识，完成实际项目开发'
+    ]
+    return objectives[sessionNum - 1] || `掌握${courseName}的核心知识点和实践技能`
+  } else {
+    return `理解核心概念，掌握实践技能，培养解决问题的能力`
+  }
+}
+
+/**
  * 生成课程大纲
  */
 function generateCourseOutline(courseName: string, totalSessions: number, courseInfo: any): string {
@@ -20,7 +197,7 @@ function generateCourseOutline(courseName: string, totalSessions: number, course
 
     for (let session = 1; session <= sessionsThisWeek; session++) {
       const sessionNum = (week - 1) * (courseInfo.sessionsPerWeek || 2) + session
-      outline += `- 第${sessionNum}节：${courseName}核心内容${sessionNum}\n`
+      outline += `- 第${sessionNum}节：${getSessionTitle(courseName, sessionNum, courseInfo)}\n`
       outline += `  视频：30分钟 + Quiz：5题\n`
     }
   }
@@ -61,7 +238,7 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 1. 理解完整的对话历史
 2. 分析用户已经提供的所有课程信息
 3. 如果需要更多信息，向用户询问关键信息
-4. 如果信息足够，开始生成课程
+4. 如果信息足够，开始生成详细课程内容
 5. 保持对话的自然流畅，记住用户之前说过的所有内容
 
 ## 课程创建需要的关键信息
@@ -75,7 +252,7 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 ## 输出格式（严格JSON）
 {
   "message": "你要发送给用户的消息",
-  "action": "ask_info|generate_course|continue_collection",
+  "action": "ask_info|generate_course|awaiting_confirmation|continue_collection",
   "updatedCourseInfo": {
     "topic": "课程主题",
     "duration": "课程时长",
@@ -94,9 +271,16 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 }
 
 ## 重要规则：
-1. **当用户明确表示"创建课程到数据库"、"生成课程大纲并创建"或类似表达时，必须返回 "action": "generate_course"**
-2. 如果用户提供了足够的课程信息（主题、时长、每周课次、目标学员），即使没有明确说"创建到数据库"，也应该返回 "action": "generate_course"
-3. 只有当信息明显不足时，才返回 "action": "ask_info" 或 "continue_collection"
+1. **当用户明确表示"创建课程到数据库"、"生成课程大纲并创建"或类似表达时，返回 "action": "generate_course"**
+2. **当用户表示"确认"、"同意"、"好的，可以"等确认表达时，返回 "action": "awaiting_confirmation"**
+3. 如果用户提供了足够的课程信息但还没有详细展示，应该先生成详细课程内容，返回 "action": "generate_course"
+4. 只有当信息明显不足时，才返回 "action": "ask_info" 或 "continue_collection"
+
+## 工作流程：
+1. 收集课程信息 → 如果信息足够，生成详细课程内容
+2. 展示详细课程内容 → 询问用户确认
+3. 用户确认 → 标记可以保存到数据库
+4. 用户修改 → 根据用户反馈调整内容
 
 注意：
 - 使用中文回复
@@ -154,19 +338,19 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 
     // 更新工作流状态
     if (result.action === 'generate_course') {
-      // 返回创建课程的动作，由API路由层处理实际的工具调用
+      // 生成详细的课程内容，但不立即保存到数据库
       const courseInfo = result.updatedCourseInfo || state.courseInfo || {}
 
-      // 生成课程大纲
+      // 生成课程基本信息
       const sessionsPerWeek = parseInt(courseInfo.sessionsPerWeek) || 2
       const duration = courseInfo.duration || '8周'
       const weeks = parseInt(duration) || 8
       const totalSessions = Math.min(weeks * sessionsPerWeek, 16)
 
-      // 生成详细的课程大纲
-      const courseOutline = generateCourseOutline(courseInfo.topic || '未命名课程', totalSessions, courseInfo)
+      // 生成详细的课程会话内容
+      const detailedSessions = generateDetailedSessions(courseInfo.topic || '未命名课程', totalSessions, courseInfo)
 
-      result.message = `🎉 课程大纲已生成！我已经为"${courseInfo.topic}"课程设计了完整的大纲，包含以下内容：
+      result.message = `🎉 课程内容已详细生成！我已经为"${courseInfo.topic}"课程设计了完整的教学内容，请仔细查看每个session的详细内容：
 
 **班级信息：**
 - 班级名称：${courseInfo.topic}
@@ -178,33 +362,86 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
 - 目标学员：${courseInfo.targetAudience || '未指定'}
 - 难度级别：${courseInfo.difficultyLevel || '中等'}
 
-**课程大纲：**
-${courseOutline}
+**详细课程内容：**
+${detailedSessions}
 
-是否确认创建这个课程到数据库？我将为您创建班级并生成所有课程会话。`
+**请确认以下内容：**
+1. 以上每个session的内容描述是否符合您的期望？
+2. 学习目标设置是否合理？
+3. 课程进度安排是否合适？
 
-      // 标记需要执行数据库操作
+如果您对任何session的内容有修改建议，请告诉我。确认无误后，我将为您创建这个课程并保存到数据库。`
+
+      // **关键修改**：不立即设置数据库操作标志，而是等待用户确认
       result.metadata = {
         ...result.metadata,
-        toolsUsed: ['course_outline_generation'],
-        requiresDatabaseAction: true,
-        actionType: 'create_course_with_sessions',
-        actionData: {
+        toolsUsed: ['detailed_course_generation'],
+        requiresDatabaseAction: false, // 🔧 关键修改：不立即保存
+        actionType: null,
+        actionData: null,
+        classId: null,
+        joinCode: null,
+        // 存储课程信息供后续使用
+        pendingCourseData: {
           className: courseInfo.topic || '未命名课程',
           classDescription: `课程主题：${courseInfo.topic || ''}\n目标学员：${courseInfo.targetAudience || ''}\n课程时长：${courseInfo.duration || ''}\n难度级别：${courseInfo.difficultyLevel || ''}`,
           sessionsPerWeek,
           duration: weeks,
           totalSessions,
           courseInfo
-        },
-        classId: null, // 将由API路由层设置
-        joinCode: null // 将由API路由层设置
+        }
       }
 
-      console.log('🔧 设置数据库操作标志:', {
-        requiresDatabaseAction: result.metadata.requiresDatabaseAction,
-        actionType: result.metadata.actionType
+      console.log('🔧 详细课程内容已生成，等待用户确认:', {
+        action: result.action,
+        requiresDatabaseAction: result.metadata.requiresDatabaseAction
       })
+    } else if (result.action === 'awaiting_confirmation') {
+      // 当用户确认后，设置数据库操作标志
+      const courseInfo = result.updatedCourseInfo || state.courseInfo || state.metadata?.pendingCourseData?.courseInfo || {}
+
+      if (state.metadata?.pendingCourseData) {
+        const pendingData = state.metadata.pendingCourseData
+
+        result.message = `✅ 好的！我现在开始为您创建"${pendingData.className}"课程并保存到数据库。
+
+**即将创建的内容：**
+- 班级名称：${pendingData.className}
+- 课程节数：${pendingData.totalSessions}节
+- 总时长：${pendingData.duration}周
+- 每周课次：${pendingData.sessionsPerWeek}节
+
+正在创建班级和所有课程会话，请稍等...`
+
+        // **关键修改**：只有在用户确认后才设置数据库操作标志
+        result.metadata = {
+          ...result.metadata,
+          toolsUsed: ['course_confirmation'],
+          requiresDatabaseAction: true, // ✅ 用户确认后允许保存
+          actionType: 'create_course_with_sessions',
+          actionData: {
+            className: pendingData.className,
+            classDescription: pendingData.classDescription,
+            sessionsPerWeek: pendingData.sessionsPerWeek,
+            duration: pendingData.duration,
+            totalSessions: pendingData.totalSessions,
+            courseInfo: pendingData.courseInfo
+          },
+          classId: null,
+          joinCode: null
+        }
+
+        console.log('✅ 用户确认，设置数据库操作标志:', {
+          requiresDatabaseAction: result.metadata.requiresDatabaseAction,
+          actionType: result.metadata.actionType
+        })
+      } else {
+        result.message = '抱歉，没有找到待确认的课程信息。请重新开始课程创建流程。'
+        result.metadata = {
+          ...result.metadata,
+          toolsUsed: ['error_handling']
+        }
+      }
     }
 
     // 更新状态 - 移到设置数据库操作标志之后
@@ -235,16 +472,27 @@ ${courseOutline}
       const duration = courseInfo.duration || '8周'
       const weeks = parseInt(duration) || 8
       const totalSessions = Math.min(weeks * sessionsPerWeek, 16)
-      const courseOutline = generateCourseOutline(courseInfo.topic || '未命名课程', totalSessions, courseInfo)
 
       updatedState.currentWorkflow = {
         type: 'course_creation',
-        status: 'awaiting_confirmation',
-        step: result.workflowStep || 'awaiting_confirmation',
+        status: 'awaiting_confirmation', // 🔧 关键修改：生成课程内容后等待用户确认
+        step: result.workflowStep || 'detailed_content_generated',
         data: {
           className: courseInfo.topic,
-          courseOutline,
-          totalSessions
+          totalSessions,
+          sessionsPerWeek,
+          duration: weeks
+        }
+      }
+    } else if (result.action === 'awaiting_confirmation') {
+      // 用户确认后，工作流状态可以保持或更新
+      updatedState.currentWorkflow = {
+        type: 'course_creation',
+        status: 'confirmed', // 🔧 用户已确认，可以保存到数据库
+        step: result.workflowStep || 'confirmed_and_saving',
+        data: {
+          ...updatedState.currentWorkflow?.data,
+          confirmed: true
         }
       }
     } else if (state.currentWorkflow?.type === 'course_creation') {
