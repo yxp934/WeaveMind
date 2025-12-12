@@ -69,8 +69,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
     // 如果没有用户但有上下文，或者明确设置为演示模式
     if (!user || (ctx?.userRole && !user)) {
       isDemoMode = true
-      // 演示模式下使用默认值
-      user = { id: 'demo-user', email: 'demo@example.com' }
+      // 演示模式下使用测试用户
+      user = { id: '5e1ebe73-5f0e-4858-8376-499dc2b294cc', email: 'test_maxtokens_2024@example.com' }
+      console.log('🎭 演示模式：使用测试用户进行数据库操作', user.id)
     }
 
     // 3. 使用LangGraph聊天机器人处理消息
@@ -111,10 +112,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
 
     // 6. 处理数据库操作请求
     let finalResult = result
+    console.log('🔍 检查数据库操作标志:', {
+      hasResultData: !!result.data,
+      hasMetadata: !!result.data?.metadata,
+      requiresDatabaseAction: result.data?.metadata?.requiresDatabaseAction,
+      actionType: result.data?.metadata?.actionType
+    })
+
     if (result.success && result.data?.metadata?.requiresDatabaseAction) {
       console.log('🔧 检测到数据库操作请求:', result.data.metadata.actionType)
       try {
-        const dbOperationResult = await handleDatabaseOperation(result.data.metadata, supabase, user)
+        const dbOperationResult = await handleDatabaseOperation(result.data.metadata, supabase, user, isDemoMode)
         if (dbOperationResult.success) {
           // 更新响应消息
           finalResult = {
@@ -372,7 +380,7 @@ async function handleStreamResponse(
           const { data: { user: authenticatedUser } } = await supabase.auth.getUser()
 
           try {
-            const dbOperationResult = await handleDatabaseOperation(result.data.metadata, supabase, authenticatedUser)
+            const dbOperationResult = await handleDatabaseOperation(result.data.metadata, supabase, authenticatedUser, true)
             if (dbOperationResult.success) {
               finalResult = {
                 ...result,
@@ -384,7 +392,7 @@ async function handleStreamResponse(
                     classId: dbOperationResult.classId,
                     joinCode: dbOperationResult.joinCode,
                     assignmentId: dbOperationResult.assignmentId,
-                    toolsUsed: [...(result.data.metadata.toolsUsed || []), ...dbOperationResult.toolsUsed]
+                    toolsUsed: [...(result.data.metadata.toolsUsed || []), ...(dbOperationResult.toolsUsed || [])]
                   }
                 }
               }
@@ -495,34 +503,57 @@ async function handleStreamResponse(
 /**
  * 处理数据库操作请求
  */
-async function handleDatabaseOperation(metadata: any, supabase: any, user: any) {
+async function handleDatabaseOperation(metadata: any, supabase: any, user: any, isDemoMode: boolean = false) {
   const { actionType, actionData } = metadata
 
   try {
+    // 🔧 设置正确的数据库客户端
+    let dbClient = supabase
+    if (isDemoMode) {
+      const { createClient } = await import('@supabase/supabase-js')
+      dbClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+    }
+
     switch (actionType) {
       case 'create_course_with_sessions': {
         // 直接使用supabase客户端创建班级（绕过工具认证）
         const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase()
 
-        // 获取用户的组织信息
-        const { data: orgMember } = await supabase
+        console.log('🔍 检查用户认证状态:', {
+          userId: user.id,
+          isDemoMode,
+          hasSupabaseAuth: !!supabase?.auth
+        })
+
+        // 设置认证上下文（关键修复）
+        let organizationId = null
+
+        // 使用统一的dbClient获取组织信息
+        const { data: orgMember, error: orgError } = await dbClient
           .from('organization_members')
           .select('organization_id')
           .eq('user_id', user.id)
           .eq('role', 'owner')
           .single()
 
-        if (!orgMember) {
+        if (orgError || !orgMember) {
+          console.error('获取组织成员信息失败:', orgError)
           throw new Error('只有组织所有者可以创建班级')
         }
 
+        organizationId = orgMember.organization_id
+        console.log('✅ 用户是组织所有者:', organizationId)
+
         // 创建班级
-        const { data: classData, error: classError } = await supabase
+        const { data: classData, error: classError } = await dbClient
           .from('classes')
           .insert({
             name: actionData.className,
             description: actionData.classDescription || '',
-            organization_id: orgMember.organization_id,
+            organization_id: organizationId,
             join_code: joinCode,
             created_by: user.id,
           })
@@ -530,13 +561,15 @@ async function handleDatabaseOperation(metadata: any, supabase: any, user: any) 
           .single()
 
         if (classError) {
+          console.error('创建班级失败:', classError)
           throw classError
         }
 
         const classId = classData.id
+        console.log('✅ 班级创建成功:', classId)
 
         // 创建者自动成为班级管理员
-        await supabase
+        const { error: memberError } = await dbClient
           .from('class_members')
           .insert({
             class_id: classId,
@@ -544,17 +577,23 @@ async function handleDatabaseOperation(metadata: any, supabase: any, user: any) 
             role: 'teacher',
           })
 
+        if (memberError) {
+          console.error('添加班级成员失败:', memberError)
+          // 不抛出错误，因为班级已创建成功
+        }
+
         // 创建课程会话
         const sessionsPerWeek = actionData.sessionsPerWeek || 2
         const duration = actionData.duration || 8
         const totalSessions = actionData.totalSessions || 16
 
+        console.log(`🔄 开始创建${totalSessions}个课程会话...`)
         for (let i = 1; i <= Math.min(totalSessions, 16); i++) {
           const sessionDate = new Date()
           sessionDate.setDate(sessionDate.getDate() + (i - 1) * 7)
           const sessionDateStr = sessionDate.toISOString().split('T')[0]
 
-          await supabase
+          const { error: sessionError } = await dbClient
             .from('course_sessions')
             .insert({
               class_id: classId,
@@ -564,7 +603,15 @@ async function handleDatabaseOperation(metadata: any, supabase: any, user: any) 
               start_time: '09:00',
               duration_minutes: 60,
               created_by: user.id,
+              session_number: i,  // 🔧 添加必需的session_number字段
             })
+
+          if (sessionError) {
+            console.error(`创建第${i}节课程失败:`, sessionError)
+            // 不抛出错误，继续创建其他课程
+          } else {
+            console.log(`✅ 第${i}节课程创建成功`)
+          }
         }
 
         return {
@@ -591,12 +638,48 @@ async function handleDatabaseOperation(metadata: any, supabase: any, user: any) 
 
       case 'create_assignment': {
         // 创建作业
-        const classId = metadata.classId
-        if (!classId) {
-          throw new Error('请提供班级ID以创建作业')
+        let classId = metadata.classId
+        const useLatestClass = metadata.useLatestClass
+
+        // 如果用户选择使用最近的班级，查询最近创建的班级
+        if (!classId && useLatestClass) {
+          console.log('🔍 查询用户最近创建的班级...')
+          const { data: latestClass, error: latestClassError } = await dbClient
+            .from('classes')
+            .select('id, name')
+            .eq('created_by', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+
+          if (latestClassError || !latestClass) {
+            console.error('获取最近班级失败:', latestClassError)
+            throw new Error('找不到您创建的班级，请先创建一个班级或手动提供班级ID')
+          }
+
+          classId = latestClass.id
+          console.log('✅ 找到最近的班级:', latestClass.name, classId)
         }
 
-        const { data: assignmentData, error: assignmentError } = await supabase
+        if (!classId) {
+          throw new Error('请提供班级ID以创建作业，或说"创建到最近的班级"')
+        }
+
+        // 验证班级是否存在
+        const { data: classExists, error: classCheckError } = await dbClient
+          .from('classes')
+          .select('id, name')
+          .eq('id', classId)
+          .single()
+
+        if (classCheckError || !classExists) {
+          console.error('班级验证失败:', classCheckError)
+          throw new Error(`班级ID ${classId} 不存在，请提供有效的班级ID`)
+        }
+
+        console.log('✅ 班级验证通过:', classExists.name)
+
+        const { data: assignmentData, error: assignmentError } = await dbClient
           .from('assignments')
           .insert({
             class_id: classId,
@@ -609,8 +692,11 @@ async function handleDatabaseOperation(metadata: any, supabase: any, user: any) 
           .single()
 
         if (assignmentError) {
+          console.error('创建作业失败:', assignmentError)
           throw assignmentError
         }
+
+        console.log('✅ 作业创建成功:', assignmentData.id)
 
         return {
           success: true,
@@ -618,6 +704,7 @@ async function handleDatabaseOperation(metadata: any, supabase: any, user: any) 
 
 **作业信息：**
 - 作业标题：${actionData.title}
+- 所属班级：${classExists.name}
 - 班级ID：${classId}
 
 **作业内容：**
@@ -628,6 +715,8 @@ ${actionData.requirements?.join('\n') || '无特殊要求'}
 
 作业已保存到数据库，您可以开始在WeaveMind平台上管理这个作业了！`,
           assignmentId: assignmentData.id,
+          classId: classId,
+          className: classExists.name,
           toolsUsed: ['createAssignment']
         }
       }

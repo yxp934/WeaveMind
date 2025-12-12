@@ -170,7 +170,12 @@ function generateStructuredResponse(state: ChatbotState, aiContent: string, addi
       // 关键修复6: 添加上下文保持信息
       contextPreserved: true,
       messagesCount: state.messages.length,
-      workflowActive: state.currentWorkflow?.status === 'active'
+      workflowActive: state.currentWorkflow?.status === 'active',
+
+      // 🔧 关键修复：传递数据库操作标志
+      requiresDatabaseAction: state.metadata?.requiresDatabaseAction,
+      actionType: state.metadata?.actionType,
+      actionData: state.metadata?.actionData
     }
   }
 }

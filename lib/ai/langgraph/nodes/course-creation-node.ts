@@ -93,11 +93,17 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
   }
 }
 
+## 重要规则：
+1. **当用户明确表示"创建课程到数据库"、"生成课程大纲并创建"或类似表达时，必须返回 "action": "generate_course"**
+2. 如果用户提供了足够的课程信息（主题、时长、每周课次、目标学员），即使没有明确说"创建到数据库"，也应该返回 "action": "generate_course"
+3. 只有当信息明显不足时，才返回 "action": "ask_info" 或 "continue_collection"
+
 注意：
 - 使用中文回复
 - 保持友好和专业的语调
 - 记住用户在整个对话中提供的所有信息
-- 不要重复询问用户已经回答过的问题`
+- 不要重复询问用户已经回答过的问题
+- 优先满足用户明确表达的创建课程需求`
 
     // 使用messages格式调用AI
     const { text } = await generateText({
@@ -112,9 +118,13 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
     // 解析AI响应
     let result
     try {
+      console.log('🔍 AI原始响应文本:', text)
       result = JSON.parse(text)
+      console.log('🔍 AI解析后的结果:', JSON.stringify(result, null, 2))
+      console.log('🔍 AI返回的动作:', result.action)
     } catch (e) {
       console.error('解析课程创建响应失败:', e)
+      console.error('AI原始响应文本:', text)
       result = {
         message: '抱歉，处理您的课程创建请求时出现了问题。请重新描述您的需求。',
         action: 'ask_info',
@@ -141,18 +151,6 @@ export async function courseCreationNode(state: ChatbotState): Promise<Partial<C
         metadata: result.metadata
       }
     })
-
-    // 更新状态
-    const updatedState: Partial<ChatbotState> = {
-      ...state,
-      messages: [...state.messages, aiMessage],
-      metadata: {
-        ...state.metadata,
-        timestamp: new Date().toISOString(),
-        toolsUsed: result.metadata?.toolsUsed || [],
-        suggestions: result.suggestions || []
-      }
-    }
 
     // 更新工作流状态
     if (result.action === 'generate_course') {
@@ -202,6 +200,42 @@ ${courseOutline}
         classId: null, // 将由API路由层设置
         joinCode: null // 将由API路由层设置
       }
+
+      console.log('🔧 设置数据库操作标志:', {
+        requiresDatabaseAction: result.metadata.requiresDatabaseAction,
+        actionType: result.metadata.actionType
+      })
+    }
+
+    // 更新状态 - 移到设置数据库操作标志之后
+    const updatedState: Partial<ChatbotState> = {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        toolsUsed: result.metadata?.toolsUsed || [],
+        suggestions: result.suggestions || [],
+        // 🔧 确保数据库操作标志被传递
+        requiresDatabaseAction: result.metadata?.requiresDatabaseAction,
+        actionType: result.metadata?.actionType,
+        actionData: result.metadata?.actionData
+      }
+    }
+
+    console.log('📤 传递到state的metadata:', {
+      requiresDatabaseAction: updatedState.metadata?.requiresDatabaseAction,
+      actionType: updatedState.metadata?.actionType
+    })
+
+    // 继续更新工作流状态
+    if (result.action === 'generate_course') {
+      const courseInfo = result.updatedCourseInfo || state.courseInfo || {}
+      const sessionsPerWeek = parseInt(courseInfo.sessionsPerWeek) || 2
+      const duration = courseInfo.duration || '8周'
+      const weeks = parseInt(duration) || 8
+      const totalSessions = Math.min(weeks * sessionsPerWeek, 16)
+      const courseOutline = generateCourseOutline(courseInfo.topic || '未命名课程', totalSessions, courseInfo)
 
       updatedState.currentWorkflow = {
         type: 'course_creation',
@@ -421,9 +455,15 @@ export async function outlineGenerationNode(state: ChatbotState): Promise<Partia
 /**
  * 作业创建节点 - 纯AI模型驱动版本
  * 使用messages格式传递完整对话历史
+ * 修复版本：支持两阶段创建 - 先收集信息，再选择班级保存
  */
 export async function assignmentCreationNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
   try {
+    // 检查当前工作流步骤
+    const currentStep = state.currentWorkflow?.step || 'info_collection'
+    const existingAssignmentData = state.currentWorkflow?.data?.assignmentData || null
+    const selectedClassId = state.metadata?.selectedClassId || state.currentWorkflow?.data?.classId || null
+
     // 构建完整的对话历史作为messages格式
     const conversationMessages = state.messages.map(msg => {
       if (msg instanceof HumanMessage) {
@@ -433,7 +473,9 @@ export async function assignmentCreationNode(state: ChatbotState): Promise<Parti
       }
     })
 
-    const systemPrompt = `你是一个专业的作业创建助手。你需要基于完整的对话历史和用户的需求，创建相应的作业。
+    // 阶段1：收集作业信息
+    if (currentStep === 'info_collection' || !existingAssignmentData) {
+      const systemPrompt = `你是一个专业的作业创建助手。你需要基于完整的对话历史和用户的需求，创建相应的作业。
 
 ## 当前状态
 - 用户角色：${state.userRole}
@@ -444,99 +486,229 @@ export async function assignmentCreationNode(state: ChatbotState): Promise<Parti
 1. 理解完整的对话历史
 2. 分析用户已经提供的所有信息
 3. 根据用户需求创建相应的作业
-4. 支持的作业类型：测验题目、写作作业、研究作业
+4. 支持的作业类型：测验题目、写作作业、研究作业、实践作业
 
 ## 输出格式（严格JSON）
 {
   "message": "作业创建说明",
   "assignmentType": "作业类型",
+  "assignmentTitle": "作业标题",
   "assignmentContent": "具体的作业内容",
+  "duration": "预计完成时长",
   "requirements": ["具体要求"],
+  "needsClassSelection": true,
   "nextActions": ["下一步操作"]
 }
 
 注意：
 - 使用中文回复
 - 创建实用、有挑战性的作业
-- 记住用户在整个对话中提供的所有信息`
+- 记住用户在整个对话中提供的所有信息
+- 当作业内容生成完毕后，必须设置 needsClassSelection: true 提示用户选择班级`
 
-    const { text } = await generateText({
-      model: openai.chat(DEFAULT_MODEL),
-      system: systemPrompt,
-      messages: conversationMessages,
-      maxTokens: 1800, // 适度降低以提高响应速度
-      temperature: 0.7
-    })
+      const { text } = await generateText({
+        model: openai.chat(DEFAULT_MODEL),
+        system: systemPrompt,
+        messages: conversationMessages,
+        maxTokens: 1800,
+        temperature: 0.7
+      })
 
-    const result = JSON.parse(text)
+      const result = JSON.parse(text)
 
-    // 标记需要执行数据库操作，由API路由层处理
-    result.metadata = {
-      ...result.metadata,
-      toolsUsed: ['assignment_content_generation'],
-      requiresDatabaseAction: true,
-      actionType: 'create_assignment',
-      actionData: {
-        title: result.assignmentType || '未命名作业',
-        description: result.assignmentContent || '作业内容待补充',
-        requirements: result.requirements || []
-      },
-      classId: state.metadata?.classId || null // 需要用户提供班级ID
-    }
-
-    result.message = `🎉 作业内容已生成！我已经为您设计了作业：
+      // 生成作业内容后，提示用户选择班级
+      result.message = `🎉 作业内容已生成！我已经为您设计了作业：
 
 **作业信息：**
 - 作业类型：${result.assignmentType}
-- 作业标题：${result.assignmentType}
+- 作业标题：${result.assignmentTitle || result.assignmentType}
+- 预计完成时长：${result.duration || '未指定'}
 
 **作业内容：**
 ${result.assignmentContent}
 
 **具体要求：**
-${result.requirements?.join('\n') || '无特殊要求'}
+${result.requirements?.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n') || '无特殊要求'}
 
-请提供班级ID，我将为您创建这个作业到数据库。`
+---
 
-    const aiMessage = new AIMessage({
-      content: result.message || '作业已创建完成！',
-      additional_kwargs: {
-        assignmentType: result.assignmentType,
-        assignmentContent: result.assignmentContent,
-        requirements: result.requirements,
-        nextActions: result.nextActions,
-        metadata: result.metadata
+📋 **下一步：选择班级**
+请告诉我您想将这个作业添加到哪个班级，或者说"创建到最近的班级"，我将为您保存这个作业。
+
+💡 提示：您也可以说"查看我的班级列表"来查看可用的班级。`
+
+      const aiMessage = new AIMessage({
+        content: result.message,
+        additional_kwargs: {
+          assignmentType: result.assignmentType,
+          assignmentTitle: result.assignmentTitle,
+          assignmentContent: result.assignmentContent,
+          duration: result.duration,
+          requirements: result.requirements,
+          needsClassSelection: true
+        }
+      })
+
+      // 保存作业数据到工作流状态，等待用户选择班级
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        currentWorkflow: {
+          type: 'assignment_creation',
+          status: 'active',
+          step: 'awaiting_class_selection',
+          data: {
+            assignmentData: {
+              title: result.assignmentTitle || result.assignmentType || '未命名作业',
+              type: result.assignmentType,
+              description: result.assignmentContent || '',
+              duration: result.duration,
+              requirements: result.requirements || []
+            }
+          }
+        },
+        metadata: {
+          ...state.metadata,
+          timestamp: new Date().toISOString(),
+          toolsUsed: ['assignment_content_generation'],
+          suggestions: ['创建到最近的班级', '查看我的班级列表', '手动输入班级ID'],
+          // 暂不设置数据库操作标志，等待班级选择
+          requiresDatabaseAction: false
+        }
+      }
+    }
+
+    // 阶段2：用户已选择班级，准备保存到数据库
+    if (currentStep === 'awaiting_class_selection' && existingAssignmentData) {
+      // 分析用户消息，提取班级信息
+      const lastUserMessage = state.messages[state.messages.length - 1]
+      const userInput = lastUserMessage instanceof HumanMessage ? lastUserMessage.content.toString() : ''
+
+      // 检查用户是否提供了班级ID或选择
+      let classId = selectedClassId
+
+      // 尝试从用户输入中提取班级ID（UUID格式）
+      const uuidMatch = userInput.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+      if (uuidMatch) {
+        classId = uuidMatch[0]
+      }
+
+      // 检查是否用户说"创建到最近的班级"
+      const useLatestClass = userInput.includes('最近') || userInput.includes('latest') || userInput.includes('最新')
+
+      if (classId || useLatestClass) {
+        // 准备保存到数据库
+        const assignmentData = existingAssignmentData
+
+        const successMessage = `✅ 作业准备保存到数据库！
+
+**作业信息：**
+- 标题：${assignmentData.title}
+- 类型：${assignmentData.type}
+- 班级ID：${classId || '将使用最近创建的班级'}
+
+正在保存作业...`
+
+        const aiMessage = new AIMessage({
+          content: successMessage,
+          additional_kwargs: {
+            assignmentSaved: true,
+            classId: classId,
+            useLatestClass: useLatestClass
+          }
+        })
+
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          currentWorkflow: {
+            type: 'assignment_creation',
+            status: 'completed',
+            step: 'saving_to_database',
+            data: {
+              ...state.currentWorkflow?.data,
+              classId: classId,
+              useLatestClass: useLatestClass
+            }
+          },
+          metadata: {
+            ...state.metadata,
+            timestamp: new Date().toISOString(),
+            toolsUsed: ['assignment_creation', 'database_save'],
+            // 🔧 设置数据库操作标志
+            requiresDatabaseAction: true,
+            actionType: 'create_assignment',
+            actionData: {
+              title: assignmentData.title,
+              description: assignmentData.description,
+              requirements: assignmentData.requirements
+            },
+            classId: classId,
+            useLatestClass: useLatestClass
+          }
+        }
+      } else {
+        // 用户没有提供有效的班级信息，继续询问
+        const promptMessage = `❓ 我需要知道要将作业添加到哪个班级。
+
+**您的作业已准备就绪：**
+- 标题：${existingAssignmentData.title}
+- 类型：${existingAssignmentData.type}
+
+请选择以下方式之一：
+1. 📋 说"创建到最近的班级" - 使用您最近创建的班级
+2. 🆔 直接提供班级ID（UUID格式）
+3. 📝 说"查看班级列表" - 我会帮您查看可用的班级
+
+您想怎么做？`
+
+        const aiMessage = new AIMessage({
+          content: promptMessage,
+          additional_kwargs: {
+            awaitingClassSelection: true
+          }
+        })
+
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          currentWorkflow: {
+            ...state.currentWorkflow,
+            status: 'active',
+            step: 'awaiting_class_selection'
+          },
+          metadata: {
+            ...state.metadata,
+            timestamp: new Date().toISOString(),
+            toolsUsed: ['assignment_creation'],
+            suggestions: ['创建到最近的班级', '查看班级列表'],
+            requiresDatabaseAction: false
+          }
+        }
+      }
+    }
+
+    // 默认情况：重新开始收集信息
+    return assignmentCreationNode({
+      ...state,
+      currentWorkflow: {
+        type: 'assignment_creation',
+        status: 'active',
+        step: 'info_collection',
+        data: {}
       }
     })
 
-    return {
-      ...state,
-      messages: [...state.messages, aiMessage],
-      currentWorkflow: {
-        type: 'assignment_creation',
-        status: 'completed',
-        step: 'created',
-        data: {
-          assignmentType: result.assignmentType,
-          assignmentContent: result.assignmentContent,
-          assignmentId: result.metadata?.assignmentId
-        }
-      },
-      metadata: {
-        ...state.metadata,
-        timestamp: new Date().toISOString(),
-        toolsUsed: result.metadata?.toolsUsed || ['assignment_creation'],
-        suggestions: result.requirements || []
-      }
-    }
   } catch (error) {
+    console.error('作业创建失败:', error)
     return {
       ...state,
       metadata: {
         ...state.metadata,
         timestamp: new Date().toISOString(),
         toolsUsed: ['assignment_creation'],
-        suggestions: ['请明确作业类型和要求']
+        suggestions: ['请明确作业类型和要求'],
+        error: (error as Error).message
       }
     }
   }
