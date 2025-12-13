@@ -60,6 +60,23 @@ function startHeartbeat(
   };
 }
 
+/**
+ * Placeholder for direct CRUD handling to avoid reference errors.
+ * Currently returns false to let LangGraph handle the request.
+ */
+async function tryHandleDirectCrud(
+  _message: string,
+  _context: any,
+  _userId: string,
+  _userRole: "teacher" | "student" | "self_learner",
+  _dbClient: any,
+  _supabase: any,
+  _encoder: TextEncoder,
+  _controller: ReadableStreamDefaultController,
+): Promise<boolean> {
+  return false;
+}
+
 // Use the Node.js runtime because this endpoint performs Supabase admin operations
 // (service role) that are not supported on the Edge runtime.
 export const runtime = "nodejs";
