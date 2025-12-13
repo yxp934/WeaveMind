@@ -1,15 +1,30 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, X, Plus, BookOpen, Users, FileText, Trash2 } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import {
+  Send,
+  Sparkles,
+  X,
+  Plus,
+  BookOpen,
+  Users,
+  FileText,
+  Trash2,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useChatbotStore } from '@/lib/store/chatbot-store';
+import { useChatbotStore } from "@/lib/store/chatbot-store";
 import { cn } from "@/lib/utils";
 
 interface SidebarChatbotProps {
-  userRole?: 'teacher' | 'student' | 'self-learner';
+  userRole?: "teacher" | "student" | "self-learner";
   classId?: string;
   courseId?: string;
+  // 动态上下文数据：从TeacherDashboard传入真实的班级/课次/作业
+  contexts?: {
+    classes?: { id: string; title: string }[];
+    sessions?: { id: string; title: string; className?: string }[];
+    assignments?: { id: string; title: string; className?: string }[];
+  };
   onClose?: () => void;
 }
 
@@ -23,7 +38,7 @@ interface Message {
 
 interface ToolCall {
   tool: string;
-  status: 'pending' | 'running' | 'completed' | 'error';
+  status: "pending" | "running" | "completed" | "error";
   result?: any;
   error?: string;
 }
@@ -32,7 +47,7 @@ const suggestions = [
   "帮我创建一个神经科学的入门课",
   "生成课程大纲",
   "使用A2A优化内容",
-  "分析学生学习进度"
+  "分析学生学习进度",
 ];
 
 function Logo() {
@@ -64,42 +79,45 @@ function Logo() {
 }
 
 export default function SidebarChatbot({
-  userRole = 'teacher',
+  userRole = "teacher",
   classId,
   courseId,
-  onClose
+  contexts,
+  onClose,
 }: SidebarChatbotProps) {
-  const {
-    messages,
-    isLoading,
-    workflow,
-    error,
-    sendMessage,
-    clearMessages
-  } = useChatbotStore();
+  const { messages, isLoading, workflow, error, sendMessage, clearMessages } =
+    useChatbotStore();
 
   const [input, setInput] = useState("");
   const [showContextMenu, setShowContextMenu] = useState(false);
-  const [hoveredCategory, setHoveredCategory] = useState<'class' | 'session' | 'assignment' | null>(null);
+  const [hoveredCategory, setHoveredCategory] = useState<
+    "class" | "session" | "assignment" | null
+  >(null);
   const [selectedContexts, setSelectedContexts] = useState<ContextItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const contextButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Mock data for context items
-  const contextData = {
-    class: [
-      { id: 0, title: 'Machine Learning Fundamentals', type: 'class' as const },
-      { id: 1, title: 'Web Development & Design', type: 'class' as const },
-    ],
-    session: [
-      { id: 0, title: 'Neural Networks Deep Dive', type: 'session' as const },
-      { id: 1, title: 'Supervised Learning Basics', type: 'session' as const },
-    ],
-    assignment: [
-      { id: 0, title: 'Neural Network Project', type: 'assignment' as const },
-      { id: 1, title: 'ML Algorithm Implementation', type: 'assignment' as const },
-    ],
-  };
+  // 真实上下文数据（从Teacher Dashboard传入）；如果无数据，回退为空数组
+  const contextData = useMemo(
+    () => ({
+      class: (contexts?.classes || []).map((c) => ({
+        id: c.id,
+        title: c.title,
+        type: "class" as const,
+      })),
+      session: (contexts?.sessions || []).map((s) => ({
+        id: s.id,
+        title: s.className ? `${s.className} - ${s.title}` : s.title,
+        type: "session" as const,
+      })),
+      assignment: (contexts?.assignments || []).map((a) => ({
+        id: a.id,
+        title: a.className ? `${a.className} - ${a.title}` : a.title,
+        type: "assignment" as const,
+      })),
+    }),
+    [contexts],
+  );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({
@@ -119,10 +137,22 @@ export default function SidebarChatbot({
     const messageContent = input.trim();
     setInput("");
 
+    // 选中的上下文透传到后端，便于LangGraph执行真实CRUD
+    const selectedClassId =
+      selectedContexts.find((c) => c.type === "class")?.id || classId;
+    const selectedSessionId =
+      selectedContexts.find((c) => c.type === "session")?.id || undefined;
+    const selectedAssignmentId =
+      selectedContexts.find((c) => c.type === "assignment")?.id || undefined;
+
     await sendMessage(messageContent, {
       userRole,
-      classId,
+      classId: selectedClassId,
       courseId,
+      selectedClassId,
+      selectedSessionId,
+      selectedAssignmentId,
+      selectedContexts,
       stream: true, // 启用流式输出
     });
   };
@@ -132,7 +162,9 @@ export default function SidebarChatbot({
   };
 
   const handleContextSelect = (item: ContextItem) => {
-    const exists = selectedContexts.find((c) => c.id === item.id && c.type === item.type);
+    const exists = selectedContexts.find(
+      (c) => c.id === item.id && c.type === item.type,
+    );
     if (!exists) {
       setSelectedContexts([...selectedContexts, item]);
     }
@@ -141,49 +173,74 @@ export default function SidebarChatbot({
   };
 
   const handleRemoveContext = (item: ContextItem) => {
-    setSelectedContexts(selectedContexts.filter((c) => !(c.id === item.id && c.type === item.type)));
+    setSelectedContexts(
+      selectedContexts.filter(
+        (c) => !(c.id === item.id && c.type === item.type),
+      ),
+    );
   };
 
   const handleClearChat = () => {
-    if (confirm('确定要清除所有聊天记录吗？')) {
+    if (confirm("确定要清除所有聊天记录吗？")) {
       clearMessages();
     }
   };
 
-  const getCategoryIcon = (category: 'class' | 'session' | 'assignment') => {
+  const getCategoryIcon = (category: "class" | "session" | "assignment") => {
     switch (category) {
-      case 'class':
+      case "class":
         return <BookOpen className="size-4 text-[#B882B1]" />;
-      case 'session':
+      case "session":
         return <Users className="size-4 text-[#3FA11B]" />;
-      case 'assignment':
+      case "assignment":
         return <FileText className="size-4 text-[#B882B1]" />;
     }
   };
 
-  const getCategoryColor = (category: 'class' | 'session' | 'assignment') => {
+  const getCategoryColor = (category: "class" | "session" | "assignment") => {
     switch (category) {
-      case 'class':
-        return '#B882B1';
-      case 'session':
-        return '#3FA11B';
-      case 'assignment':
-        return '#B882B1';
+      case "class":
+        return "#B882B1";
+      case "session":
+        return "#3FA11B";
+      case "assignment":
+        return "#B882B1";
     }
   };
 
   // 渲染消息内容，支持Markdown格式
   const renderMessageContent = (content: string) => {
-    return content.split('\n').map((line, index) => {
+    return content.split("\n").map((line, index) => {
       // 处理标题 (# ## ###)
-      if (line.startsWith('### ')) {
-        return <h3 key={index} className="text-[16px] font-semibold mt-3 mb-2 text-[#101828]">{line.substring(4)}</h3>;
+      if (line.startsWith("### ")) {
+        return (
+          <h3
+            key={index}
+            className="text-[16px] font-semibold mt-3 mb-2 text-[#101828]"
+          >
+            {line.substring(4)}
+          </h3>
+        );
       }
-      if (line.startsWith('## ')) {
-        return <h2 key={index} className="text-[18px] font-semibold mt-4 mb-2 text-[#101828]">{line.substring(3)}</h2>;
+      if (line.startsWith("## ")) {
+        return (
+          <h2
+            key={index}
+            className="text-[18px] font-semibold mt-4 mb-2 text-[#101828]"
+          >
+            {line.substring(3)}
+          </h2>
+        );
       }
-      if (line.startsWith('# ')) {
-        return <h1 key={index} className="text-[20px] font-bold mt-4 mb-3 text-[#101828]">{line.substring(2)}</h1>;
+      if (line.startsWith("# ")) {
+        return (
+          <h1
+            key={index}
+            className="text-[20px] font-bold mt-4 mb-3 text-[#101828]"
+          >
+            {line.substring(2)}
+          </h1>
+        );
       }
 
       // 处理粗体文本
@@ -193,9 +250,13 @@ export default function SidebarChatbot({
       return (
         <p key={index} className="text-[14px] leading-[20px] break-words mb-1">
           {parts.map((part, partIndex) =>
-            partIndex % 2 === 1 ?
-              <strong key={partIndex} className="font-semibold">{part}</strong> :
+            partIndex % 2 === 1 ? (
+              <strong key={partIndex} className="font-semibold">
+                {part}
+              </strong>
+            ) : (
               part
+            ),
           )}
         </p>
       );
@@ -213,9 +274,7 @@ export default function SidebarChatbot({
               <h3 className="text-[#101828] text-[18px] font-['Slackey:Regular',sans-serif]">
                 Weaver AI
               </h3>
-              <p className="text-[#6a7282] text-[13px]">
-                智能学习助手
-              </p>
+              <p className="text-[#6a7282] text-[13px]">智能学习助手</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -277,19 +336,19 @@ export default function SidebarChatbot({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
-                  className={`flex ${message.role === 'user' ? "justify-end" : "justify-start"}`}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`flex gap-3 ${message.role === 'user' ? "flex-row-reverse" : "flex-row"} max-w-[85%]`}
+                    className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"} max-w-[85%]`}
                   >
-                    {message.role !== 'user' && (
+                    {message.role !== "user" && (
                       <div className="size-8 rounded-full bg-[#B882B1] flex items-center justify-center shrink-0">
                         <Sparkles className="size-4 text-white" />
                       </div>
                     )}
                     <div
                       className={`rounded-[10px] px-4 py-3 break-words ${
-                        message.role === 'user'
+                        message.role === "user"
                           ? "bg-gray-100 text-[#101828]"
                           : "bg-[#f3e8f4] border border-[rgba(184,130,177,0.2)] text-[#101828]"
                       }`}
@@ -302,27 +361,32 @@ export default function SidebarChatbot({
                               key={index}
                               className="inline-flex items-center gap-1 bg-white/80 rounded-full px-2 py-1 text-xs"
                             >
-                              <div className={`w-2 h-2 rounded-full ${
-                                toolCall.status === 'completed' ? 'bg-[#3FA11B]' :
-                                toolCall.status === 'error' ? 'bg-red-500' :
-                                toolCall.status === 'running' ? 'bg-[#B882B1] animate-pulse' :
-                                'bg-gray-400'
-                              }`} />
-                              <span className="text-[#101828]">{toolCall.tool}</span>
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  toolCall.status === "completed"
+                                    ? "bg-[#3FA11B]"
+                                    : toolCall.status === "error"
+                                      ? "bg-red-500"
+                                      : toolCall.status === "running"
+                                        ? "bg-[#B882B1] animate-pulse"
+                                        : "bg-gray-400"
+                                }`}
+                              />
+                              <span className="text-[#101828]">
+                                {toolCall.tool}
+                              </span>
                             </div>
                           ))}
                         </div>
                       )}
 
                       {/* 消息内容 */}
-                      <div>
-                        {renderMessageContent(message.content)}
-                      </div>
+                      <div>{renderMessageContent(message.content)}</div>
 
                       <p className="text-xs opacity-70 mt-1">
                         {new Date(message.timestamp).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit'
+                          hour: "2-digit",
+                          minute: "2-digit",
                         })}
                       </p>
                     </div>
@@ -455,33 +519,33 @@ export default function SidebarChatbot({
             {/* Category Tabs */}
             <div className="flex border-b border-gray-200">
               <button
-                onMouseEnter={() => setHoveredCategory('class')}
+                onMouseEnter={() => setHoveredCategory("class")}
                 className={`flex-1 px-4 py-3 text-[12px] flex items-center justify-center gap-2 transition-colors ${
-                  hoveredCategory === 'class'
-                    ? 'bg-[#f3e8f4] text-[#B882B1] border-b-2 border-[#B882B1]'
-                    : 'text-[#6a7282] hover:bg-gray-50'
+                  hoveredCategory === "class"
+                    ? "bg-[#f3e8f4] text-[#B882B1] border-b-2 border-[#B882B1]"
+                    : "text-[#6a7282] hover:bg-gray-50"
                 }`}
               >
                 <BookOpen className="size-4" />
                 <span>Classes</span>
               </button>
               <button
-                onMouseEnter={() => setHoveredCategory('session')}
+                onMouseEnter={() => setHoveredCategory("session")}
                 className={`flex-1 px-4 py-3 text-[12px] flex items-center justify-center gap-2 transition-colors ${
-                  hoveredCategory === 'session'
-                    ? 'bg-[#E8F5E9] text-[#3FA11B] border-b-2 border-[#3FA11B]'
-                    : 'text-[#6a7282] hover:bg-gray-50'
+                  hoveredCategory === "session"
+                    ? "bg-[#E8F5E9] text-[#3FA11B] border-b-2 border-[#3FA11B]"
+                    : "text-[#6a7282] hover:bg-gray-50"
                 }`}
               >
                 <Users className="size-4" />
                 <span>Sessions</span>
               </button>
               <button
-                onMouseEnter={() => setHoveredCategory('assignment')}
+                onMouseEnter={() => setHoveredCategory("assignment")}
                 className={`flex-1 px-4 py-3 text-[12px] flex items-center justify-center gap-2 transition-colors ${
-                  hoveredCategory === 'assignment'
-                    ? 'bg-[#f3e8f4] text-[#B882B1] border-b-2 border-[#B882B1]'
-                    : 'text-[#6a7282] hover:bg-gray-50'
+                  hoveredCategory === "assignment"
+                    ? "bg-[#f3e8f4] text-[#B882B1] border-b-2 border-[#B882B1]"
+                    : "text-[#6a7282] hover:bg-gray-50"
                 }`}
               >
                 <FileText className="size-4" />
@@ -507,12 +571,18 @@ export default function SidebarChatbot({
                         onClick={() => handleContextSelect(item)}
                         className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-3 group"
                       >
-                        <div className={`size-8 rounded-lg flex items-center justify-center ${
-                          item.type === 'session' ? 'bg-[#E8F5E9]' : 'bg-[#f3e8f4]'
-                        }`}>
+                        <div
+                          className={`size-8 rounded-lg flex items-center justify-center ${
+                            item.type === "session"
+                              ? "bg-[#E8F5E9]"
+                              : "bg-[#f3e8f4]"
+                          }`}
+                        >
                           {getCategoryIcon(item.type)}
                         </div>
-                        <span className="text-[13px] text-[#101828] flex-1">{item.title}</span>
+                        <span className="text-[13px] text-[#101828] flex-1">
+                          {item.title}
+                        </span>
                         <Plus className="size-4 text-[#6a7282] opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                     ))}
@@ -532,7 +602,7 @@ export default function SidebarChatbot({
 }
 
 interface ContextItem {
-  id: number;
+  id: string;
   title: string;
-  type: 'class' | 'session' | 'assignment';
+  type: "class" | "session" | "assignment";
 }

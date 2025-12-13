@@ -1,13 +1,19 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { useRef } from 'react';
+import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 // Design-compliant components
-import { Navigation, ClassCard, SessionCard, TeacherAssignmentCard, SectionCard } from '@/components/teacher/design';
-import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
-import SidebarChatbot from '@/components/SidebarChatbot';
+import {
+  Navigation,
+  ClassCard,
+  SessionCard,
+  TeacherAssignmentCard,
+  SectionCard,
+} from "@/components/teacher/design";
+import { FloatingActionMenu } from "@/components/teacher/FloatingActionMenu";
+import SidebarChatbot from "@/components/SidebarChatbot";
 
 interface ClassData {
   id: number;
@@ -57,7 +63,7 @@ export function TeacherDashboardClient({
   classes,
   upcomingSessions,
   assignments,
-  teacherData
+  teacherData,
 }: TeacherDashboardClientProps) {
   const router = useRouter();
   const classScrollRef = useRef<HTMLDivElement>(null);
@@ -67,7 +73,7 @@ export function TeacherDashboardClient({
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push('/auth/login');
+    router.push("/auth/login");
   };
 
   return (
@@ -77,10 +83,10 @@ export function TeacherDashboardClient({
         userName={teacherData.name}
         userAvatar={teacherData.avatar}
         organization={teacherData.organization}
-        onNavigateToSettings={() => router.push('/teacher/settings')}
-        onNavigateToHome={() => router.push('/teacher')}
-        onNavigateToNotifications={() => router.push('/teacher/notifications')}
-        onNavigateToDiscussions={() => router.push('/teacher/discussions')}
+        onNavigateToSettings={() => router.push("/teacher/settings")}
+        onNavigateToHome={() => router.push("/teacher")}
+        onNavigateToNotifications={() => router.push("/teacher/notifications")}
+        onNavigateToDiscussions={() => router.push("/teacher/discussions")}
       />
 
       {/* Main Dashboard */}
@@ -107,8 +113,8 @@ export function TeacherDashboardClient({
                 ref={classScrollRef}
                 className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth pb-2"
                 style={{
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
                 }}
               >
                 {classes.length > 0 ? (
@@ -119,13 +125,17 @@ export function TeacherDashboardClient({
                     >
                       <ClassCard
                         {...classItem}
-                        onClick={() => router.push(`/teacher/classes/${classItem.id}`)}
+                        onClick={() =>
+                          router.push(`/teacher/classes/${classItem.id}`)
+                        }
                       />
                     </div>
                   ))
                 ) : (
                   <div className="w-full text-center py-8">
-                    <p className="text-[#6a7282] text-[14px]">No classes yet. Create your first class to get started!</p>
+                    <p className="text-[#6a7282] text-[14px]">
+                      No classes yet. Create your first class to get started!
+                    </p>
                   </div>
                 )}
               </div>
@@ -139,8 +149,8 @@ export function TeacherDashboardClient({
                   ref={sessionScrollRef}
                   className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-hide scroll-smooth pr-2"
                   style={{
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none',
+                    scrollbarWidth: "none",
+                    msOverflowStyle: "none",
                   }}
                 >
                   {upcomingSessions.length > 0 ? (
@@ -148,12 +158,16 @@ export function TeacherDashboardClient({
                       <SessionCard
                         key={session.id}
                         {...session}
-                        onClick={() => router.push(`/teacher/sessions/${session.id}`)}
+                        onClick={() =>
+                          router.push(`/teacher/sessions/${session.id}`)
+                        }
                       />
                     ))
                   ) : (
                     <div className="text-center py-8">
-                      <p className="text-[#6a7282] text-[14px]">No upcoming sessions</p>
+                      <p className="text-[#6a7282] text-[14px]">
+                        No upcoming sessions
+                      </p>
                     </div>
                   )}
                 </div>
@@ -165,8 +179,8 @@ export function TeacherDashboardClient({
                   ref={assignmentScrollRef}
                   className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-hide scroll-smooth pr-2"
                   style={{
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none',
+                    scrollbarWidth: "none",
+                    msOverflowStyle: "none",
                   }}
                 >
                   {assignments.length > 0 ? (
@@ -174,12 +188,16 @@ export function TeacherDashboardClient({
                       <TeacherAssignmentCard
                         key={assignment.id}
                         {...assignment}
-                        onClick={() => router.push(`/teacher/assignments/${assignment.id}`)}
+                        onClick={() =>
+                          router.push(`/teacher/assignments/${assignment.id}`)
+                        }
                       />
                     ))
                   ) : (
                     <div className="text-center py-8">
-                      <p className="text-[#6a7282] text-[14px]">No assignments yet</p>
+                      <p className="text-[#6a7282] text-[14px]">
+                        No assignments yet
+                      </p>
                     </div>
                   )}
                 </div>
@@ -189,7 +207,25 @@ export function TeacherDashboardClient({
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <SidebarChatbot userRole="teacher" />
+            <SidebarChatbot
+              userRole="teacher"
+              contexts={{
+                classes: classes.map((c) => ({
+                  id: String(c.id),
+                  title: c.title,
+                })),
+                sessions: upcomingSessions.map((s) => ({
+                  id: String(s.id),
+                  title: s.title,
+                  className: s.className,
+                })),
+                assignments: assignments.map((a) => ({
+                  id: String(a.id),
+                  title: a.title,
+                  className: a.className,
+                })),
+              }}
+            />
           </div>
         </div>
       </div>
