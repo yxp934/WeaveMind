@@ -4,6 +4,62 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { chatbot } from "@/lib/ai/langgraph/chatbot-graph";
 import { z } from "zod";
 
+const MAX_RETRIES = 3;
+
+async function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function executeWithRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxRetries = MAX_RETRIES,
+) {
+  let lastError: any;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      console.error(`[${label}] attempt ${attempt} failed:`, error);
+      if (attempt < maxRetries) {
+        await delay(500 * attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
+function startHeartbeat(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+) {
+  let active = true;
+  const timer = setInterval(() => {
+    if (!active) return;
+    try {
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: "progress",
+            progress: 50,
+            message: "⏳ 正在处理中... (保持连接)",
+            timestamp: new Date().toISOString(),
+            heartbeat: true,
+          })}\n\n`,
+        ),
+      );
+    } catch (err) {
+      console.warn("heartbeat enqueue failed", err);
+    }
+  }, 5000);
+
+  return () => {
+    active = false;
+    clearInterval(timer);
+  };
+}
+
 // Use the Node.js runtime because this endpoint performs Supabase admin operations
 // (service role) that are not supported on the Edge runtime.
 export const runtime = "nodejs";
@@ -176,6 +232,7 @@ async function handleStreamResponse(
       const encoder = new TextEncoder();
       const dbClient = createAdminClient();
       const supabaseServer = await createClient();
+      const stopHeartbeat = startHeartbeat(controller, encoder);
 
       try {
         console.log("🌊 开始流式LangGraph处理:", {
@@ -246,21 +303,25 @@ async function handleStreamResponse(
 
         // 使用LangGraph处理消息
         console.log("🔄 开始LangGraph处理流程...");
-        const result = await chatbot.processMessage(
-          message,
-          conversationId,
-          userRole,
-          userId,
-          context?.conversationHistory || [],
-          {
-            courseId: context?.courseId,
-            classId: context?.classId,
-            organizationId: context?.organizationId,
-            selectedClassId: context?.selectedClassId,
-            selectedSessionId: context?.selectedSessionId,
-            selectedAssignmentId: context?.selectedAssignmentId,
-            selectedContexts: context?.selectedContexts,
-          },
+        const result = await executeWithRetry(
+          () =>
+            chatbot.processMessage(
+              message,
+              conversationId,
+              userRole,
+              userId,
+              context?.conversationHistory || [],
+              {
+                courseId: context?.courseId,
+                classId: context?.classId,
+                organizationId: context?.organizationId,
+                selectedClassId: context?.selectedClassId,
+                selectedSessionId: context?.selectedSessionId,
+                selectedAssignmentId: context?.selectedAssignmentId,
+                selectedContexts: context?.selectedContexts,
+              },
+            ),
+          "chatbot.processMessage",
         );
 
         if (!result.success) {
@@ -276,11 +337,15 @@ async function handleStreamResponse(
           );
 
           try {
-            const dbOperationResult = await handleDatabaseOperation(
-              result.data.metadata,
-              supabaseServer,
-              user || { id: userId },
-              true,
+            const dbOperationResult = await executeWithRetry(
+              () =>
+                handleDatabaseOperation(
+                  result.data.metadata,
+                  supabaseServer,
+                  user || { id: userId },
+                  true,
+                ),
+              "handleDatabaseOperation",
             );
             finalResult = {
               ...result,
@@ -400,6 +465,7 @@ async function handleStreamResponse(
           totalProcessingTime: Date.now() - startTime,
           intent: finalResult.data?.metadata?.intent,
         });
+        stopHeartbeat();
       } catch (error: any) {
         console.error("🚨 流式处理失败:", error);
         controller.enqueue(
@@ -412,6 +478,7 @@ async function handleStreamResponse(
             })}\n\n`,
           ),
         );
+        stopHeartbeat();
       } finally {
         // 发送结束信号
         controller.enqueue(
