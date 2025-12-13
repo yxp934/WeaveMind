@@ -92,7 +92,7 @@ async function tryHandleDirectCrud(
     .ilike("name", `%${className}%`)
     .order("created_at", { ascending: false })
     .limit(1)
-    .maybeSingle();
+    .single();
 
   if (clsErr || !cls) {
     return false;
