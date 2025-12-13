@@ -359,7 +359,7 @@ async function handleStreamResponse(
                 handleDatabaseOperation(
                   result.data.metadata,
                   supabaseServer,
-                  user || { id: userId },
+                  { id: userId },
                   true,
                 ),
               "handleDatabaseOperation",
