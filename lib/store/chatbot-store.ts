@@ -417,29 +417,43 @@ export const useChatbotStore = create<ChatbotStore>()(
             "teacher"
           ).replace("self-learner", "self_learner");
 
-          const response = await fetch("/api/ai/chat-stream", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+          const postBody = JSON.stringify({
+            message: content,
+            context: {
+              courseId: metadata.courseId,
+              classId: metadata.classId,
+              organizationId: metadata.organizationId,
+              userRole: normalizedUserRole as any,
+              selectedClassId: metadata.selectedClassId,
+              selectedSessionId: metadata.selectedSessionId,
+              selectedAssignmentId: metadata.selectedAssignmentId,
+              selectedContexts: metadata.selectedContexts,
+              conversationHistory,
             },
-            body: JSON.stringify({
-              message: content,
-              context: {
-                courseId: metadata.courseId,
-                classId: metadata.classId,
-                organizationId: metadata.organizationId,
-                userRole: normalizedUserRole as any,
-                selectedClassId: metadata.selectedClassId,
-                selectedSessionId: metadata.selectedSessionId,
-                selectedAssignmentId: metadata.selectedAssignmentId,
-                selectedContexts: metadata.selectedContexts,
-                conversationHistory,
-              },
-            }),
           });
 
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+          let response: Response | null = null;
+          let lastError: any = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              response = await fetch("/api/ai/chat-stream", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: postBody,
+              });
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              break;
+            } catch (err) {
+              lastError = err;
+              if (attempt === 3) {
+                throw err;
+              }
+              await new Promise((r) => setTimeout(r, 500 * attempt));
+            }
           }
 
           // 处理流式响应
