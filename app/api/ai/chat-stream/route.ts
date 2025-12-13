@@ -174,6 +174,8 @@ async function handleStreamResponse(
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      const dbClient = createAdminClient();
+      const supabaseServer = await createClient();
 
       try {
         console.log("🌊 开始流式LangGraph处理:", {
@@ -218,6 +220,30 @@ async function handleStreamResponse(
           ),
         );
 
+        // 尝试直接处理显式CRUD请求，避免LangGraph超时/幻觉
+        const crudHandled = await tryHandleDirectCrud(
+          message,
+          context,
+          userId,
+          userRole,
+          dbClient,
+          supabaseServer,
+          encoder,
+          controller,
+        );
+        if (crudHandled) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: "end",
+                timestamp: new Date().toISOString(),
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+
         // 使用LangGraph处理消息
         console.log("🔄 开始LangGraph处理流程...");
         const result = await chatbot.processMessage(
@@ -249,41 +275,47 @@ async function handleStreamResponse(
             result.data.metadata.actionType,
           );
 
-          const supabase = await createClient();
-          const {
-            data: { user: authenticatedUser },
-          } = await supabase.auth.getUser();
-          const effectiveUser = authenticatedUser || { id: userId };
-
           try {
             const dbOperationResult = await handleDatabaseOperation(
               result.data.metadata,
-              supabase,
-              effectiveUser,
+              supabaseServer,
+              user || { id: userId },
               true,
             );
-            if (dbOperationResult.success) {
-              finalResult = {
-                ...result,
-                data: {
-                  ...result.data,
-                  message: dbOperationResult.message,
-                  metadata: {
-                    ...result.data.metadata,
-                    classId: dbOperationResult.classId,
-                    joinCode: dbOperationResult.joinCode,
-                    assignmentId: dbOperationResult.assignmentId,
-                    toolsUsed: [
-                      ...(result.data.metadata.toolsUsed || []),
-                      ...(dbOperationResult.toolsUsed || []),
-                    ],
-                  },
+            finalResult = {
+              ...result,
+              data: {
+                ...result.data,
+                message: dbOperationResult.message,
+                metadata: {
+                  ...result.data.metadata,
+                  classId: dbOperationResult.classId,
+                  joinCode: dbOperationResult.joinCode,
+                  assignmentId: dbOperationResult.assignmentId,
+                  toolsUsed: [
+                    ...(result.data.metadata.toolsUsed || []),
+                    ...(dbOperationResult.toolsUsed || []),
+                  ],
+                  error: dbOperationResult.success
+                    ? null
+                    : dbOperationResult.error,
                 },
-              };
-            }
+              },
+            };
           } catch (dbError: any) {
             console.error("❌ 数据库操作失败:", dbError);
-            throw new Error(`数据库操作失败: ${dbError.message}`);
+            finalResult = {
+              ...result,
+              data: {
+                ...result.data,
+                message: `❌ 数据库操作失败: ${dbError.message}`,
+                metadata: {
+                  ...result.data.metadata,
+                  error: dbError.message,
+                },
+              },
+              success: false,
+            };
           }
         }
 

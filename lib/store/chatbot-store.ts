@@ -523,7 +523,27 @@ export const useChatbotStore = create<ChatbotStore>()(
                         break;
 
                       case "error":
-                        throw new Error(data.error || "流式处理出错");
+                        // 将错误作为助手回复展示，避免重复系统错误提示
+                        accumulatedContent = data.error || "流式处理出错";
+                        set((state) => ({
+                          messages: state.messages.map((msg) =>
+                            msg.id === streamingMessageId
+                              ? {
+                                  ...msg,
+                                  content: accumulatedContent,
+                                  metadata: {
+                                    ...msg.metadata,
+                                    ...data.metadata,
+                                    isStreaming: false,
+                                    error: data.error,
+                                  },
+                                }
+                              : msg,
+                          ),
+                        }));
+                        setStreamingMessage(null);
+                        setLoading(false);
+                        break;
 
                       case "end":
                         console.log("[STREAM] 流式处理结束");
