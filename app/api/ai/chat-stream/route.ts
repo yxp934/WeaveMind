@@ -65,16 +65,223 @@ function startHeartbeat(
  * Currently returns false to let LangGraph handle the request.
  */
 async function tryHandleDirectCrud(
-  _message: string,
+  message: string,
   _context: any,
   _userId: string,
   _userRole: "teacher" | "student" | "self_learner",
-  _dbClient: any,
+  dbClient: any,
   _supabase: any,
-  _encoder: TextEncoder,
-  _controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  controller: ReadableStreamDefaultController,
 ): Promise<boolean> {
-  return false;
+  const classNameMatch = message.match(/“([^”]+)”/);
+  const className = classNameMatch ? classNameMatch[1] : null;
+
+  const send = (data: any) => {
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+  };
+
+  if (!className) {
+    return false;
+  }
+
+  // 小工具：查班级
+  const { data: cls, error: clsErr } = await dbClient
+    .from("classes")
+    .select("id,name,description,join_code,created_at")
+    .ilike("name", `%${className}%`)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (clsErr || !cls) {
+    return false;
+  }
+
+  // 更新描述
+  const descMatch = message.match(/描述更新为“([^”]+)”/);
+  if (descMatch) {
+    const newDesc = descMatch[1];
+    await executeWithRetry(
+      () =>
+        dbClient
+          .from("classes")
+          .update({ description: newDesc })
+          .eq("id", cls.id),
+      "updateClassDescription",
+    );
+
+    send({
+      type: "streaming",
+      content: `✅ 描述更新成功！\n- 班级：${cls.name}\n- 新描述：${newDesc}\n- 加入代码：${cls.join_code || "无"}`,
+      progress: 95,
+    });
+    send({
+      type: "complete",
+      data: {
+        message: `描述已更新为「${newDesc}」`,
+        metadata: { classId: cls.id },
+      },
+    });
+    return true;
+  }
+
+  // 课次相关：列出/删除/新增
+  if (
+    message.includes("课次") ||
+    message.includes("会话") ||
+    message.includes("课节")
+  ) {
+    // 获取所有课次
+    const { data: sessions } = await dbClient
+      .from("course_sessions")
+      .select("id,title,scheduled_date,start_time,session_number")
+      .eq("class_id", cls.id)
+      .order("session_number", { ascending: true });
+
+    const lines = (sessions || []).map(
+      (s: any) =>
+        `- ID: ${s.id} | 标题: ${s.title} | 序号: ${s.session_number} | 时间: ${s.scheduled_date?.slice(0, 10) || "未设"} ${s.start_time || ""}`,
+    );
+
+    // 删除第N节
+    const delMatch = message.match(/删除第(\d+)节/);
+    if (delMatch) {
+      const idx = parseInt(delMatch[1], 10);
+      const target = sessions?.find((s: any) => s.session_number === idx);
+      if (target) {
+        await executeWithRetry(
+          () => dbClient.from("course_sessions").delete().eq("id", target.id),
+          "deleteSession",
+        );
+        lines.push(`已删除第${idx}节 (ID: ${target.id})`);
+      } else {
+        lines.push(`未找到第${idx}节，无法删除`);
+      }
+    }
+
+    // 新增一节
+    if (message.includes("新增一节")) {
+      const titleMatch = message.match(/课次标题“([^”]+)”/);
+      const dateMatch = message.match(/(\d{4}-\d{1,2}-\d{1,2})/);
+      const timeMatch = message.match(/上午(\d{1,2})点|(\d{1,2}):(\d{2})/);
+      const title = titleMatch ? titleMatch[1] : "新增课次";
+      const dateStr = dateMatch
+        ? dateMatch[1]
+        : new Date().toISOString().slice(0, 10);
+      let start = "09:00";
+      if (timeMatch) {
+        const hour = timeMatch[1]
+          ? parseInt(timeMatch[1], 10)
+          : parseInt(timeMatch[2], 10);
+        const min = timeMatch[3] || "00";
+        start = `${hour.toString().padStart(2, "0")}:${min}`;
+      }
+      const nextNumber =
+        (sessions?.reduce(
+          (max: number, s: any) => Math.max(max, s.session_number || 0),
+          0,
+        ) || 0) + 1;
+
+      const { data: newSession, error: newSessErr } = await executeWithRetry(
+        () =>
+          dbClient
+            .from("course_sessions")
+            .insert({
+              class_id: cls.id,
+              title,
+              session_number: nextNumber,
+              scheduled_date: dateStr,
+              start_time: start,
+              duration_minutes: 60,
+            })
+            .select()
+            .single(),
+        "createSession",
+      );
+
+      if (!newSessErr && newSession) {
+        lines.push(
+          `已新增课次: ${title} (${dateStr} ${start}) ID: ${newSession.id}`,
+        );
+      }
+    }
+
+    send({
+      type: "complete",
+      data: {
+        message: `✅ 课次操作完成：\n${lines.join("\n")}`,
+        metadata: { classId: cls.id },
+      },
+      metadata: { classId: cls.id },
+    });
+    return true;
+  }
+
+  // 作业删除/更新（按标题匹配）
+  if (message.includes("作业")) {
+    const { data: assignments } = await dbClient
+      .from("assignments")
+      .select("id,title,description,created_at")
+      .eq("class_id", cls.id)
+      .order("created_at", { ascending: true });
+
+    const titleMatch = message.match(/作业[“\"]([^”\"]+)[”\"]/);
+    const title = titleMatch ? titleMatch[1] : null;
+    const target = title
+      ? assignments?.find((a: any) => a.title === title)
+      : assignments?.[0];
+
+    if (message.includes("删除") && target) {
+      await executeWithRetry(
+        () => dbClient.from("assignments").delete().eq("id", target.id),
+        "deleteAssignment",
+      );
+      send({
+        type: "complete",
+        data: {
+          message: `✅ 已删除作业「${target.title}」`,
+          metadata: { assignmentId: target.id },
+        },
+      });
+      return true;
+    }
+
+    const descUpdate = message.match(/描述更新为“([^”]+)”/);
+    if (descUpdate && target) {
+      const newDesc = descUpdate[1];
+      await executeWithRetry(
+        () =>
+          dbClient
+            .from("assignments")
+            .update({ description: newDesc })
+            .eq("id", target.id),
+        "updateAssignment",
+      );
+      send({
+        type: "complete",
+        data: {
+          message: `✅ 已更新作业「${target.title}」描述为：${newDesc}`,
+          metadata: { assignmentId: target.id },
+        },
+      });
+      return true;
+    }
+
+    if (assignments && assignments.length > 0) {
+      const lines = assignments.map((a: any) => `- ${a.title} (ID: ${a.id})`);
+      send({
+        type: "complete",
+        data: {
+          message: `作业列表：\n${lines.join("\n")}`,
+          metadata: { classId: cls.id },
+        },
+      });
+      return true;
+    }
+  }
+
+  return false; // 未处理则交给LangGraph
 }
 
 // Use the Node.js runtime because this endpoint performs Supabase admin operations
