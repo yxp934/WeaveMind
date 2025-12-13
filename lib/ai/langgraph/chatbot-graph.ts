@@ -49,6 +49,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
   workflow.addNode("content_generation", contentGenerationNode);
   workflow.addNode("continue_workflow", continueWorkflowNode);
   workflow.addNode("general_chat", generalChatNode);
+  workflow.addNode("entity_management", entityManagementNode);
   workflow.addNode("response_generator", responseGeneratorNode);
 
   // 添加边和条件
