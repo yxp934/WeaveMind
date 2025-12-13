@@ -465,6 +465,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           const decoder = new TextDecoder();
           let accumulatedContent = "";
           let streamingMessageId = aiMessageId;
+          let hasStreamContent = false;
 
           try {
             while (true) {
@@ -496,6 +497,7 @@ export const useChatbotStore = create<ChatbotStore>()(
                       case "streaming":
                         // 累积流式内容
                         accumulatedContent = data.content;
+                        hasStreamContent = true;
                         setStreamingMessage(accumulatedContent);
 
                         // 实时更新消息内容
@@ -539,6 +541,7 @@ export const useChatbotStore = create<ChatbotStore>()(
                       case "error":
                         // 将错误作为助手回复展示，避免重复系统错误提示
                         accumulatedContent = data.error || "流式处理出错";
+                        hasStreamContent = true;
                         set((state) => ({
                           messages: state.messages.map((msg) =>
                             msg.id === streamingMessageId
@@ -632,11 +635,35 @@ export const useChatbotStore = create<ChatbotStore>()(
           setError(error instanceof Error ? error.message : "发送消息失败");
           setStreamingMessage(null);
 
-          // 添加错误消息
-          addMessage({
-            role: "system",
-            content: "抱歉，发送消息时出现错误。请稍后重试。",
-          });
+          if (accumulatedContent && hasStreamContent) {
+            // 如果已收到部分内容，保留现有消息并标记为部分完成
+            set((state) => ({
+              messages: state.messages.map((msg) =>
+                msg.id === aiMessageId
+                  ? {
+                      ...msg,
+                      content:
+                        accumulatedContent + "\n\n（连接中断，已返回部分结果）",
+                      metadata: {
+                        ...msg.metadata,
+                        isStreaming: false,
+                        error:
+                          error instanceof Error
+                            ? error.message
+                            : String(error),
+                      },
+                    }
+                  : msg,
+              ),
+            }));
+          } else {
+            // 完全失败才追加系统错误
+            addMessage({
+              role: "system",
+              content: "抱歉，发送消息时出现错误。请稍后重试。",
+            });
+          }
+
           setLoading(false);
         }
       },
