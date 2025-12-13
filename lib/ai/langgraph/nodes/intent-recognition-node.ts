@@ -1,33 +1,35 @@
-import { StateGraph, END } from '@langchain/langgraph'
-import { ChatbotState } from '../chatbot-state'
-import { HumanMessage, AIMessage } from '@langchain/core/messages'
-import { generateText } from 'ai'
-import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
+import { StateGraph, END } from "@langchain/langgraph";
+import { ChatbotState } from "../chatbot-state";
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
+import { generateText } from "ai";
+import { createGatewayOpenAI, DEFAULT_MODEL } from "../config/openai-gateway";
 
 // 初始化AI模型 - 使用Vercel AI Gateway
-const openai = createGatewayOpenAI()
+const openai = createGatewayOpenAI();
 
 /**
  * 意图识别节点 - 纯AI模型驱动版本
  * 核心原则：完全基于AI模型能力进行意图识别，不使用任何硬编码关键词检测
  * 关键修复：使用messages格式传递完整对话历史，让模型理解上下文
  */
-export async function intentRecognitionNode(state: ChatbotState): Promise<Partial<ChatbotState>> {
-  const lastMessage = state.messages[state.messages.length - 1]
+export async function intentRecognitionNode(
+  state: ChatbotState,
+): Promise<Partial<ChatbotState>> {
+  const lastMessage = state.messages[state.messages.length - 1];
 
   if (!(lastMessage instanceof HumanMessage)) {
-    return { ...state }
+    return { ...state };
   }
 
   try {
     // 构建完整的对话历史作为messages格式（这是关键修复）
-    const conversationMessages = state.messages.map(msg => {
+    const conversationMessages = state.messages.map((msg) => {
       if (msg instanceof HumanMessage) {
-        return { role: 'user' as const, content: msg.content.toString() }
+        return { role: "user" as const, content: msg.content.toString() };
       } else {
-        return { role: 'assistant' as const, content: msg.content.toString() }
+        return { role: "assistant" as const, content: msg.content.toString() };
       }
-    })
+    });
 
     // 构建系统提示，让AI理解如何进行意图识别
     const systemPrompt = `你是WeaveMind的智能意图识别系统。你需要基于完整的对话历史理解用户的真实意图。
@@ -35,8 +37,8 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
 ## 当前会话状态：
 - 会话ID：${state.sessionId}
 - 用户角色：${state.userRole}
-- 当前工作流：${state.currentWorkflow ? `${state.currentWorkflow.type} (状态: ${state.currentWorkflow.status}, 步骤: ${state.currentWorkflow.step})` : '无'}
-- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : '无'}
+- 当前工作流：${state.currentWorkflow ? `${state.currentWorkflow.type} (状态: ${state.currentWorkflow.status}, 步骤: ${state.currentWorkflow.step})` : "无"}
+- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : "无"}
 - 对话消息总数：${state.messages.length}
 
 ## 你的任务
@@ -48,7 +50,8 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
 4. **a2a_optimization** - A2A优化（用户想要使用AI优化内容）
 5. **content_generation** - 内容生成（用户想要生成教学材料）
 6. **continue_workflow** - 继续工作流（用户正在进行中的工作流，提供了更多信息或确认继续）
-7. **general_chat** - 通用对话（闲聊或不明确的请求）
+7. **entity_management** - 班级/课次/作业的 CRUD 操作，请直接生成结构化指令（创建/读取/更新/删除）
+8. **general_chat** - 通用对话（闲聊或不明确的请求）
 
 ## 关键判断原则
 1. **理解对话上下文**：如果之前的对话显示用户正在创建课程、收集信息等，那么用户的后续回复很可能是在继续这个流程
@@ -66,7 +69,11 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
     "sessionsPerWeek": "每周课次",
     "targetAudience": "目标学员",
     "difficultyLevel": "难度级别",
-    "courseType": "课程类型"
+    "courseType": "课程类型",
+    "action": "create|read|update|delete|list",
+    "entity": "class|session|assignment",
+    "entityId": "目标实体ID（如有）",
+    "details": "其他字段/说明，比如课次日期、作业标题、班级描述"
   },
   "reasoning": "详细的推理过程，解释为什么你认为是这个意图",
   "suggestedResponse": "建议的AI回复",
@@ -74,7 +81,7 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
   "workflowType": "如果是继续工作流，具体是哪个工作流"
 }
 
-只返回JSON，不要有其他内容。`
+只返回JSON，不要有其他内容。`;
 
     // 使用messages格式调用AI，让模型能够理解完整对话上下文
     const { text } = await generateText({
@@ -83,70 +90,70 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
       messages: conversationMessages,
       maxTokens: 2000,
       temperature: 0.1,
-      abortSignal: AbortSignal.timeout(25000) // 25秒超时，接近Vercel限制但保留缓冲
-    })
+      abortSignal: AbortSignal.timeout(25000), // 25秒超时，接近Vercel限制但保留缓冲
+    });
 
     // 解析AI响应
-    let intentResult
+    let intentResult;
     try {
-      let cleanText = text.trim()
-      if (cleanText.startsWith('```json')) {
-        cleanText = cleanText.slice(7)
+      let cleanText = text.trim();
+      if (cleanText.startsWith("```json")) {
+        cleanText = cleanText.slice(7);
       }
-      if (cleanText.startsWith('```')) {
-        cleanText = cleanText.slice(3)
+      if (cleanText.startsWith("```")) {
+        cleanText = cleanText.slice(3);
       }
-      if (cleanText.endsWith('```')) {
-        cleanText = cleanText.slice(0, -3)
+      if (cleanText.endsWith("```")) {
+        cleanText = cleanText.slice(0, -3);
       }
-      intentResult = JSON.parse(cleanText.trim())
+      intentResult = JSON.parse(cleanText.trim());
     } catch (e) {
-      console.error('解析意图识别结果失败:', e, 'Raw text:', text)
-      throw new Error(`意图识别JSON解析失败: ${e.message}`)
+      console.error("解析意图识别结果失败:", e, "Raw text:", text);
+      throw new Error(`意图识别JSON解析失败: ${e.message}`);
     }
 
     // 处理AI判断的意图
-    let finalIntent = intentResult.intent
-    let finalWorkflow = state.currentWorkflow
+    let finalIntent = intentResult.intent;
+    let finalWorkflow = state.currentWorkflow;
 
     // 如果AI判断用户是在继续工作流，设置正确的工作流状态
     if (intentResult.shouldContinueWorkflow && intentResult.workflowType) {
-      finalIntent = 'continue_workflow'
+      finalIntent = "continue_workflow";
       finalWorkflow = {
         type: intentResult.workflowType,
-        status: 'active',
-        step: state.currentWorkflow?.step || 'continuing',
-        data: state.currentWorkflow?.data || {}
-      }
+        status: "active",
+        step: state.currentWorkflow?.step || "continuing",
+        data: state.currentWorkflow?.data || {},
+      };
     }
 
     // 映射中文意图到英文
     const intentMapping: Record<string, string> = {
-      '课程创建': 'course_creation',
-      '大纲生成': 'outline_generation',
-      '作业创建': 'assignment_creation',
-      'A2A优化': 'a2a_optimization',
-      '内容生成': 'content_generation',
-      '继续工作流': 'continue_workflow',
-      '通用对话': 'general_chat'
-    }
+      课程创建: "course_creation",
+      大纲生成: "outline_generation",
+      作业创建: "assignment_creation",
+      A2A优化: "a2a_optimization",
+      内容生成: "content_generation",
+      继续工作流: "continue_workflow",
+      通用对话: "general_chat",
+    };
 
-    const mappedIntent = intentMapping[finalIntent] || finalIntent
+    const mappedIntent = intentMapping[finalIntent] || finalIntent;
 
-    console.log('🤖 AI意图识别结果:', {
+    console.log("🤖 AI意图识别结果:", {
       intent: mappedIntent,
       confidence: intentResult.confidence,
       reasoning: intentResult.reasoning,
       shouldContinueWorkflow: intentResult.shouldContinueWorkflow,
-      workflowType: intentResult.workflowType
-    })
+      workflowType: intentResult.workflowType,
+    });
 
     return {
       ...state,
       intent: {
         type: mappedIntent,
         confidence: intentResult.confidence || 0.5,
-        parameters: intentResult.parameters || {}
+        parameters: intentResult.parameters || {},
       },
       currentWorkflow: finalWorkflow,
       metadata: {
@@ -154,29 +161,34 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
         timestamp: new Date().toISOString(),
         reasoning: intentResult.reasoning,
         suggestedResponse: intentResult.suggestedResponse,
-        mode: 'pure_ai_recognition'
-      }
-    }
-
+        mode: "pure_ai_recognition",
+      },
+    };
   } catch (error) {
-    console.error('意图识别失败:', error)
+    console.error("意图识别失败:", error);
 
     return {
       ...state,
       intent: {
-        type: 'general_chat',
+        type: "general_chat",
         confidence: 0.3,
-        parameters: {}
+        parameters: {},
       },
       metadata: {
         ...state.metadata,
         timestamp: new Date().toISOString(),
         error: (error as Error).message,
         reasoning: `意图识别失败: ${(error as Error).message}`,
-        suggestedResponse: '我很乐意帮助您！请告诉我您想做什么？',
-        suggestions: ['创建课程', '生成大纲', '创建作业', '优化内容', '生成材料']
-      }
-    }
+        suggestedResponse: "我很乐意帮助您！请告诉我您想做什么？",
+        suggestions: [
+          "创建课程",
+          "生成大纲",
+          "创建作业",
+          "优化内容",
+          "生成材料",
+        ],
+      },
+    };
   }
 }
 
@@ -185,35 +197,38 @@ export async function intentRecognitionNode(state: ChatbotState): Promise<Partia
  */
 export function routeDecisionNode(state: ChatbotState): string {
   // 如果有活跃的工作流，继续该工作流
-  if (state.currentWorkflow && state.currentWorkflow.status === 'active') {
-    return 'continue_workflow'
+  if (state.currentWorkflow && state.currentWorkflow.status === "active") {
+    return "continue_workflow";
   }
 
   // 根据意图类型路由到不同的处理节点
-  const intent = state.intent?.type || 'general_chat'
+  const intent = state.intent?.type || "general_chat";
 
   switch (intent) {
-    case 'course_creation':
-    case '课程创建':
-      return 'course_creation'
-    case 'outline_generation':
-    case '大纲生成':
-      return 'outline_generation'
-    case 'assignment_creation':
-    case '作业创建':
-      return 'assignment_creation'
-    case 'a2a_optimization':
-    case 'A2A优化':
-      return 'a2a_optimization'
-    case 'content_generation':
-    case '内容生成':
-      return 'content_generation'
-    case 'continue_workflow':
-    case '继续工作流':
-      return 'continue_workflow'
-    case 'general_chat':
-    case '通用对话':
+    case "course_creation":
+    case "课程创建":
+      return "course_creation";
+    case "outline_generation":
+    case "大纲生成":
+      return "outline_generation";
+    case "assignment_creation":
+    case "作业创建":
+      return "assignment_creation";
+    case "a2a_optimization":
+    case "A2A优化":
+      return "a2a_optimization";
+    case "content_generation":
+    case "内容生成":
+      return "content_generation";
+    case "continue_workflow":
+    case "继续工作流":
+      return "continue_workflow";
+    case "entity_management":
+    case "实体管理":
+      return "entity_management";
+    case "general_chat":
+    case "通用对话":
     default:
-      return 'general_chat'
+      return "general_chat";
   }
 }

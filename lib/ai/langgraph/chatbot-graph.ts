@@ -14,6 +14,7 @@ import {
 } from "./nodes/course-creation-node";
 import { generalChatNode } from "./nodes/general-chat-node";
 import { responseGeneratorNode } from "./nodes/response-generator-node";
+import { entityManagementNode } from "./nodes/entity-management-node";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 
 /**
@@ -61,6 +62,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
     a2a_optimization: "a2a_optimization",
     content_generation: "content_generation",
     continue_workflow: "continue_workflow",
+    entity_management: "entity_management",
     general_chat: "general_chat",
     __end__: "response_generator",
   });
@@ -111,6 +113,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
 
   // 通用聊天后结束
   workflow.addEdge("general_chat", "response_generator");
+  workflow.addEdge("entity_management", "response_generator");
 
   // 响应生成后结束
   workflow.addEdge("response_generator", END);

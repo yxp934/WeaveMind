@@ -61,227 +61,20 @@ function startHeartbeat(
 }
 
 /**
- * Placeholder for direct CRUD handling to avoid reference errors.
- * Currently returns false to let LangGraph handle the request.
+ * 直接CRUD分支已废弃，所有实体操作统一交给LangGraph + 数据库操作处理器
+ * 这里永远返回false，确保不会再走旧的fallback路径。
  */
 async function tryHandleDirectCrud(
-  message: string,
+  _message: string,
   _context: any,
   _userId: string,
   _userRole: "teacher" | "student" | "self_learner",
-  dbClient: any,
+  _dbClient: any,
   _supabase: any,
-  encoder: TextEncoder,
-  controller: ReadableStreamDefaultController,
+  _encoder: TextEncoder,
+  _controller: ReadableStreamDefaultController,
 ): Promise<boolean> {
-  const classNameMatch = message.match(/“([^”]+)”/);
-  const className = classNameMatch ? classNameMatch[1] : null;
-
-  const send = (data: any) => {
-    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-  };
-
-  if (!className) {
-    return false;
-  }
-
-  // 小工具：查班级
-  const { data: cls, error: clsErr } = await dbClient
-    .from("classes")
-    .select("id,name,description,join_code,created_at")
-    .ilike("name", `%${className}%`)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (clsErr || !cls) {
-    return false;
-  }
-
-  // 更新描述
-  const descMatch = message.match(/描述更新为“([^”]+)”/);
-  if (descMatch) {
-    const newDesc = descMatch[1];
-    await executeWithRetry(
-      () =>
-        dbClient
-          .from("classes")
-          .update({ description: newDesc })
-          .eq("id", cls.id),
-      "updateClassDescription",
-    );
-
-    send({
-      type: "streaming",
-      content: `✅ 描述更新成功！\n- 班级：${cls.name}\n- 新描述：${newDesc}\n- 加入代码：${cls.join_code || "无"}`,
-      progress: 95,
-    });
-    send({
-      type: "complete",
-      data: {
-        message: `描述已更新为「${newDesc}」`,
-        metadata: { classId: cls.id },
-      },
-    });
-    return true;
-  }
-
-  // 课次相关：列出/删除/新增
-  if (
-    message.includes("课次") ||
-    message.includes("会话") ||
-    message.includes("课节")
-  ) {
-    // 获取所有课次
-    const { data: sessions } = await dbClient
-      .from("course_sessions")
-      .select("id,title,scheduled_date,start_time,session_number")
-      .eq("class_id", cls.id)
-      .order("session_number", { ascending: true });
-
-    const lines = (sessions || []).map(
-      (s: any) =>
-        `- ID: ${s.id} | 标题: ${s.title} | 序号: ${s.session_number} | 时间: ${s.scheduled_date?.slice(0, 10) || "未设"} ${s.start_time || ""}`,
-    );
-
-    // 删除第N节
-    const delMatch = message.match(/删除第(\d+)节/);
-    if (delMatch) {
-      const idx = parseInt(delMatch[1], 10);
-      const target = sessions?.find((s: any) => s.session_number === idx);
-      if (target) {
-        await executeWithRetry(
-          () => dbClient.from("course_sessions").delete().eq("id", target.id),
-          "deleteSession",
-        );
-        lines.push(`已删除第${idx}节 (ID: ${target.id})`);
-      } else {
-        lines.push(`未找到第${idx}节，无法删除`);
-      }
-    }
-
-    // 新增一节
-    if (message.includes("新增一节")) {
-      const titleMatch = message.match(/课次标题“([^”]+)”/);
-      const dateMatch = message.match(/(\d{4}-\d{1,2}-\d{1,2})/);
-      const timeMatch = message.match(/上午(\d{1,2})点|(\d{1,2}):(\d{2})/);
-      const title = titleMatch ? titleMatch[1] : "新增课次";
-      const dateStr = dateMatch
-        ? dateMatch[1]
-        : new Date().toISOString().slice(0, 10);
-      let start = "09:00";
-      if (timeMatch) {
-        const hour = timeMatch[1]
-          ? parseInt(timeMatch[1], 10)
-          : parseInt(timeMatch[2], 10);
-        const min = timeMatch[3] || "00";
-        start = `${hour.toString().padStart(2, "0")}:${min}`;
-      }
-      const nextNumber =
-        (sessions?.reduce(
-          (max: number, s: any) => Math.max(max, s.session_number || 0),
-          0,
-        ) || 0) + 1;
-
-      const { data: newSession, error: newSessErr } = await executeWithRetry(
-        () =>
-          dbClient
-            .from("course_sessions")
-            .insert({
-              class_id: cls.id,
-              title,
-              session_number: nextNumber,
-              scheduled_date: dateStr,
-              start_time: start,
-              duration_minutes: 60,
-            })
-            .select()
-            .single(),
-        "createSession",
-      );
-
-      if (!newSessErr && newSession) {
-        lines.push(
-          `已新增课次: ${title} (${dateStr} ${start}) ID: ${newSession.id}`,
-        );
-      }
-    }
-
-    send({
-      type: "complete",
-      data: {
-        message: `✅ 课次操作完成：\n${lines.join("\n")}`,
-        metadata: { classId: cls.id },
-      },
-      metadata: { classId: cls.id },
-    });
-    return true;
-  }
-
-  // 作业删除/更新（按标题匹配）
-  if (message.includes("作业")) {
-    const { data: assignments } = await dbClient
-      .from("assignments")
-      .select("id,title,description,created_at")
-      .eq("class_id", cls.id)
-      .order("created_at", { ascending: true });
-
-    const titleMatch = message.match(/作业[“\"]([^”\"]+)[”\"]/);
-    const title = titleMatch ? titleMatch[1] : null;
-    const target = title
-      ? assignments?.find((a: any) => a.title === title)
-      : assignments?.[0];
-
-    if (message.includes("删除") && target) {
-      await executeWithRetry(
-        () => dbClient.from("assignments").delete().eq("id", target.id),
-        "deleteAssignment",
-      );
-      send({
-        type: "complete",
-        data: {
-          message: `✅ 已删除作业「${target.title}」`,
-          metadata: { assignmentId: target.id },
-        },
-      });
-      return true;
-    }
-
-    const descUpdate = message.match(/描述更新为“([^”]+)”/);
-    if (descUpdate && target) {
-      const newDesc = descUpdate[1];
-      await executeWithRetry(
-        () =>
-          dbClient
-            .from("assignments")
-            .update({ description: newDesc })
-            .eq("id", target.id),
-        "updateAssignment",
-      );
-      send({
-        type: "complete",
-        data: {
-          message: `✅ 已更新作业「${target.title}」描述为：${newDesc}`,
-          metadata: { assignmentId: target.id },
-        },
-      });
-      return true;
-    }
-
-    if (assignments && assignments.length > 0) {
-      const lines = assignments.map((a: any) => `- ${a.title} (ID: ${a.id})`);
-      send({
-        type: "complete",
-        data: {
-          message: `作业列表：\n${lines.join("\n")}`,
-          metadata: { classId: cls.id },
-        },
-      });
-      return true;
-    }
-  }
-
-  return false; // 未处理则交给LangGraph
+  return false;
 }
 
 // Use the Node.js runtime because this endpoint performs Supabase admin operations
@@ -956,6 +749,433 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           className: classExists.name,
           toolsUsed: ["createAssignment"],
         };
+      }
+
+      case "entity_management": {
+        const dbClient = createAdminClient();
+        const action = actionData?.action;
+        const entity = actionData?.entity;
+
+        if (!action || !entity) {
+          throw new Error("缺少实体管理所需的 action 或 entity 参数");
+        }
+
+        const classId =
+          actionData.classId || metadata.classId || metadata.selectedClassId;
+        const sessionId =
+          actionData.sessionId ||
+          metadata.sessionId ||
+          metadata.selectedSessionId;
+        const assignmentId =
+          actionData.assignmentId ||
+          metadata.assignmentId ||
+          metadata.selectedAssignmentId;
+
+        if (entity === "class") {
+          switch (action) {
+            case "list":
+            case "read": {
+              const { data: classes } = await dbClient
+                .from("classes")
+                .select("id,name,description,join_code,created_at")
+                .eq("created_by", user.id)
+                .order("created_at", { ascending: false });
+
+              const lines = (classes || []).map(
+                (c: any) =>
+                  `- 班级：${c.name} | ID: ${c.id} | 加入码: ${c.join_code}`,
+              );
+
+              return {
+                success: true,
+                message:
+                  lines.length > 0
+                    ? `以下是您名下的班级列表：\n${lines.join("\n")}`
+                    : "目前还没有找到您创建的班级，可以先让我帮您创建一个。",
+                toolsUsed: ["listClasses"],
+              };
+            }
+            case "create": {
+              const name =
+                actionData.details?.name || actionData.details?.title;
+              const description = actionData.details?.description || "" || " ";
+
+              if (!name) {
+                throw new Error("创建班级时缺少名称，请在对话中明确班级名称");
+              }
+
+              const joinCode = Math.random()
+                .toString(36)
+                .substring(2, 8)
+                .toUpperCase();
+
+              const db = createAdminClient();
+
+              const { data: orgMember, error: orgError } = await db
+                .from("organization_members")
+                .select("organization_id")
+                .eq("user_id", user.id)
+                .order("created_at", { ascending: true })
+                .limit(1)
+                .single();
+
+              if (orgError || !orgMember) {
+                throw new Error("您还没有加入任何组织，无法创建班级");
+              }
+
+              const { data: classData, error: classError } = await db
+                .from("classes")
+                .insert({
+                  name,
+                  description,
+                  organization_id: orgMember.organization_id,
+                  join_code: joinCode,
+                  created_by: user.id,
+                })
+                .select()
+                .single();
+
+              if (classError) {
+                throw classError;
+              }
+
+              await db.from("class_members").insert({
+                class_id: classData.id,
+                user_id: user.id,
+                role: "teacher",
+              });
+
+              return {
+                success: true,
+                message: `✅ 班级「${name}」已创建完成，加入代码为：${joinCode}`,
+                classId: classData.id,
+                joinCode,
+                toolsUsed: ["createClass"],
+              };
+            }
+            case "update": {
+              if (!classId) {
+                throw new Error("更新班级前需要先指定班级ID");
+              }
+              const updates: Record<string, any> = {};
+              if (actionData.details?.name) {
+                updates.name = actionData.details.name;
+              }
+              if (actionData.details?.description) {
+                updates.description = actionData.details.description;
+              }
+              if (Object.keys(updates).length === 0) {
+                throw new Error("没有可更新的字段（name/description）");
+              }
+
+              const { data: cls, error: classError } = await dbClient
+                .from("classes")
+                .update(updates)
+                .eq("id", classId)
+                .select("id,name,description")
+                .single();
+
+              if (classError || !cls) {
+                throw classError || new Error("班级更新失败");
+              }
+
+              return {
+                success: true,
+                message: `✅ 班级已更新：${cls.name}\n描述：${cls.description || "（无描述）"}`,
+                classId,
+                toolsUsed: ["updateClass"],
+              };
+            }
+            case "delete": {
+              if (!classId) {
+                throw new Error("删除班级前需要先指定班级ID");
+              }
+
+              const { error: deleteError } = await dbClient
+                .from("classes")
+                .delete()
+                .eq("id", classId);
+
+              if (deleteError) {
+                throw deleteError;
+              }
+
+              return {
+                success: true,
+                message: "✅ 班级已删除（相关课次和作业也会一并清理）。",
+                classId,
+                toolsUsed: ["deleteClass"],
+              };
+            }
+          }
+        }
+
+        if (entity === "session") {
+          if (!classId && ["create", "list", "read"].includes(action)) {
+            throw new Error("请先在界面中选择一个班级，或在对话中明确班级。");
+          }
+
+          switch (action) {
+            case "list":
+            case "read": {
+              const { data: sessions } = await dbClient
+                .from("course_sessions")
+                .select(
+                  "id,title,scheduled_date,start_time,session_number,class_id",
+                )
+                .eq("class_id", classId)
+                .order("session_number", { ascending: true });
+
+              const lines = (sessions || []).map(
+                (s: any) =>
+                  `- 第${s.session_number || "?"}节：${s.title} | 时间：${s.scheduled_date?.slice(0, 10) || "未设"} ${s.start_time || ""} | ID: ${s.id}`,
+              );
+
+              return {
+                success: true,
+                message:
+                  lines.length > 0
+                    ? `当前班级的课次如下：\n${lines.join("\n")}`
+                    : "当前班级还没有任何课次，可以让我帮你创建第一节课。",
+                classId,
+                toolsUsed: ["listSessions"],
+              };
+            }
+            case "create": {
+              const title = actionData.details?.title || "未命名课次";
+              const scheduledDate =
+                actionData.details?.scheduledDate ||
+                new Date().toISOString().slice(0, 10);
+              const startTime = actionData.details?.startTime || "09:00";
+
+              const { data: lastSession } = await dbClient
+                .from("course_sessions")
+                .select("session_number")
+                .eq("class_id", classId)
+                .order("session_number", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              const nextNumber = (lastSession?.session_number || 0) + 1;
+
+              const { data: session, error: sessionError } = await dbClient
+                .from("course_sessions")
+                .insert({
+                  class_id: classId,
+                  session_number: nextNumber,
+                  title,
+                  description: actionData.details?.description || "",
+                  scheduled_date: scheduledDate,
+                  start_time: startTime,
+                  duration_minutes: 60,
+                  created_by: user.id,
+                })
+                .select("id,title,scheduled_date,start_time,session_number")
+                .single();
+
+              if (sessionError || !session) {
+                throw sessionError || new Error("课次创建失败");
+              }
+
+              return {
+                success: true,
+                message: `✅ 已为班级创建第${session.session_number}节课「${session.title}」，时间：${session.scheduled_date?.slice(0, 10)} ${session.start_time || ""}`,
+                classId,
+                toolsUsed: ["createSession"],
+              };
+            }
+            case "update": {
+              if (!sessionId) {
+                throw new Error("更新课次前需要先指定课次ID");
+              }
+              const updates: Record<string, any> = {};
+              if (actionData.details?.title) {
+                updates.title = actionData.details.title;
+              }
+              if (actionData.details?.scheduledDate) {
+                updates.scheduled_date = actionData.details.scheduledDate;
+              }
+              if (actionData.details?.startTime) {
+                updates.start_time = actionData.details.startTime;
+              }
+              if (Object.keys(updates).length === 0) {
+                throw new Error(
+                  "没有可更新的字段（title/scheduledDate/startTime）",
+                );
+              }
+
+              const { data: session, error: sessionError } = await dbClient
+                .from("course_sessions")
+                .update(updates)
+                .eq("id", sessionId)
+                .select("id,title,scheduled_date,start_time,session_number")
+                .single();
+
+              if (sessionError || !session) {
+                throw sessionError || new Error("课次更新失败");
+              }
+
+              return {
+                success: true,
+                message: `✅ 课次已更新：第${session.session_number}节「${session.title}」，时间：${session.scheduled_date?.slice(0, 10)} ${session.start_time || ""}`,
+                classId: session.class_id,
+                toolsUsed: ["updateSession"],
+              };
+            }
+            case "delete": {
+              if (!sessionId) {
+                throw new Error("删除课次前需要先指定课次ID");
+              }
+
+              const { error: deleteError } = await dbClient
+                .from("course_sessions")
+                .delete()
+                .eq("id", sessionId);
+
+              if (deleteError) {
+                throw deleteError;
+              }
+
+              return {
+                success: true,
+                message: "✅ 课次已删除。",
+                classId,
+                toolsUsed: ["deleteSession"],
+              };
+            }
+          }
+        }
+
+        if (entity === "assignment") {
+          switch (action) {
+            case "list":
+            case "read": {
+              if (!classId) {
+                throw new Error("请先指定班级，再查看作业列表。");
+              }
+              const { data: assignments } = await dbClient
+                .from("assignments")
+                .select("id,title,description,created_at,due_date")
+                .eq("class_id", classId)
+                .order("created_at", { ascending: true });
+
+              const lines = (assignments || []).map(
+                (a: any) =>
+                  `- 作业：${a.title} | 截止：${a.due_date ? a.due_date.slice(0, 16) : "未设置"} | ID: ${a.id}`,
+              );
+
+              return {
+                success: true,
+                message:
+                  lines.length > 0
+                    ? `当前班级的作业如下：\n${lines.join("\n")}`
+                    : "当前班级还没有作业，可以让我帮你创建一个。",
+                classId,
+                toolsUsed: ["listAssignments"],
+              };
+            }
+            case "create": {
+              if (!classId) {
+                throw new Error("创建作业前需要先指定班级");
+              }
+
+              const title = actionData.details?.title || "未命名作业";
+              const description = actionData.details?.description || "";
+              const dueDate = actionData.details?.dueDate || null;
+
+              const { data: assignment, error: assignmentError } =
+                await dbClient
+                  .from("assignments")
+                  .insert({
+                    class_id: classId,
+                    title,
+                    description,
+                    due_date: dueDate,
+                    created_by: user.id,
+                  })
+                  .select("id,title,due_date")
+                  .single();
+
+              if (assignmentError || !assignment) {
+                throw assignmentError || new Error("作业创建失败");
+              }
+
+              return {
+                success: true,
+                message: `✅ 已为班级创建作业「${assignment.title}」，截止时间：${assignment.due_date || "未设置"}`,
+                assignmentId: assignment.id,
+                classId,
+                toolsUsed: ["createAssignment"],
+              };
+            }
+            case "update": {
+              if (!assignmentId) {
+                throw new Error("更新作业前需要先指定作业ID");
+              }
+              const updates: Record<string, any> = {};
+              if (actionData.details?.title) {
+                updates.title = actionData.details.title;
+              }
+              if (actionData.details?.description) {
+                updates.description = actionData.details.description;
+              }
+              if (actionData.details?.dueDate) {
+                updates.due_date = actionData.details.dueDate;
+              }
+              if (Object.keys(updates).length === 0) {
+                throw new Error(
+                  "没有可更新的字段（title/description/dueDate）",
+                );
+              }
+
+              const { data: assignment, error: assignmentError } =
+                await dbClient
+                  .from("assignments")
+                  .update(updates)
+                  .eq("id", assignmentId)
+                  .select("id,title,due_date,class_id")
+                  .single();
+
+              if (assignmentError || !assignment) {
+                throw assignmentError || new Error("作业更新失败");
+              }
+
+              return {
+                success: true,
+                message: `✅ 作业已更新：「${assignment.title}」，截止时间：${assignment.due_date || "未设置"}`,
+                assignmentId,
+                classId: assignment.class_id,
+                toolsUsed: ["updateAssignment"],
+              };
+            }
+            case "delete": {
+              if (!assignmentId) {
+                throw new Error("删除作业前需要先指定作业ID");
+              }
+
+              const { error: deleteError } = await dbClient
+                .from("assignments")
+                .delete()
+                .eq("id", assignmentId);
+
+              if (deleteError) {
+                throw deleteError;
+              }
+
+              return {
+                success: true,
+                message: "✅ 作业已删除。",
+                assignmentId,
+                classId,
+                toolsUsed: ["deleteAssignment"],
+              };
+            }
+          }
+        }
+
+        throw new Error(
+          `不支持的实体管理操作：entity=${entity}, action=${action}`,
+        );
       }
 
       default:
