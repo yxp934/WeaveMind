@@ -374,6 +374,10 @@ export const useChatbotStore = create<ChatbotStore>()(
       sendMessage: async (content, metadata = {}) => {
         const { addMessage, setLoading, setError, setStreamingMessage } = get();
 
+        // 在整个发送流程作用域内维护累积内容，便于在catch中访问
+        let accumulatedContent = "";
+        let hasStreamContent = false;
+
         try {
           setLoading(true);
           setError(null);
@@ -463,9 +467,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           }
 
           const decoder = new TextDecoder();
-          let accumulatedContent = "";
           let streamingMessageId = aiMessageId;
-          let hasStreamContent = false;
 
           try {
             while (true) {
