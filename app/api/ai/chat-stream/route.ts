@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { chatbot } from "@/lib/ai/langgraph/chatbot-graph";
 import { z } from "zod";
 
-export const runtime = "edge";
+// Use the Node.js runtime because this endpoint performs Supabase admin operations
+// (service role) that are not supported on the Edge runtime.
+export const runtime = "nodejs";
 
 // AI聊天请求验证模式
 const chatStreamRequestSchema = z.object({
@@ -26,7 +28,12 @@ const chatStreamRequestSchema = z.object({
           }),
         )
         .optional(),
-      userRole: z.enum(["teacher", "student", "self_learner"]),
+      userRole: z
+        .union([
+          z.enum(["teacher", "student", "self_learner"]),
+          z.literal("self-learner"),
+        ])
+        .transform((role) => (role === "self-learner" ? "self_learner" : role)),
       conversationHistory: z
         .array(
           z.object({
@@ -98,9 +105,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     // 3. 使用LangGraph聊天机器人处理消息
-    // 🔧 关键修复：不要使用全局“default-conversation”，否则不同用户共享上下文导致串话/幻觉
+    // 🔧 关键修复：使用用户ID作为conversationId，避免同一组织成员串话导致的幻觉
     const conversationId =
-      ctx?.organizationId || user?.id || crypto.randomUUID();
+      user?.id || ctx?.organizationId || crypto.randomUUID();
     const userRole = context?.userRole || (isDemoMode ? "teacher" : "student");
     const userId = user?.id || "demo-user";
 

@@ -14,7 +14,8 @@ import {
 } from "@/lib/ai/teacher-dashboard-tools";
 import { z } from "zod";
 
-export const runtime = "edge";
+// Use Node.js runtime because this endpoint may perform Supabase admin operations.
+export const runtime = "nodejs";
 
 // AI聊天请求验证模式
 const chatRequestSchema = z.object({
@@ -37,7 +38,12 @@ const chatRequestSchema = z.object({
           }),
         )
         .optional(),
-      userRole: z.enum(["teacher", "student", "self_learner"]),
+      userRole: z
+        .union([
+          z.enum(["teacher", "student", "self_learner"]),
+          z.literal("self-learner"),
+        ])
+        .transform((role) => (role === "self-learner" ? "self_learner" : role)),
       conversationHistory: z
         .array(
           z.object({
@@ -119,7 +125,7 @@ export async function POST(
     // 3. 使用LangGraph聊天机器人处理消息
     // 🔧 关键修复：不要使用全局“default-conversation”，否则不同用户共享上下文导致串话/幻觉
     const conversationId =
-      ctx?.organizationId || user?.id || crypto.randomUUID();
+      user?.id || ctx?.organizationId || crypto.randomUUID();
     const userRole = context?.userRole || (isDemoMode ? "teacher" : "student");
     const userId = user?.id || "demo-user";
 
