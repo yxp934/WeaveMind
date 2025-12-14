@@ -3,6 +3,7 @@ import { ChatbotState } from "../chatbot-state";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { generateText } from "ai";
 import { createGatewayOpenAI, DEFAULT_MODEL } from "../config/openai-gateway";
+import { decode as decodeToon } from "@toon-format/toon";
 
 // 初始化AI模型 - 使用Vercel AI Gateway
 const openai = createGatewayOpenAI();
@@ -59,29 +60,27 @@ export async function intentRecognitionNode(
 3. **提取参数**：从用户消息中提取所有相关参数（课程主题、时长、目标受众等）
 4. **不要机械匹配**：不要简单匹配关键词，而是理解用户的真实需求
 
-## 输出格式（严格JSON）
-{
-  "intent": "意图类型",
-  "confidence": 0.0-1.0,
-  "parameters": {
-    "courseTopic": "课程主题",
-    "courseDuration": "课程时长",
-    "sessionsPerWeek": "每周课次",
-    "targetAudience": "目标学员",
-    "difficultyLevel": "难度级别",
-    "courseType": "课程类型",
-    "action": "create|read|update|delete|list",
-    "entity": "class|session|assignment",
-    "entityId": "目标实体ID（如有）",
-    "details": "其他字段/说明，比如课次日期、作业标题、班级描述"
-  },
-  "reasoning": "详细的推理过程，解释为什么你认为是这个意图",
-  "suggestedResponse": "建议的AI回复",
-  "shouldContinueWorkflow": true/false,
-  "workflowType": "如果是继续工作流，具体是哪个工作流"
-}
+## 输出格式（严格TOON，对应一个JSON对象）
+# 所有字段都必须给出，即使为空也要写 null 或空字符串
+intent: 意图类型
+confidence: 0.0-1.0
+parameters:
+  courseTopic: 课程主题
+  courseDuration: 课程时长
+  sessionsPerWeek: 每周课次
+  targetAudience: 目标学员
+  difficultyLevel: 难度级别
+  courseType: 课程类型
+  action: create|read|update|delete|list
+  entity: class|session|assignment
+  entityId: 目标实体ID（如有）
+  details: 其他字段/说明，比如课次日期、作业标题、班级描述
+reasoning: 详细的推理过程，解释为什么你认为是这个意图
+suggestedResponse: 建议的AI回复
+shouldContinueWorkflow: true/false
+workflowType: 如果是继续工作流，具体是哪个工作流
 
-只返回JSON，不要有其他内容。`;
+只返回TOON，不要有任何JSON代码块、markdown代码块或多余说明。`;
 
     // 使用messages格式调用AI，让模型能够理解完整对话上下文
     const { text } = await generateText({
@@ -93,23 +92,29 @@ export async function intentRecognitionNode(
       abortSignal: AbortSignal.timeout(25000), // 25秒超时，接近Vercel限制但保留缓冲
     });
 
-    // 解析AI响应
-    let intentResult;
+    // 解析AI响应（使用TOON，避免多重```json代码块导致的JSON解析错误）
+    let intentResult: any;
     try {
       let cleanText = text.trim();
-      if (cleanText.startsWith("```json")) {
-        cleanText = cleanText.slice(7);
-      }
+
+      // 如果模型仍然包了一层```或```toon，先粗暴去掉首尾代码块
       if (cleanText.startsWith("```")) {
-        cleanText = cleanText.slice(3);
+        const firstFenceEnd = cleanText.indexOf("\n");
+        if (firstFenceEnd !== -1) {
+          cleanText = cleanText.slice(firstFenceEnd + 1);
+        }
       }
       if (cleanText.endsWith("```")) {
-        cleanText = cleanText.slice(0, -3);
+        cleanText = cleanText.slice(0, cleanText.lastIndexOf("```"));
       }
-      intentResult = JSON.parse(cleanText.trim());
-    } catch (e) {
+
+      // 如果模型意外重复输出多段TOON，只保留第一段（以空行分隔）
+      const firstBlock = cleanText.split("\n```")[0].trim();
+
+      intentResult = decodeToon(firstBlock);
+    } catch (e: any) {
       console.error("解析意图识别结果失败:", e, "Raw text:", text);
-      throw new Error(`意图识别JSON解析失败: ${e.message}`);
+      throw new Error(`意图识别TOON解析失败: ${e.message || String(e)}`);
     }
 
     // 处理AI判断的意图

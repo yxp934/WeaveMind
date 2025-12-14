@@ -10,6 +10,7 @@
     "ai-worker": "tsx workers/ai-generation-worker.ts"
   },
   "dependencies": {
+    "@toon-format/toon": "^2.1.0",
     "@ai-sdk/openai": "^2.0.72",
     "@langchain/core": "^1.1.4",
     "@langchain/langgraph": "^1.0.4",

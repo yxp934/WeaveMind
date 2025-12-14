@@ -2,6 +2,7 @@ import { ChatbotState } from "../chatbot-state";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { generateText } from "ai";
 import { createGatewayOpenAI, DEFAULT_MODEL } from "../config/openai-gateway";
+import { parseModelResponse } from "../utils/model-response";
 import {
   createClassTool,
   createSessionTool,
@@ -293,26 +294,24 @@ export async function courseCreationNode(
 - 难度级别 (difficultyLevel)
 - 课程类型 (courseType)
 
-## 输出格式（严格JSON）
-{
-  "message": "你要发送给用户的消息",
-  "action": "ask_info|generate_course|awaiting_confirmation|continue_collection",
-  "updatedCourseInfo": {
-    "topic": "课程主题",
-    "duration": "课程时长",
-    "sessionsPerWeek": "每周课次",
-    "targetAudience": "目标学员",
-    "difficultyLevel": "难度级别",
-    "courseType": "课程类型"
-  },
-  "workflowStep": "当前工作流步骤",
-  "missingInfo": ["缺失的信息字段列表"],
-  "suggestions": ["建议的快捷操作"],
-  "metadata": {
-    "toolsUsed": ["使用的工具列表"],
-    "progress": 0-100
-  }
-}
+## 输出格式（严格TOON）
+message: 你要发送给用户的消息
+action: ask_info|generate_course|awaiting_confirmation|continue_collection
+updatedCourseInfo:
+  topic: 课程主题
+  duration: 课程时长
+  sessionsPerWeek: 每周课次
+  targetAudience: 目标学员
+  difficultyLevel: 难度级别
+  courseType: 课程类型
+workflowStep: 当前工作流步骤
+missingInfo[5]: 缺失的信息字段列表
+suggestions[4]: 建议的快捷操作
+metadata:
+  toolsUsed[3]: 使用的工具列表
+  progress: 0-100
+
+只返回TOON文本，不要带代码块或额外说明。
 
 ## 重要规则：
 1. **当用户明确表示"创建课程到数据库"、"生成课程大纲并创建"或类似表达时，返回 "action": "generate_course"**
@@ -343,11 +342,22 @@ export async function courseCreationNode(
       abortSignal: AbortSignal.timeout(30000), // 30秒超时，支持动态控制
     });
 
-    // 解析AI响应
+    // 解析AI响应（TOON格式）
     let result;
     try {
       console.log("🔍 AI原始响应文本:", text);
-      result = JSON.parse(text);
+      result = parseModelResponse<{
+        message: string;
+        action: string;
+        updatedCourseInfo?: Record<string, string>;
+        workflowStep?: string;
+        missingInfo?: string[];
+        suggestions?: string[];
+        metadata?: {
+          toolsUsed?: string[];
+          progress?: number;
+        };
+      }>(text);
       console.log("🔍 AI解析后的结果:", JSON.stringify(result, null, 2));
       console.log("🔍 AI返回的动作:", result.action);
     } catch (e) {
@@ -721,18 +731,17 @@ export async function outlineGenerationNode(
 3. 基于这些信息生成详细的课程大纲
 4. 确保大纲内容完整、结构清晰
 
-## 输出格式（严格JSON）
-{
-  "message": "生成的大纲说明",
-  "outline": "具体的课程大纲内容",
-  "suggestions": ["建议的改进点"],
-  "nextActions": ["下一步操作"]
-}
+## 输出格式（严格TOON）
+message: 生成的大纲说明
+outline: 具体的课程大纲内容
+suggestions[4]: 建议的改进点
+nextActions[3]: 下一步操作
 
 注意：
 - 使用中文回复
 - 生成详细、实用的课程大纲
-- 记住用户在整个对话中提供的所有信息`;
+- 记住用户在整个对话中提供的所有信息
+只返回TOON文本，不要包含JSON代码块或额外解释。`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
@@ -742,7 +751,12 @@ export async function outlineGenerationNode(
       temperature: 0.7,
     });
 
-    const result = JSON.parse(text);
+    const result = parseModelResponse<{
+      message: string;
+      outline?: string;
+      suggestions?: string[];
+      nextActions?: string[];
+    }>(text);
 
     const aiMessage = new AIMessage({
       content: result.message || "课程大纲已生成完成！",
@@ -825,17 +839,15 @@ export async function assignmentCreationNode(
 3. 根据用户需求创建相应的作业
 4. 支持的作业类型：测验题目、写作作业、研究作业、实践作业
 
-## 输出格式（严格JSON）
-{
-  "message": "作业创建说明",
-  "assignmentType": "作业类型",
-  "assignmentTitle": "作业标题",
-  "assignmentContent": "具体的作业内容",
-  "duration": "预计完成时长",
-  "requirements": ["具体要求"],
-  "needsClassSelection": true,
-  "nextActions": ["下一步操作"]
-}
+## 输出格式（严格TOON）
+message: 作业创建说明
+assignmentType: 作业类型
+assignmentTitle: 作业标题
+assignmentContent: 具体的作业内容
+duration: 预计完成时长
+requirements[4]: 具体要求
+needsClassSelection: true
+nextActions[3]: 下一步操作
 
 注意：
 - 使用中文回复
@@ -851,7 +863,16 @@ export async function assignmentCreationNode(
         temperature: 0.7,
       });
 
-      const result = JSON.parse(text);
+      const result = parseModelResponse<{
+        message: string;
+        assignmentType?: string;
+        assignmentTitle?: string;
+        assignmentContent?: string;
+        duration?: string;
+        requirements?: string[];
+        needsClassSelection?: boolean;
+        nextActions?: string[];
+      }>(text);
 
       // 生成作业内容后，提示用户选择班级
       result.message = `🎉 作业内容已生成！我已经为您设计了作业：
@@ -1093,17 +1114,16 @@ export async function a2aOptimizationNode(
 3. 使用A2A方式优化内容：Builder Agent生成内容，Critic Agent提供反馈
 4. 迭代优化直到满意
 
-## 输出格式（严格JSON）
-{
-  "message": "A2A优化说明",
-  "originalContent": "原始内容",
-  "optimizedContent": "优化后的内容",
-  "improvements": ["具体的改进点"],
-  "qualityScore": "质量评分(1-10)",
-  "nextActions": ["下一步操作"]
-}
+## 输出格式（严格TOON）
+message: A2A优化说明
+originalContent: 原始内容
+optimizedContent: 优化后的内容
+improvements[4]: 具体的改进点
+qualityScore: 质量评分(1-10)
+nextActions[3]: 下一步操作
 
 注意：
+只返回TOON文本，不要包含JSON代码块或额外说明。
 - 使用中文回复
 - 生成高质量、实用的优化内容
 - 记住用户在整个对话中提供的所有信息`;
@@ -1116,7 +1136,15 @@ export async function a2aOptimizationNode(
       temperature: 0.7,
     });
 
-    const result = JSON.parse(text);
+    const result = parseModelResponse<{
+      message: string;
+      originalContent?: string;
+      optimizedContent?: string;
+      improvements?: string[];
+      qualityScore?: string;
+      nextActions?: string[];
+      metadata?: Record<string, unknown>;
+    }>(text);
 
     // A2A优化过程：teacher_agent和student_agent交互3次
     let optimizedContent = result.originalContent || "待优化内容";
@@ -1275,20 +1303,19 @@ export async function contentGenerationNode(
 2. 分析用户已经提供的所有信息
 3. 生成具体的教学内容：PPT讲义、练习题、教学资料、学习材料等
 
-## 输出格式（严格JSON）
-{
-  "message": "内容生成说明",
-  "contentType": "内容类型",
-  "contentTitle": "内容标题",
-  "contentBody": "具体内容",
-  "resources": ["相关资源"],
-  "nextActions": ["下一步操作"]
-}
+## 输出格式（严格TOON）
+message: 内容生成说明
+contentType: 内容类型
+contentTitle: 内容标题
+contentBody: 具体内容
+resources[4]: 相关资源
+nextActions[3]: 下一步操作
 
 注意：
 - 使用中文回复
 - 生成详细、实用的教学内容
-- 记住用户在整个对话中提供的所有信息`;
+- 记住用户在整个对话中提供的所有信息
+只返回TOON文本，不要包含JSON代码块或额外说明`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
@@ -1298,7 +1325,14 @@ export async function contentGenerationNode(
       temperature: 0.7,
     });
 
-    const result = JSON.parse(text);
+    const result = parseModelResponse<{
+      message: string;
+      contentType?: string;
+      contentTitle?: string;
+      contentBody?: string;
+      resources?: string[];
+      nextActions?: string[];
+    }>(text);
 
     const aiMessage = new AIMessage({
       content: result.message || "教学内容生成完成！",
@@ -1378,15 +1412,13 @@ async function generalContinueNode(
 - content_generation - 内容生成
 - unknown - 无法判断
 
-## 输出格式（严格JSON）
-{
-  "workflowType": "工作流类型",
-  "confidence": 0.0-1.0,
-  "reasoning": "判断理由",
-  "suggestedNextAction": "建议的下一步"
-}
+## 输出格式（严格TOON）
+workflowType: 工作流类型
+confidence: 0.0-1.0
+reasoning: 判断理由
+suggestedNextAction: 建议的下一步
 
-只返回JSON。`;
+只返回TOON文本，不要包含JSON代码块或额外说明。`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
@@ -1398,11 +1430,12 @@ async function generalContinueNode(
 
     let result;
     try {
-      let cleanText = text.trim();
-      if (cleanText.startsWith("```json")) cleanText = cleanText.slice(7);
-      if (cleanText.startsWith("```")) cleanText = cleanText.slice(3);
-      if (cleanText.endsWith("```")) cleanText = cleanText.slice(0, -3);
-      result = JSON.parse(cleanText.trim());
+      result = parseModelResponse<{
+        workflowType?: string;
+        confidence?: number;
+        reasoning?: string;
+        suggestedNextAction?: string;
+      }>(text);
     } catch (e) {
       console.error("解析工作流分析结果失败:", e);
       result = {

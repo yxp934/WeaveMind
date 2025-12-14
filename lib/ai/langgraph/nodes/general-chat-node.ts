@@ -2,6 +2,7 @@ import { ChatbotState } from '../chatbot-state'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { generateText } from 'ai'
 import { createGatewayOpenAI, DEFAULT_MODEL } from '../config/openai-gateway'
+import { parseModelResponse } from '../utils/model-response'
 
 // 初始化AI模型 - 使用Vercel AI Gateway
 const openai = createGatewayOpenAI()
@@ -72,17 +73,15 @@ ${conversationHistory}
 
 请生成一个自然的回复，帮助用户并引导对话。
 
-回复格式：
-{
-  "message": "你的回复内容",
-  "suggestions": ["建议的快捷操作或问题"],
-  "availableActions": ["可用的功能按钮"],
-  "metadata": {
-    "toolsUsed": [],
-    "intent": "general_chat",
-    "confidence": 1.0
-  }
-}
+回复必须严格遵守TOON格式，包含以下字段：
+message: 你的回复内容
+suggestions[4]: 建议的快捷操作或问题（最多4个，用逗号分隔）
+availableActions[4]: 可用的功能按钮（最多4个）
+metadata:
+  toolsUsed[2]: []
+  intent: general_chat
+  confidence: 1.0
+只返回TOON文本，不要包含JSON代码块或额外解释。
 `
 
     // 调用AI模型
@@ -97,7 +96,16 @@ ${conversationHistory}
     // 解析AI响应
     let result
     try {
-      result = JSON.parse(text)
+      result = parseModelResponse<{
+        message: string
+        suggestions?: string[]
+        availableActions?: string[]
+        metadata?: {
+          toolsUsed?: string[]
+          intent?: string
+          confidence?: number
+        }
+      }>(text)
     } catch (e) {
       console.error('解析通用聊天响应失败:', e)
       result = {
