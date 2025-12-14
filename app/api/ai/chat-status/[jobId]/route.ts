@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chatJobStore } from "@/lib/store/chat-job-store";
 
+// 使用 Node.js runtime，确保可以访问 REDIS_URL 并复用 ioredis 客户端
+export const runtime = "nodejs";
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { jobId: string } },
