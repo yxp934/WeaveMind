@@ -377,6 +377,8 @@ export const useChatbotStore = create<ChatbotStore>()(
         // 在整个发送流程作用域内维护累积内容，便于在catch中访问
         let accumulatedContent = "";
         let hasStreamContent = false;
+        // 在整个函数作用域内维护AI消息ID，避免在catch中访问块级变量导致的引用错误
+        let aiMessageId: string | null = null;
 
         try {
           setLoading(true);
@@ -391,7 +393,9 @@ export const useChatbotStore = create<ChatbotStore>()(
           });
 
           // 创建空的AI消息占位符
-          const aiMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          aiMessageId = `msg_${Date.now()}_${Math.random()
+            .toString(36)
+            .substr(2, 9)}`;
           addMessage({
             id: aiMessageId,
             role: "assistant",
@@ -637,33 +641,56 @@ export const useChatbotStore = create<ChatbotStore>()(
           setError(error instanceof Error ? error.message : "发送消息失败");
           setStreamingMessage(null);
 
-          if (accumulatedContent && hasStreamContent) {
-            // 如果已收到部分内容，保留现有消息并标记为部分完成
-            set((state) => ({
-              messages: state.messages.map((msg) =>
-                msg.id === aiMessageId
-                  ? {
-                      ...msg,
-                      content:
-                        accumulatedContent + "\n\n（连接中断，已返回部分结果）",
-                      metadata: {
-                        ...msg.metadata,
-                        isStreaming: false,
-                        error:
-                          error instanceof Error
-                            ? error.message
-                            : String(error),
-                      },
-                    }
-                  : msg,
-              ),
-            }));
-          } else {
-            // 完全失败才追加系统错误
-            addMessage({
-              role: "system",
-              content: "抱歉，发送消息时出现错误。请稍后重试。",
-            });
+          try {
+            if (accumulatedContent && hasStreamContent) {
+              // 如果已收到部分内容，保留现有消息并标记为部分完成
+              set((state) => {
+                // 优先使用当前AI消息ID，如果不存在则回退到最后一个assistant流式消息
+                const targetId =
+                  aiMessageId ||
+                  state.messages
+                    .slice()
+                    .reverse()
+                    .find(
+                      (msg) =>
+                        msg.role === "assistant" &&
+                        (msg.metadata as any)?.isStreaming,
+                    )?.id;
+
+                if (!targetId) {
+                  return state;
+                }
+
+                return {
+                  messages: state.messages.map((msg) =>
+                    msg.id === targetId
+                      ? {
+                          ...msg,
+                          content:
+                            accumulatedContent +
+                            "\n\n（连接中断，已返回部分结果）",
+                          metadata: {
+                            ...msg.metadata,
+                            isStreaming: false,
+                            error:
+                              error instanceof Error
+                                ? error.message
+                                : String(error),
+                          },
+                        }
+                      : msg,
+                  ),
+                };
+              });
+            } else {
+              // 完全失败才追加系统错误
+              addMessage({
+                role: "system",
+                content: "抱歉，发送消息时出现错误。请稍后重试。",
+              });
+            }
+          } catch (updateError) {
+            console.warn("更新流式失败消息时出错:", updateError);
           }
 
           setLoading(false);
