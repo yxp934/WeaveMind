@@ -380,6 +380,277 @@ export const useChatbotStore = create<ChatbotStore>()(
         // 在整个函数作用域内维护AI消息ID，避免在catch中访问块级变量导致的引用错误
         let aiMessageId: string | null = null;
 
+        // 当流式请求因为超时/连接被关闭而失败时，自动切换到异步队列 + 轮询模式
+        const startAsyncFallback = async () => {
+          try {
+            console.log("[CHAT] 流式请求失败，切换到异步后台处理...");
+            setError(null);
+            setStreamingMessage(null);
+
+            // 重新获取最近对话历史，构造异步请求上下文
+            const state = get();
+            const asyncConversationHistory = (state.messages || [])
+              .slice(-10)
+              .map((msg) => ({
+                role: msg.role === "assistant" ? "assistant" : "user",
+                content: msg.content,
+                timestamp:
+                  msg.timestamp instanceof Date
+                    ? msg.timestamp.toISOString()
+                    : new Date(msg.timestamp).toISOString(),
+              }));
+
+            const asyncUserRole =
+              (metadata.userRole as
+                | "teacher"
+                | "student"
+                | "self-learner"
+                | undefined) ||
+              (state.userRole as
+                | "teacher"
+                | "student"
+                | "self-learner"
+                | undefined) ||
+              "teacher";
+
+            const asyncBody = JSON.stringify({
+              message: content,
+              context: {
+                courseId: metadata.courseId,
+                classId: metadata.classId,
+                organizationId: metadata.organizationId,
+                userRole: asyncUserRole,
+                conversationHistory: asyncConversationHistory,
+              },
+            });
+
+            const asyncResponse = await fetch("/api/ai/chat-async", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: asyncBody,
+            });
+
+            if (!asyncResponse.ok) {
+              throw new Error(`Async chat error: ${asyncResponse.status}`);
+            }
+
+            const asyncData = await asyncResponse.json();
+
+            if (!asyncData.success || !asyncData.data?.jobId) {
+              throw new Error(
+                asyncData.error || "异步任务创建失败，请稍后重试。",
+              );
+            }
+
+            const jobId: string = asyncData.data.jobId;
+
+            // 更新当前AI消息为“后台处理中”
+            set((state) => {
+              const targetId =
+                aiMessageId ||
+                state.messages
+                  .slice()
+                  .reverse()
+                  .find(
+                    (msg) =>
+                      msg.role === "assistant" &&
+                      (msg.metadata as any)?.isStreaming,
+                  )?.id;
+
+              if (!targetId) {
+                return state;
+              }
+
+              return {
+                messages: state.messages.map((msg) =>
+                  msg.id === targetId
+                    ? {
+                        ...msg,
+                        content:
+                          "当前请求较复杂，我已切换为后台处理模式，请稍后片刻，我会在完成后更新本条回复。\n\n（任务ID：" +
+                          jobId +
+                          "）",
+                        metadata: {
+                          ...msg.metadata,
+                          isStreaming: true,
+                          asyncJobId: jobId,
+                        },
+                      }
+                    : msg,
+                ),
+              };
+            });
+
+            // 轮询任务状态
+            const pollIntervalMs = 2000;
+            const maxAttempts = 60; // 最长约2分钟
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, pollIntervalMs),
+              );
+
+              const statusResponse = await fetch(
+                `/api/ai/chat-status/${asyncData.data.jobId}`,
+              );
+
+              if (!statusResponse.ok) {
+                continue;
+              }
+
+              const statusData = await statusResponse.json();
+              if (!statusData.success || !statusData.data) {
+                continue;
+              }
+
+              const job = statusData.data as any;
+
+              if (job.status === "completed" && job.result?.message) {
+                const finalMessage: string = job.result.message;
+
+                set((state) => {
+                  const targetId =
+                    aiMessageId ||
+                    state.messages
+                      .slice()
+                      .reverse()
+                      .find(
+                        (msg) =>
+                          msg.role === "assistant" &&
+                          (msg.metadata as any)?.asyncJobId === jobId,
+                      )?.id;
+
+                  if (!targetId) {
+                    return state;
+                  }
+
+                  return {
+                    messages: state.messages.map((msg) =>
+                      msg.id === targetId
+                        ? {
+                            ...msg,
+                            content: finalMessage,
+                            metadata: {
+                              ...msg.metadata,
+                              ...(job.result.metadata || {}),
+                              isStreaming: false,
+                              asyncJobId: jobId,
+                            },
+                          }
+                        : msg,
+                    ),
+                  };
+                });
+
+                setStreamingMessage(null);
+                setLoading(false);
+                setError(null);
+                return;
+              }
+
+              if (job.status === "failed") {
+                const errorMessage: string =
+                  job.error || "后台处理任务失败，请稍后重试。";
+
+                set((state) => {
+                  const targetId =
+                    aiMessageId ||
+                    state.messages
+                      .slice()
+                      .reverse()
+                      .find(
+                        (msg) =>
+                          msg.role === "assistant" &&
+                          (msg.metadata as any)?.asyncJobId === jobId,
+                      )?.id;
+
+                  if (!targetId) {
+                    return state;
+                  }
+
+                  return {
+                    messages: state.messages.map((msg) =>
+                      msg.id === targetId
+                        ? {
+                            ...msg,
+                            content: errorMessage,
+                            metadata: {
+                              ...msg.metadata,
+                              isStreaming: false,
+                              asyncJobId: jobId,
+                              error: job.error,
+                            },
+                          }
+                        : msg,
+                    ),
+                  };
+                });
+
+                setStreamingMessage(null);
+                setLoading(false);
+                setError(errorMessage);
+                return;
+              }
+            }
+
+            // 超时兜底
+            set((state) => {
+              const targetId =
+                aiMessageId ||
+                state.messages
+                  .slice()
+                  .reverse()
+                  .find(
+                    (msg) =>
+                      msg.role === "assistant" &&
+                      (msg.metadata as any)?.asyncJobId ===
+                        asyncData.data.jobId,
+                  )?.id;
+
+              if (!targetId) {
+                return state;
+              }
+
+              return {
+                messages: state.messages.map((msg) =>
+                  msg.id === targetId
+                    ? {
+                        ...msg,
+                        content:
+                          "抱歉，后台处理时间过长，请稍后重试或简化您的请求。",
+                        metadata: {
+                          ...msg.metadata,
+                          isStreaming: false,
+                          asyncJobId: asyncData.data.jobId,
+                        },
+                      }
+                    : msg,
+                ),
+              };
+            });
+
+            setStreamingMessage(null);
+            setLoading(false);
+            setError("后台处理超时，请稍后重试。");
+          } catch (fallbackError) {
+            console.error("异步后台处理失败:", fallbackError);
+            setStreamingMessage(null);
+            setLoading(false);
+            setError(
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : "后台处理失败",
+            );
+
+            addMessage({
+              role: "system",
+              content: "抱歉，后台处理您的请求失败，请稍后重试。",
+            });
+          }
+        };
+
         try {
           setLoading(true);
           setError(null);
@@ -638,10 +909,18 @@ export const useChatbotStore = create<ChatbotStore>()(
           })();
         } catch (error) {
           console.error("发送消息失败:", error);
-          setError(error instanceof Error ? error.message : "发送消息失败");
           setStreamingMessage(null);
 
           try {
+            if (!hasStreamContent) {
+              // 没有任何流式内容，通常意味着连接在生成早期就被关闭，切换到异步队列处理
+              await startAsyncFallback();
+              return;
+            }
+
+            // 已有部分内容，则保留部分结果并提示连接中断
+            setError(error instanceof Error ? error.message : "发送消息失败");
+
             if (accumulatedContent && hasStreamContent) {
               // 如果已收到部分内容，保留现有消息并标记为部分完成
               set((state) => {
