@@ -1,5 +1,8 @@
 import { decode as decodeToon } from "@toon-format/toon";
 
+const BEGIN_TOON = "---BEGIN_TOON---";
+const END_TOON = "---END_TOON---";
+
 function stripCodeFences(text: string): string {
   let cleaned = text.trim();
 
@@ -27,8 +30,20 @@ function firstToonBlock(text: string): string {
   return parts[0].trim();
 }
 
+function extractToonSegment(text: string): string {
+  const cleaned = text.trim();
+  const begin = cleaned.indexOf(BEGIN_TOON);
+  const end = cleaned.indexOf(END_TOON);
+
+  if (begin !== -1 && end !== -1 && end > begin) {
+    return cleaned.slice(begin + BEGIN_TOON.length, end).trim();
+  }
+
+  return firstToonBlock(text);
+}
+
 export function parseModelResponse<T = any>(text: string): T {
-  const target = firstToonBlock(text);
+  const target = extractToonSegment(text);
 
   if (!target) {
     throw new Error("模型返回为空，请检查提示词和模型设置");

@@ -294,24 +294,28 @@ export async function courseCreationNode(
 - 难度级别 (difficultyLevel)
 - 课程类型 (courseType)
 
-## 输出格式（严格TOON）
-message: 你要发送给用户的消息
-action: ask_info|generate_course|awaiting_confirmation|continue_collection
-updatedCourseInfo:
-  topic: 课程主题
-  duration: 课程时长
-  sessionsPerWeek: 每周课次
-  targetAudience: 目标学员
-  difficultyLevel: 难度级别
-  courseType: 课程类型
-workflowStep: 当前工作流步骤
-missingInfo[5]: 缺失的信息字段列表
-suggestions[4]: 建议的快捷操作
-metadata:
-  toolsUsed[3]: 使用的工具列表
-  progress: 0-100
+  ## 输出格式（严格TOON）
+  message: 你要发送给用户的消息
+  action: ask_info|generate_course|awaiting_confirmation|continue_collection
+  updatedCourseInfo:
+    topic: 课程主题
+    duration: 课程时长
+    sessionsPerWeek: 每周课次
+    targetAudience: 目标学员
+    difficultyLevel: 难度级别
+    courseType: 课程类型
+  workflowStep: 当前工作流步骤
+  missingInfo: 缺失的信息字段列表（字符串数组）
+  suggestions: 建议的快捷操作（字符串数组，最多4个）
+  metadata:
+    toolsUsed: 使用的工具列表（字符串数组）
+    progress: 0-100
 
-只返回TOON文本，不要带代码块或额外说明。
+  输出时必须严格满足：
+  1. 第一行输出: ---BEGIN_TOON---
+  2. 中间是符合上述字段定义的TOON内容
+  3. 最后一行输出: ---END_TOON---
+  不要输出任何其他解释、自然语言前缀/后缀或代码块标记。
 
 ## 重要规则：
 1. **当用户明确表示"创建课程到数据库"、"生成课程大纲并创建"或类似表达时，返回 "action": "generate_course"**
@@ -734,14 +738,18 @@ export async function outlineGenerationNode(
 ## 输出格式（严格TOON）
 message: 生成的大纲说明
 outline: 具体的课程大纲内容
-suggestions[4]: 建议的改进点
-nextActions[3]: 下一步操作
+suggestions: 建议的改进点（字符串数组，最多4个）
+nextActions: 下一步操作（字符串数组，最多3个）
 
 注意：
 - 使用中文回复
 - 生成详细、实用的课程大纲
 - 记住用户在整个对话中提供的所有信息
-只返回TOON文本，不要包含JSON代码块或额外解释。`;
+输出时必须严格满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、自然语言前缀/后缀或代码块标记。`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
@@ -826,7 +834,7 @@ export async function assignmentCreationNode(
 
     // 阶段1：收集作业信息
     if (currentStep === "info_collection" || !existingAssignmentData) {
-      const systemPrompt = `你是一个专业的作业创建助手。你需要基于完整的对话历史和用户的需求，创建相应的作业。
+    const systemPrompt = `你是一个专业的作业创建助手。你需要基于完整的对话历史和用户的需求，创建相应的作业。
 
 ## 当前状态
 - 用户角色：${state.userRole}
@@ -845,15 +853,20 @@ assignmentType: 作业类型
 assignmentTitle: 作业标题
 assignmentContent: 具体的作业内容
 duration: 预计完成时长
-requirements[4]: 具体要求
+requirements: 具体要求（字符串数组，最多4条）
 needsClassSelection: true
-nextActions[3]: 下一步操作
+nextActions: 下一步操作（字符串数组，最多3个）
 
 注意：
 - 使用中文回复
 - 创建实用、有挑战性的作业
 - 记住用户在整个对话中提供的所有信息
-- 当作业内容生成完毕后，必须设置 needsClassSelection: true 提示用户选择班级`;
+- 当作业内容生成完毕后，必须设置 needsClassSelection: true 提示用户选择班级
+输出时必须严格满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、自然语言前缀/后缀或代码块标记`;
 
       const { text } = await generateText({
         model: openai.chat(DEFAULT_MODEL),
@@ -1118,15 +1131,19 @@ export async function a2aOptimizationNode(
 message: A2A优化说明
 originalContent: 原始内容
 optimizedContent: 优化后的内容
-improvements[4]: 具体的改进点
+improvements: 具体的改进点（字符串数组，最多4条）
 qualityScore: 质量评分(1-10)
-nextActions[3]: 下一步操作
+nextActions: 下一步操作（字符串数组，最多3个）
 
 注意：
-只返回TOON文本，不要包含JSON代码块或额外说明。
 - 使用中文回复
 - 生成高质量、实用的优化内容
-- 记住用户在整个对话中提供的所有信息`;
+- 记住用户在整个对话中提供的所有信息
+输出时必须严格满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、自然语言前缀/后缀或代码块标记。`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
@@ -1308,14 +1325,18 @@ message: 内容生成说明
 contentType: 内容类型
 contentTitle: 内容标题
 contentBody: 具体内容
-resources[4]: 相关资源
-nextActions[3]: 下一步操作
+resources: 相关资源（字符串数组，最多4个）
+nextActions: 下一步操作（字符串数组，最多3个）
 
 注意：
 - 使用中文回复
 - 生成详细、实用的教学内容
 - 记住用户在整个对话中提供的所有信息
-只返回TOON文本，不要包含JSON代码块或额外说明`;
+输出时必须严格满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、自然语言前缀/后缀或代码块标记`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),
@@ -1418,7 +1439,11 @@ confidence: 0.0-1.0
 reasoning: 判断理由
 suggestedNextAction: 建议的下一步
 
-只返回TOON文本，不要包含JSON代码块或额外说明。`;
+输出时必须严格满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、自然语言前缀/后缀或代码块标记。`;
 
     const { text } = await generateText({
       model: openai.chat(DEFAULT_MODEL),

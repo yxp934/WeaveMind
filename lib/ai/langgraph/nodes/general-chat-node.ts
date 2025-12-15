@@ -73,15 +73,19 @@ ${conversationHistory}
 
 请生成一个自然的回复，帮助用户并引导对话。
 
-回复必须严格遵守TOON格式，包含以下字段：
-message: 你的回复内容
-suggestions[4]: 建议的快捷操作或问题（最多4个，用逗号分隔）
-availableActions[4]: 可用的功能按钮（最多4个）
-metadata:
-  toolsUsed[2]: []
-  intent: general_chat
-  confidence: 1.0
-只返回TOON文本，不要包含JSON代码块或额外解释。
+    回复必须严格遵守TOON格式，包含以下字段：
+    message: 你的回复内容
+    suggestions: 建议的快捷操作或问题（数组，最多4个，用逗号分隔）
+    availableActions: 可用的功能按钮（数组，最多4个）
+    metadata:
+      toolsUsed: 使用到的工具名称数组
+      intent: general_chat
+      confidence: 1.0
+输出时必须满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、前后缀或代码块标记。
 `
 
     // 调用AI模型

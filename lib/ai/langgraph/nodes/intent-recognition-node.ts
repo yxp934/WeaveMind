@@ -80,7 +80,11 @@ suggestedResponse: 建议的AI回复
 shouldContinueWorkflow: true/false
 workflowType: 如果是继续工作流，具体是哪个工作流
 
-只返回TOON，不要有任何JSON代码块、markdown代码块或多余说明。`;
+输出时必须严格满足：
+1. 第一行输出: ---BEGIN_TOON---
+2. 中间是符合上述字段定义的TOON内容
+3. 最后一行输出: ---END_TOON---
+不要输出任何其他解释、自然语言前缀/后缀或代码块标记，也不要输出JSON或markdown代码块。`;
 
     // 使用messages格式调用AI，让模型能够理解完整对话上下文
     const { text } = await generateText({
