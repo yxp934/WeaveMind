@@ -170,11 +170,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<StandardA
 - 查看班级进度和学生状态
 - 查看即将到来的课程和截止日期
 - 创建新班级、课程和作业
+- 列出当前教师名下的所有班级（使用 listTeacherClasses 工具）
+- 列出指定班级的所有课次（使用 listClassSessions 工具）
+- 列出指定班级的所有作业（使用 listClassAssignments 工具）
 - 回答关于教学数据的问题
+
+重要原则：
+1. 当用户询问“我有哪些班级/classes”、“这个班级有哪些课次/sessions”、“这个班级有哪些作业/assignments”等类似问题时，必须优先调用相应的工具（listTeacherClasses / listClassSessions / listClassAssignments）获取真实数据，而不是凭空编造或说自己没有权限或无法直接访问数据库。
+2. 只有在没有合适工具且问题与数据无关时，才可以直接用语言回答。
+3. 工具调用返回的数据应以清晰、易读的列表形式展示给用户。
 
 始终保持有用、简洁，并主动建议下一步行动。
 提供数据时，请以清晰易读的格式呈现。
-创建项目时，确认操作并提供相关详细信息。
+创建或修改项目时，确认操作并提供相关详细信息。
 
 用户角色：${userRole === 'owner' ? '组织所有者' : '教师'}
 你可以访问所有管理功能。`

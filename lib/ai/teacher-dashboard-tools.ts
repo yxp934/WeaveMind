@@ -509,6 +509,171 @@ export const createAssignmentTool = tool({
 });
 
 /**
+ * 工具：列出当前教师名下的班级
+ */
+export const listTeacherClassesTool = tool({
+  description: "列出当前教师名下的所有班级（作为创建者或授课教师）",
+  inputSchema: z
+    .object({
+      includeMemberClasses: z
+        .boolean()
+        .optional()
+        .describe("是否包含作为授课教师加入的班级，默认 true")
+        .default(true),
+    })
+    .optional(),
+  execute: async (input) => {
+    const supabase = createAdminClient();
+    const includeMemberClasses = input?.includeMemberClasses ?? true;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error("用户未认证");
+    }
+
+    // 1. 作为创建者的班级
+    const { data: createdClasses } = await supabase
+      .from("classes")
+      .select("id, name, description, join_code, created_at")
+      .eq("created_by", user.id)
+      .order("created_at", { ascending: false });
+
+    let classes = createdClasses || [];
+
+    // 2. 作为授课教师加入的班级（可选）
+    if (includeMemberClasses) {
+      const { data: memberClasses } = await supabase
+        .from("class_members")
+        .select(
+          `
+          class_id,
+          role,
+          classes!inner (
+            id,
+            name,
+            description,
+            join_code,
+            created_at
+          )
+        `,
+        )
+        .eq("user_id", user.id)
+        .in("role", ["teacher", "owner"]);
+
+      const mapped =
+        memberClasses?.map((mc: any) => ({
+          id: mc.classes.id,
+          name: mc.classes.name,
+          description: mc.classes.description,
+          join_code: mc.classes.join_code,
+          created_at: mc.classes.created_at,
+        })) || [];
+
+      // 合并并去重
+      const byId = new Map<string, any>();
+      [...classes, ...mapped].forEach((c) => {
+        byId.set(c.id, c);
+      });
+      classes = Array.from(byId.values());
+    }
+
+    return {
+      success: true,
+      message:
+        classes.length > 0
+          ? "班级列表获取成功"
+          : "当前名下还没有任何班级。",
+      data: {
+        classes,
+      },
+    };
+  },
+});
+
+/**
+ * 工具：列出指定班级的所有课次
+ */
+export const listClassSessionsTool = tool({
+  description: "列出指定班级的所有课次信息",
+  inputSchema: z.object({
+    classId: z.string().describe("班级ID"),
+  }),
+  execute: async ({ classId }) => {
+    const supabase = createAdminClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error("用户未认证");
+    }
+
+    const { data: sessions } = await supabase
+      .from("course_sessions")
+      .select(
+        "id, title, scheduled_date, start_time, session_number, class_id",
+      )
+      .eq("class_id", classId)
+      .order("session_number", { ascending: true });
+
+    return {
+      success: true,
+      message:
+        (sessions?.length || 0) > 0
+          ? "课次列表获取成功"
+          : "该班级目前还没有任何课次。",
+      data: {
+        classId,
+        sessions: sessions || [],
+      },
+    };
+  },
+});
+
+/**
+ * 工具：列出指定班级的所有作业
+ */
+export const listClassAssignmentsTool = tool({
+  description: "列出指定班级的所有作业信息",
+  inputSchema: z.object({
+    classId: z.string().describe("班级ID"),
+  }),
+  execute: async ({ classId }) => {
+    const supabase = createAdminClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error("用户未认证");
+    }
+
+    const { data: assignments } = await supabase
+      .from("assignments")
+      .select("id, title, description, due_date, created_at")
+      .eq("class_id", classId)
+      .order("created_at", { ascending: true });
+
+    return {
+      success: true,
+      message:
+        (assignments?.length || 0) > 0
+          ? "作业列表获取成功"
+          : "该班级目前还没有作业。",
+      data: {
+        classId,
+        assignments: assignments || [],
+      },
+    };
+  },
+});
+
+/**
  * 所有教师仪表板工具集合
  */
 export const teacherDashboardTools = {
@@ -519,4 +684,7 @@ export const teacherDashboardTools = {
   createClass: createClassTool,
   createSession: createSessionTool,
   createAssignment: createAssignmentTool,
+  listTeacherClasses: listTeacherClassesTool,
+  listClassSessions: listClassSessionsTool,
+  listClassAssignments: listClassAssignmentsTool,
 };
