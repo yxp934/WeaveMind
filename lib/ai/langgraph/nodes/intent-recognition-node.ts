@@ -33,58 +33,54 @@ export async function intentRecognitionNode(
     });
 
     // 构建系统提示，让AI理解如何进行意图识别
-    const systemPrompt = `你是WeaveMind的智能意图识别系统。你需要基于完整的对话历史理解用户的真实意图。
+    const systemPrompt = `You are the intent router for WeaveMind (teacher-first LMS). Use full dialog history to infer intent and required parameters. Classes have many sessions; there is no separate "course" entity.
 
-## 当前会话状态：
-- 会话ID：${state.sessionId}
-- 用户角色：${state.userRole}
-- 当前工作流：${state.currentWorkflow ? `${state.currentWorkflow.type} (状态: ${state.currentWorkflow.status}, 步骤: ${state.currentWorkflow.step})` : "无"}
-- 已收集的课程信息：${state.courseInfo ? JSON.stringify(state.courseInfo, null, 2) : "无"}
-- 对话消息总数：${state.messages.length}
+Key workflows / tools (mention them so the model knows what exists):
+- course_creation_tool: create a class, then create all sessions, then generate outlines for each session. If fields are missing, return missing_fields. If user asks to create a class, you must plan: create class -> create sessions -> create outlines; confirm outlines with user.
+- outline_generation_tool: generate/update outlines for sessions.
+- assignment_creation_tool: create assignments for classes.
+- a2a_optimization_tool / content_generation_tool: content tasks.
+- entity_crud_tool: CRUD for classes/sessions/assignments with action=create/read/update/delete/list; requires classId/sessionId/assignmentId as appropriate.
+- listTeacherClasses, listClassSessions, listClassAssignments: read-only data fetch.
 
-## 你的任务
-基于完整的对话历史，判断用户当前的意图。这是一个教育AI平台，支持以下核心功能：
+Intents you can return:
+1) course_creation
+2) outline_generation
+3) assignment_creation
+4) a2a_optimization
+5) content_generation
+6) continue_workflow
+7) entity_management (CRUD/list for class/session/assignment; also teacher_data_lookup maps here)
+8) general_chat
 
-1. **course_creation** - 创建课程（用户想要创建新的教学课程）
-2. **outline_generation** - 生成大纲（用户想要生成课程大纲）
-3. **assignment_creation** - 创建作业（用户想要创建作业或测验）
-4. **a2a_optimization** - A2A优化（用户想要使用AI优化内容）
-5. **content_generation** - 内容生成（用户想要生成教学材料）
-6. **continue_workflow** - 继续工作流（用户正在进行中的工作流，提供了更多信息或确认继续）
-7. **entity_management** - 班级/课次/作业的 CRUD 操作，请直接生成结构化指令（创建/读取/更新/删除）
-8. **general_chat** - 通用对话（闲聊或不明确的请求）
+Rules:
+- If user asks “what classes/sessions/assignments do I have”, “list/show classes/sessions/assignments”, force entity_management with action=list and entity inferred; include classId if present in context.
+- Prefer action=list when intent is data lookup. Do not fall back to course creation for these queries.
+- Always plan to ask for missing fields instead of guessing.
 
-## 关键判断原则
-1. **理解对话上下文**：如果之前的对话显示用户正在创建课程、收集信息等，那么用户的后续回复很可能是在继续这个流程
-2. **理解用户意图**：用户说"继续"、"好的"、"下一步"等词时，结合上下文判断是在继续什么
-3. **提取参数**：从用户消息中提取所有相关参数（课程主题、时长、目标受众等）
-4. **不要机械匹配**：不要简单匹配关键词，而是理解用户的真实需求
-
-## 输出格式（严格TOON，对应一个JSON对象）
-# 所有字段都必须给出，即使为空也要写 null 或空字符串
-intent: 意图类型
+Output format MUST be TOON (no markdown fences):
+---BEGIN_TOON---
+intent: ...
 confidence: 0.0-1.0
 parameters:
-  courseTopic: 课程主题
-  courseDuration: 课程时长
-  sessionsPerWeek: 每周课次
-  targetAudience: 目标学员
-  difficultyLevel: 难度级别
-  courseType: 课程类型
+  courseTopic: ...
+  courseDuration: ...
+  sessionsPerWeek: ...
+  targetAudience: ...
+  difficultyLevel: ...
+  courseType: ...
   action: create|read|update|delete|list
   entity: class|session|assignment
-  entityId: 目标实体ID（如有）
-  details: 其他字段/说明，比如课次日期、作业标题、班级描述
-reasoning: 详细的推理过程，解释为什么你认为是这个意图
-suggestedResponse: 建议的AI回复
+  entityId: ...
+  classId: ...
+  sessionId: ...
+  details: ...
+reasoning: ...
+suggestedResponse: ...
 shouldContinueWorkflow: true/false
-workflowType: 如果是继续工作流，具体是哪个工作流
-
-输出时必须严格满足：
-1. 第一行输出: ---BEGIN_TOON---
-2. 中间是符合上述字段定义的TOON内容
-3. 最后一行输出: ---END_TOON---
-不要输出任何其他解释、自然语言前缀/后缀或代码块标记，也不要输出JSON或markdown代码块。`;
+workflowType: ...
+---END_TOON---
+Reply in the user's language; keep the system text in English. Do not wrap in code fences.`;
 
     // 使用messages格式调用AI，让模型能够理解完整对话上下文
     const { text } = await generateText({
@@ -125,6 +121,63 @@ workflowType: 如果是继续工作流，具体是哪个工作流
     let finalIntent = intentResult.intent;
     let finalWorkflow = state.currentWorkflow;
 
+    // 🔧 规则修正：显式的“我有哪些班级/课次/作业”必须走实体管理列表
+    const normalizedUserText = lastMessage.content
+      .toString()
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const hasListVerb = /(有哪些|有什么|哪几个|列出|查看|show|list|lookat|what|which)/i.test(
+      lastMessage.content.toString(),
+    );
+    const mentionsClass = /(班级|class|classes)/i.test(normalizedUserText);
+    const mentionsSession = /(课次|课程节|session|sessions|lesson)/i.test(
+      normalizedUserText,
+    );
+    const mentionsAssignment = /(作业|作业列表|assignment|assignments)/i.test(
+      normalizedUserText,
+    );
+
+    const resolvedClassId =
+      intentResult.parameters?.classId ||
+      state.metadata?.selectedClassId ||
+      state.metadata?.classId ||
+      state.metadata?.requestContext?.classId ||
+      null;
+
+    if (hasListVerb && (mentionsClass || mentionsSession || mentionsAssignment)) {
+      finalIntent = "entity_management";
+      intentResult.parameters = {
+        ...intentResult.parameters,
+        action: "list",
+        entity: mentionsClass
+          ? "class"
+          : mentionsSession
+            ? "session"
+            : "assignment",
+        classId: resolvedClassId,
+      };
+      intentResult.reasoning = `${
+        intentResult.reasoning || ""
+      } 识别到用户在查询已有的 ${
+        mentionsClass
+          ? "班级"
+          : mentionsSession
+            ? "课次"
+            : "作业"
+      }，强制使用 entity_management + list。`;
+    }
+
+    // 如果AI判定为实体管理但缺少动作，默认使用list，避免落入课程创建流
+    if (
+      finalIntent === "entity_management" &&
+      !intentResult.parameters?.action
+    ) {
+      intentResult.parameters = {
+        ...intentResult.parameters,
+        action: "list",
+      };
+    }
+
     // 如果AI判断用户是在继续工作流，设置正确的工作流状态
     if (intentResult.shouldContinueWorkflow && intentResult.workflowType) {
       finalIntent = "continue_workflow";
@@ -145,6 +198,7 @@ workflowType: 如果是继续工作流，具体是哪个工作流
       内容生成: "content_generation",
       继续工作流: "continue_workflow",
       通用对话: "general_chat",
+      teacher_data_lookup: "entity_management",
     };
 
     const mappedIntent = intentMapping[finalIntent] || finalIntent;

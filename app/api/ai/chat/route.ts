@@ -17,6 +17,26 @@ import { z } from "zod";
 // Use Node.js runtime because this endpoint may perform Supabase admin operations.
 export const runtime = "nodejs";
 
+async function runWithRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 5,
+  delayMs = 5000,
+): Promise<T> {
+  let attempt = 0;
+  let lastError: any = null;
+  while (attempt < maxAttempts) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      attempt += 1;
+      if (attempt >= maxAttempts) break;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 // AI聊天请求验证模式
 const chatRequestSchema = z.object({
   message: z.string().min(1).max(4000),
@@ -29,6 +49,13 @@ const chatRequestSchema = z.object({
       selectedClassId: z.string().uuid().optional(),
       selectedSessionId: z.string().uuid().optional(),
       selectedAssignmentId: z.string().uuid().optional(),
+      confirmToolCall: z
+        .object({
+          id: z.string(),
+          toolName: z.string(),
+          input: z.record(z.any()),
+        })
+        .optional(),
       selectedContexts: z
         .array(
           z.object({
@@ -187,43 +214,107 @@ export async function POST(
       actionType: result.data?.metadata?.actionType,
     });
 
+    if ((result.data?.metadata?.toolsUsed || []).length > 5) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "TOOL_LIMIT_REACHED",
+            message: "Tool call limit reached (5). Please simplify your request.",
+          },
+          metadata: {
+            timestamp: new Date().toISOString(),
+            requestId,
+            processingTime,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
     if (result.success && result.data?.metadata?.requiresDatabaseAction) {
-      console.log("🔧 检测到数据库操作请求:", result.data.metadata.actionType);
-      try {
-        const effectiveUser = user || { id: userId };
-        const dbOperationResult = await handleDatabaseOperation(
-          result.data.metadata,
-          supabase,
-          effectiveUser,
-          isDemoMode,
-        );
-        if (dbOperationResult.success) {
-          // 更新响应消息
-          finalResult = {
-            ...result,
-            data: {
-              ...result.data,
-              message: dbOperationResult.message,
-              metadata: {
-                ...result.data.metadata,
-                classId: dbOperationResult.classId,
-                joinCode: dbOperationResult.joinCode,
-                assignmentId: dbOperationResult.assignmentId,
-                toolsUsed: [
-                  ...(result.data.metadata.toolsUsed || []),
-                  ...dbOperationResult.toolsUsed,
-                ],
+      console.log("🔧 检测到工具/数据库调用请求:", result.data.metadata.actionType);
+      const pendingToolCallId =
+        result.data.metadata.pendingToolCallId || crypto.randomUUID();
+      const pendingToolCall = {
+        id: pendingToolCallId,
+        toolName: result.data.metadata.actionType,
+        input: result.data.metadata.actionData || {},
+      };
+
+      // 如果本次请求带有确认且ID匹配，则执行（带重试）
+      if (context?.confirmToolCall?.id) {
+        try {
+          const effectiveUser = user || { id: userId };
+          const dbOperationResult = await runWithRetry(
+            () =>
+              handleDatabaseOperation(
+                result.data.metadata,
+                supabase,
+                effectiveUser,
+                isDemoMode,
+              ),
+            5,
+            5000,
+          );
+
+          if (dbOperationResult.success) {
+            finalResult = {
+              ...result,
+              data: {
+                ...result.data,
+                message: dbOperationResult.message,
+                metadata: {
+                  ...result.data.metadata,
+                  classId: dbOperationResult.classId,
+                  joinCode: dbOperationResult.joinCode,
+                  assignmentId: dbOperationResult.assignmentId,
+                  pendingToolCall: null,
+                  pendingToolCallId: null,
+                  toolsUsed: [
+                    ...(result.data.metadata.toolsUsed || []),
+                    ...dbOperationResult.toolsUsed,
+                  ],
+                },
               },
+            };
+          } else {
+            finalResult = {
+              success: false,
+              error: {
+                code: "DATABASE_OPERATION_FAILED",
+                message:
+                  dbOperationResult.message ||
+                  "Tool execution failed after retries.",
+              },
+            };
+          }
+        } catch (dbError: any) {
+          console.error("❌ 工具调用失败:", dbError);
+          finalResult = {
+            success: false,
+            error: {
+              code: "DATABASE_OPERATION_FAILED",
+              message: `Tool execution failed after retries: ${dbError.message}`,
             },
           };
         }
-      } catch (dbError: any) {
-        console.error("❌ 数据库操作失败:", dbError);
+      } else {
+        // 需要用户确认
         finalResult = {
-          success: false,
-          error: {
-            code: "DATABASE_OPERATION_FAILED",
-            message: `数据库操作失败: ${dbError.message}`,
+          ...result,
+          data: {
+            ...result.data,
+            message:
+              result.data.message ||
+              `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
+            metadata: {
+              ...result.data.metadata,
+              pendingToolCall,
+              pendingToolCallId,
+              requiresDatabaseAction: true,
+              confirmationRequired: true,
+            },
           },
         };
       }
@@ -488,48 +579,77 @@ async function handleStreamResponse(
           throw new Error(result.error?.message || "LangGraph处理失败");
         }
 
-        // 处理数据库操作请求
+        // 处理数据库/工具调用请求（流式模式下仅返回待确认信息，不自动执行）
         let finalResult = result;
         if (result.data?.metadata?.requiresDatabaseAction) {
-          console.log(
-            "🔧 检测到数据库操作请求:",
-            result.data.metadata.actionType,
-          );
+          const pendingToolCallId =
+            result.data.metadata.pendingToolCallId || crypto.randomUUID();
+          const pendingToolCall = {
+            id: pendingToolCallId,
+            toolName: result.data.metadata.actionType,
+            input: result.data.metadata.actionData || {},
+          };
 
-          const supabase = await createClient();
-          const {
-            data: { user: authenticatedUser },
-          } = await supabase.auth.getUser();
+          if (context?.confirmToolCall?.id) {
+            const supabase = await createClient();
+            const {
+              data: { user: authenticatedUser },
+            } = await supabase.auth.getUser();
 
-          try {
-            const dbOperationResult = await handleDatabaseOperation(
-              result.data.metadata,
-              supabase,
-              authenticatedUser,
-              true,
-            );
-            if (dbOperationResult.success) {
-              finalResult = {
-                ...result,
-                data: {
-                  ...result.data,
-                  message: dbOperationResult.message,
-                  metadata: {
-                    ...result.data.metadata,
-                    classId: dbOperationResult.classId,
-                    joinCode: dbOperationResult.joinCode,
-                    assignmentId: dbOperationResult.assignmentId,
-                    toolsUsed: [
-                      ...(result.data.metadata.toolsUsed || []),
-                      ...(dbOperationResult.toolsUsed || []),
-                    ],
+            try {
+              const dbOperationResult = await runWithRetry(
+                () =>
+                  handleDatabaseOperation(
+                    result.data.metadata,
+                    supabase,
+                    authenticatedUser,
+                    true,
+                  ),
+                5,
+                5000,
+              );
+              if (dbOperationResult.success) {
+                finalResult = {
+                  ...result,
+                  data: {
+                    ...result.data,
+                    message: dbOperationResult.message,
+                    metadata: {
+                      ...result.data.metadata,
+                      classId: dbOperationResult.classId,
+                      joinCode: dbOperationResult.joinCode,
+                      assignmentId: dbOperationResult.assignmentId,
+                      pendingToolCall: null,
+                      pendingToolCallId: null,
+                      toolsUsed: [
+                        ...(result.data.metadata.toolsUsed || []),
+                        ...(dbOperationResult.toolsUsed || []),
+                      ],
+                    },
                   },
-                },
-              };
+                };
+              }
+            } catch (dbError: any) {
+              console.error("❌ 工具调用失败:", dbError);
+              throw new Error(`Tool execution failed: ${dbError.message}`);
             }
-          } catch (dbError: any) {
-            console.error("❌ 数据库操作失败:", dbError);
-            throw new Error(`数据库操作失败: ${dbError.message}`);
+          } else {
+            finalResult = {
+              ...result,
+              data: {
+                ...result.data,
+                message:
+                  result.data.message ||
+                  `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
+                metadata: {
+                  ...result.data.metadata,
+                  pendingToolCall,
+                  pendingToolCallId,
+                  requiresDatabaseAction: true,
+                  confirmationRequired: true,
+                },
+              },
+            };
           }
         }
 
@@ -907,13 +1027,40 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           switch (action) {
             case "list":
             case "read": {
-              const { data: classes } = await dbClient
+              const { data: createdClasses } = await dbClient
                 .from("classes")
                 .select("id,name,description,join_code,created_at")
                 .eq("created_by", user.id)
                 .order("created_at", { ascending: false });
 
-              const lines = (classes || []).map(
+              const { data: memberClasses } = await dbClient
+                .from("class_members")
+                .select(
+                  `
+                  class_id,
+                  role,
+                  classes!inner (
+                    id,
+                    name,
+                    description,
+                    join_code,
+                    created_at
+                  )
+                `,
+                )
+                .eq("user_id", user.id)
+                .in("role", ["teacher", "owner"]);
+
+              const merged = new Map<string, any>();
+              (createdClasses || []).forEach((c: any) => merged.set(c.id, c));
+              (memberClasses || []).forEach((mc: any) => {
+                const cls = (mc as any).classes;
+                merged.set(cls.id, cls);
+              });
+
+              const classes = Array.from(merged.values());
+
+              const lines = classes.map(
                 (c: any) =>
                   `- 班级：${c.name} | ID: ${c.id} | 加入码: ${c.join_code}`,
               );
@@ -924,7 +1071,7 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
                   lines.length > 0
                     ? `以下是您名下的班级列表：\n${lines.join("\n")}`
                     : "目前还没有找到您创建的班级，可以先让我帮您创建一个。",
-                toolsUsed: ["listClasses"],
+                toolsUsed: ["listTeacherClasses"],
               };
             }
             case "create": {
@@ -1051,6 +1198,31 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           switch (action) {
             case "list":
             case "read": {
+              const { data: cls } = await dbClient
+                .from("classes")
+                .select("id,name,created_by")
+                .eq("id", classId)
+                .maybeSingle();
+
+              if (!cls) {
+                throw new Error("找不到该班级，无法列出课次。");
+              }
+
+              // 权限：必须是创建者或授课教师
+              const { data: membership } = await dbClient
+                .from("class_members")
+                .select("role")
+                .eq("class_id", classId)
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+              if (
+                cls.created_by !== user.id &&
+                !membership?.role?.match(/teacher|owner/)
+              ) {
+                throw new Error("无权查看该班级的课次。");
+              }
+
               const { data: sessions } = await dbClient
                 .from("course_sessions")
                 .select(
@@ -1068,10 +1240,10 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
                 success: true,
                 message:
                   lines.length > 0
-                    ? `当前班级的课次如下：\n${lines.join("\n")}`
+                    ? `班级「${cls.name}」的课次如下：\n${lines.join("\n")}`
                     : "当前班级还没有任何课次，可以让我帮你创建第一节课。",
                 classId,
-                toolsUsed: ["listSessions"],
+                toolsUsed: ["listClassSessions"],
               };
             }
             case "create": {
@@ -1187,6 +1359,31 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
               if (!classId) {
                 throw new Error("请先指定班级，再查看作业列表。");
               }
+
+              const { data: cls } = await dbClient
+                .from("classes")
+                .select("id,name,created_by")
+                .eq("id", classId)
+                .maybeSingle();
+
+              if (!cls) {
+                throw new Error("找不到该班级，无法列出作业。");
+              }
+
+              const { data: membership } = await dbClient
+                .from("class_members")
+                .select("role")
+                .eq("class_id", classId)
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+              if (
+                cls.created_by !== user.id &&
+                !membership?.role?.match(/teacher|owner/)
+              ) {
+                throw new Error("无权查看该班级的作业。");
+              }
+
               const { data: assignments } = await dbClient
                 .from("assignments")
                 .select("id,title,description,created_at,due_date")
@@ -1202,10 +1399,10 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
                 success: true,
                 message:
                   lines.length > 0
-                    ? `当前班级的作业如下：\n${lines.join("\n")}`
+                    ? `班级「${cls.name}」的作业如下：\n${lines.join("\n")}`
                     : "当前班级还没有作业，可以让我帮你创建一个。",
                 classId,
-                toolsUsed: ["listAssignments"],
+                toolsUsed: ["listClassAssignments"],
               };
             }
             case "create": {

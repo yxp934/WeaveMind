@@ -461,6 +461,54 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     }
   };
 
+  // 确认工具调用
+  const handleConfirmToolCall = async (pendingToolCall: any) => {
+    setIsTyping(true);
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Confirm tool call ${pendingToolCall.toolName}`,
+          context: {
+            ...selectedContext,
+            userRole: 'teacher',
+            confirmToolCall: pendingToolCall,
+            conversationHistory: messages.map(msg => ({
+              role: msg.isUser ? 'user' : 'assistant',
+              content: msg.text,
+              timestamp: msg.timestamp.toISOString(),
+              toolsUsed: [],
+              metadata: msg.metadata || {}
+            }))
+          }
+        })
+      });
+
+      const data = await res.json();
+      const responseData = data.data || {};
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: responseData.message || 'Tool executed.',
+        isUser: false,
+        timestamp: new Date(),
+        choices: responseData.choices || undefined,
+        metadata: responseData.metadata || undefined,
+      };
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (err) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Failed to confirm tool. Please retry.',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
   // 获取图标
   const getIcon = (type: 'class' | 'session' | 'assignment') => {
     switch (type) {
@@ -1017,6 +1065,24 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
                             </div>
                           </motion.button>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Pending tool confirmation */}
+                    {message.metadata?.pendingToolCall && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-[12px] text-[#6a7282]">
+                          Pending tool: {message.metadata.pendingToolCall.toolName}
+                        </p>
+                        <motion.button
+                          onClick={() => handleConfirmToolCall(message.metadata?.pendingToolCall)}
+                          disabled={isTyping}
+                          className="w-full text-left px-3 py-2.5 bg-white/80 hover:bg-white border border-[#B882B1]/40 hover:border-[#B882B1] rounded-lg transition-all disabled:opacity-50"
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.99 }}
+                        >
+                          Confirm and run
+                        </motion.button>
                       </div>
                     )}
 
