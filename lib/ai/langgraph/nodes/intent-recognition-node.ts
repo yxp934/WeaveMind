@@ -22,6 +22,55 @@ export async function intentRecognitionNode(
     return { ...state };
   }
 
+  // Fast-path lexical detection to avoid model failures on simple list queries
+  const rawUserText = lastMessage.content.toString();
+  const normalizedUserText = rawUserText.toLowerCase().replace(/\s+/g, "");
+  const fastHasListVerb = /(有哪些|有什么|哪几个|列出|查看|show|list|lookat|look at|what|which)/i.test(
+    rawUserText,
+  );
+  const fastMentionsClass = /(班级|class|classes)/i.test(normalizedUserText);
+  const fastMentionsSession = /(课次|课程节|session|sessions|lesson)/i.test(
+    normalizedUserText,
+  );
+  const fastMentionsAssignment = /(作业|作业列表|assignment|assignments)/i.test(
+    normalizedUserText,
+  );
+
+  if (
+    fastHasListVerb &&
+    (fastMentionsClass || fastMentionsSession || fastMentionsAssignment)
+  ) {
+    const entity = fastMentionsClass
+      ? "class"
+      : fastMentionsSession
+        ? "session"
+        : "assignment";
+    return {
+      ...state,
+      intent: {
+        type: "entity_management",
+        confidence: 0.9,
+        parameters: {
+          action: "list",
+          entity,
+          classId:
+            state.metadata?.selectedClassId ||
+            state.metadata?.classId ||
+            state.metadata?.requestContext?.classId ||
+            null,
+        },
+      },
+      currentWorkflow: undefined,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        reasoning: `Fast-path lexical routing to list ${entity}s`,
+        suggestedResponse: "I will fetch the data now.",
+        mode: "lexical_routing",
+      },
+    };
+  }
+
   try {
     // 构建完整的对话历史作为messages格式（这是关键修复）
     const conversationMessages = state.messages.map((msg) => {
