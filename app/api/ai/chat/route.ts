@@ -408,22 +408,59 @@ export async function POST(
     }
 
     // 5. 否则使用普通JSON响应
-    const result = await chatbot.processMessage(
-      message,
-      conversationId,
-      userRole,
-      userId,
-      context?.conversationHistory || [],
-      {
-        courseId: ctx?.courseId,
-        classId: ctx?.classId,
-        organizationId: ctx?.organizationId,
-        selectedClassId: ctx?.selectedClassId,
-        selectedSessionId: ctx?.selectedSessionId,
-        selectedAssignmentId: ctx?.selectedAssignmentId,
-        selectedContexts: ctx?.selectedContexts,
-      },
-    );
+    let result: any;
+    try {
+      result = await withTimeout(
+        chatbot.processMessage(
+          message,
+          conversationId,
+          userRole,
+          userId,
+          context?.conversationHistory || [],
+          {
+            courseId: ctx?.courseId,
+            classId: ctx?.classId,
+            organizationId: ctx?.organizationId,
+            selectedClassId: ctx?.selectedClassId,
+            selectedSessionId: ctx?.selectedSessionId,
+            selectedAssignmentId: ctx?.selectedAssignmentId,
+            selectedContexts: ctx?.selectedContexts,
+          },
+        ),
+        35_000,
+        "LangGraph processMessage",
+      );
+    } catch (err: any) {
+      const isZh = /[\u4e00-\u9fff]/.test(message);
+      const fallbackMsg = isZh
+        ? "请求处理超时或暂时不可用。请稍等几秒后重试，或把任务拆成更小的步骤。"
+        : "The request timed out or is temporarily unavailable. Please wait a few seconds and try again, or split the task into smaller steps.";
+      const toonPayload = {
+        intent: "error",
+        status: "error",
+        message: fallbackMsg,
+      };
+      const toonMessage = `---BEGIN_TOON---\n${encodeToon(toonPayload)}\n---END_TOON---`;
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          message: toonMessage,
+          toolsUsed: [],
+          metadata: {
+            intent: "error",
+            timestamp: new Date().toISOString(),
+            error: err?.message || "timeout",
+          },
+        } as any,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestId,
+          mode: isDemoMode ? "demo" : "production",
+          processingTime: Date.now() - startTime,
+        },
+      });
+    }
 
     const processingTime = Date.now() - startTime;
     console.log("✅ LangGraph处理完成:", {
