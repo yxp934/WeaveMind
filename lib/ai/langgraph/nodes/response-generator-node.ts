@@ -1,5 +1,6 @@
 import { ChatbotState } from "../chatbot-state";
 import { AIMessage } from "@langchain/core/messages";
+import { encode as encodeToon } from "@toon-format/toon";
 
 /**
  * 响应生成节点 - 恢复选择题问答模式
@@ -260,24 +261,8 @@ function generateStructuredResponse(
 }
 
 function renderToon(obj: Record<string, any>): string {
-  const serialize = (o: any, indent = 0): string => {
-    const pad = "  ".repeat(indent);
-    if (o === null || o === undefined) return "null";
-    if (typeof o !== "object") return String(o);
-    if (Array.isArray(o)) {
-      if (o.length === 0) return "[]";
-      return `[\n${o
-        .map((v) => `${pad}  - ${serialize(v, indent + 1)}`)
-        .join("\n")}\n${pad}]`;
-    }
-    const entries = Object.entries(o);
-    if (entries.length === 0) return "{}";
-    return entries
-      .map(([k, v]) => `${pad}${k}: ${serialize(v, indent + 1)}`)
-      .join("\n");
-  };
-
-  return `---BEGIN_TOON---\n${serialize(obj)}\n---END_TOON---`;
+  // Use official encoder to ensure strings/newlines are escaped correctly.
+  return `---BEGIN_TOON---\n${encodeToon(obj)}\n---END_TOON---`;
 }
 
 /**

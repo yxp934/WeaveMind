@@ -13,6 +13,7 @@ import {
   createAssignmentTool,
 } from "@/lib/ai/teacher-dashboard-tools";
 import { z } from "zod";
+import { encode as encodeToon } from "@toon-format/toon";
 
 // Use Node.js runtime because this endpoint may perform Supabase admin operations.
 export const runtime = "nodejs";
@@ -165,7 +166,13 @@ export async function POST(
         5000,
       );
 
-      const toonMessage = `---BEGIN_TOON---\nintent: entity_management\nstatus: ${dbOperationResult.success ? "ok" : "error"}\nmessage: ${dbOperationResult.message}\n---END_TOON---`;
+      const toonPayload = {
+        intent: "tool_execution",
+        status: dbOperationResult.success ? "ok" : "error",
+        tool: toolName,
+        message: dbOperationResult.message,
+      };
+      const toonMessage = `---BEGIN_TOON---\n${encodeToon(toonPayload)}\n---END_TOON---`;
 
       return NextResponse.json({
         success: dbOperationResult.success,
@@ -173,11 +180,12 @@ export async function POST(
           message: toonMessage,
           toolsUsed: dbOperationResult.toolsUsed || [],
           metadata: {
-            intent: "entity_management",
+            intent: "tool_execution",
             confirmationExecuted: true,
             confirmedToolCallId: context.confirmToolCall.id,
             actionType: toolName,
             timestamp: new Date().toISOString(),
+            toolResult: dbOperationResult,
           },
         } as any,
         metadata: {
