@@ -98,6 +98,7 @@ export async function POST(
 ): Promise<NextResponse<StandardApiResponse<ChatResponseData>>> {
   const requestId = crypto.randomUUID();
   const startTime = Date.now();
+  const debugMode = request.headers.get("x-weavemind-debug") === "1";
 
   try {
     // 1. 解析和验证请求数据
@@ -501,7 +502,9 @@ export async function POST(
         error: {
           code: "INTERNAL_ERROR",
           message: error.message || "处理请求时发生错误",
-          details: error,
+          details: debugMode
+            ? { message: error?.message, stack: error?.stack }
+            : {},
         },
         metadata: {
           timestamp: new Date().toISOString(),
