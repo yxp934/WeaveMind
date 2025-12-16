@@ -203,6 +203,16 @@ export default function SidebarChatbot({
         confirmToolCall: pendingToolCall,
         stream: false,
       });
+      // Hide the confirmation button on the original message once executed
+      updateMessage(messageId, {
+        metadata: {
+          ...(messages.find((m) => m.id === messageId)?.metadata || {}),
+          pendingToolCall: null,
+          pendingToolCallId: null,
+          confirmationRequired: false,
+          confirmationExecuted: true,
+        },
+      });
     } finally {
       setConfirmingToolCallId(null);
     }

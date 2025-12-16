@@ -446,13 +446,34 @@ export const useChatbotStore = create<ChatbotStore>()(
               stream: false,
             });
 
-            const response = await fetch("/api/ai/chat", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: postBody,
-            });
+            const runFetch = async () =>
+              fetch("/api/ai/chat", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: postBody,
+              });
+
+            // Tool execution requests must retry on disconnect/errors:
+            // wait 5s, retry up to 5 attempts.
+            const isToolExecution = Boolean(metadata.confirmToolCall?.id);
+            let response: Response;
+            let lastError: any = null;
+            for (let attempt = 1; attempt <= (isToolExecution ? 5 : 1); attempt++) {
+              try {
+                response = await runFetch();
+                lastError = null;
+                break;
+              } catch (err) {
+                lastError = err;
+                if (attempt >= 5) break;
+                await new Promise((r) => setTimeout(r, 5000));
+              }
+            }
+            if (!response) {
+              throw lastError || new Error("Network error");
+            }
 
             const data = await response.json().catch(() => null);
             if (!response.ok || !data?.success) {
