@@ -258,7 +258,25 @@ export async function POST(
       };
 
       // 如果本次请求带有确认且ID匹配，则执行（带重试）
-      if (context?.confirmToolCall?.id) {
+      // 未确认则直接返回待确认
+      if (!context?.confirmToolCall || context.confirmToolCall.id !== pendingToolCallId) {
+        finalResult = {
+          ...result,
+          data: {
+            ...result.data,
+            message:
+              result.data.message ||
+              `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
+            metadata: {
+              ...result.data.metadata,
+              pendingToolCall,
+              pendingToolCallId,
+              requiresDatabaseAction: true,
+              confirmationRequired: true,
+            },
+          },
+        };
+      } else {
         try {
           const effectiveUser = user || { id: userId };
           const dbOperationResult = await runWithRetry(
@@ -314,24 +332,6 @@ export async function POST(
             },
           };
         }
-      } else {
-        // 需要用户确认
-        finalResult = {
-          ...result,
-          data: {
-            ...result.data,
-            message:
-              result.data.message ||
-              `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
-            metadata: {
-              ...result.data.metadata,
-              pendingToolCall,
-              pendingToolCallId,
-              requiresDatabaseAction: true,
-              confirmationRequired: true,
-            },
-          },
-        };
       }
     }
 
@@ -620,7 +620,10 @@ async function handleStreamResponse(
             input: result.data.metadata.actionData || {},
           };
 
-          if (context?.confirmToolCall?.id) {
+          if (
+            context?.confirmToolCall &&
+            context.confirmToolCall.id === pendingToolCallId
+          ) {
             const supabase = await createClient();
             const {
               data: { user: authenticatedUser },
