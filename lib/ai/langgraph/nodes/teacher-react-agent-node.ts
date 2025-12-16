@@ -863,6 +863,80 @@ export async function teacherReactAgentNode(
           updated.classId || state.metadata?.lastCreatedClassId || null;
         if (
           lastToolExecution.toolName === "create_sessions_batch" &&
+          lastToolExecution.success === false &&
+          classId
+        ) {
+          const toolMessage =
+            (lastToolExecution.toolResult &&
+              typeof lastToolExecution.toolResult.message === "string" &&
+              lastToolExecution.toolResult.message.trim()) ||
+            (preferredLanguage === "zh"
+              ? "❌ 创建课次失败。"
+              : "❌ Failed to create sessions.");
+
+          const sessions = (updated.sessionsDraft || [])
+            .slice(0, updated.sessionCount || 0)
+            .map((s: any) => ({
+              title: s.title,
+              description: s.description || "",
+            }));
+
+          const msg =
+            preferredLanguage === "zh"
+              ? `${toolMessage}\n\n我可以重试创建 ${sessions.length} 节课次（如果你没提供日期，我会为每节课自动填入一个默认日期：从今天开始按顺序往后排）。请确认执行重试。`
+              : `${toolMessage}\n\nI can retry creating ${sessions.length} sessions (if you didn't provide dates, I'll auto-fill a default scheduled date for each session, starting from today). Please confirm to run the retry.`;
+
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: { ...updated, status: "await_sessions_created", classId },
+          };
+
+          const aiMessage = new AIMessage({
+            content: msg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: true,
+                actionType: "create_sessions_batch",
+                actionData: {
+                  classId,
+                  sessions,
+                  language: preferredLanguage,
+                  agentState: withStatus,
+                },
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: true,
+              actionType: "create_sessions_batch",
+              actionData: {
+                classId,
+                sessions,
+                language: preferredLanguage,
+                agentState: withStatus,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "propose_tool",
+              data: { phase: "retry_create_sessions_batch" },
+            },
+          };
+        }
+
+        if (
+          lastToolExecution.toolName === "create_sessions_batch" &&
           lastToolExecution.success === true &&
           classId
         ) {

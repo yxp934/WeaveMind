@@ -1229,6 +1229,13 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           throw new Error("Missing sessions array for create_sessions_batch");
         }
 
+        const normalizeScheduledDate = (value: any): string | null => {
+          if (!value) return null;
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return null;
+          return d.toISOString();
+        };
+
         const { data: cls } = await dbClient
           .from("classes")
           .select("id,name,created_by")
@@ -1263,12 +1270,21 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
 
         const startNumber = (lastSession?.session_number || 0) + 1;
         const capped = sessions.slice(0, 32);
+        const baseTime = Date.now();
         const rows = capped.map((session: any, idx: number) => ({
           class_id: classId,
           session_number: startNumber + idx,
           title: session.title,
           description: session.description || "",
-          scheduled_date: session.scheduledDate || null,
+          // Some production databases enforce NOT NULL on scheduled_date.
+          // Provide a deterministic default (today + idx days) if not provided.
+          scheduled_date:
+            normalizeScheduledDate(
+              session.scheduledDate ??
+                session.scheduled_date ??
+                session.scheduledAt ??
+                session.date,
+            ) ?? new Date(baseTime + idx * 24 * 60 * 60 * 1000).toISOString(),
           start_time: session.startTime || null,
           end_time: session.endTime || null,
           duration_minutes: session.durationMinutes || null,
