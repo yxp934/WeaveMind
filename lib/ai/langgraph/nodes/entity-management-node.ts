@@ -42,6 +42,7 @@ export async function entityManagementNode(
     ...(state.metadata || {}),
     toolsUsed: [...(state.metadata?.toolsUsed || []), 'entity_management'],
     // 关键：所有实体相关操作统一走数据库工具，不再走fallback分支
+    intent: 'entity_management',
     requiresDatabaseAction: true,
     actionType: 'entity_management',
     actionData: {

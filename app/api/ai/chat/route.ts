@@ -220,6 +220,7 @@ export async function POST(
       intentType === "entity_management" ||
       result.data?.metadata?.actionType
     ) {
+      result.data.metadata.intent = "entity_management";
       result.data.metadata.requiresDatabaseAction = true;
       if (!result.data.metadata.actionType) {
         result.data.metadata.actionType = "entity_management";
@@ -247,7 +248,34 @@ export async function POST(
       );
     }
 
-    if (result.success && result.data?.metadata?.requiresDatabaseAction) {
+    // 6.5 如果是实体管理但缺少确认，直接返回待确认，不执行
+    if (
+      intentType === "entity_management" &&
+      !context?.confirmToolCall?.id
+    ) {
+      const pendingToolCallId =
+        result.data.metadata.pendingToolCallId || crypto.randomUUID();
+      finalResult = {
+        ...result,
+        data: {
+          ...result.data,
+          message:
+            result.data.message ||
+            `Pending tool call ${result.data.metadata.actionType || "entity_management"}, awaiting confirmation.`,
+          metadata: {
+            ...result.data.metadata,
+            pendingToolCall: {
+              id: pendingToolCallId,
+              toolName: result.data.metadata.actionType || "entity_management",
+              input: result.data.metadata.actionData || {},
+            },
+            pendingToolCallId,
+            requiresDatabaseAction: true,
+            confirmationRequired: true,
+          },
+        },
+      };
+    } else if (result.success && result.data?.metadata?.requiresDatabaseAction) {
       console.log("🔧 检测到工具/数据库调用请求:", result.data.metadata.actionType);
       const pendingToolCallId =
         result.data.metadata.pendingToolCallId || crypto.randomUUID();
@@ -600,6 +628,7 @@ async function handleStreamResponse(
           intentType === "entity_management" ||
           result.data?.metadata?.actionType
         ) {
+          result.data.metadata.intent = "entity_management";
           result.data.metadata.requiresDatabaseAction = true;
           if (!result.data.metadata.actionType) {
             result.data.metadata.actionType = "entity_management";
