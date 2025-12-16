@@ -204,6 +204,7 @@ export class LangGraphChatbot {
         let latestSelectedAssignmentId: string | null = null;
         let lastCreatedClassId: string | null = null;
         let lastCreatedJoinCode: string | null = null;
+        let latestAgentState: any = null;
 
         // 从最新的消息开始向前搜索
         for (let i = conversationHistory.length - 1; i >= 0; i--) {
@@ -215,13 +216,15 @@ export class LangGraphChatbot {
             if (msg.metadata.workflowType) {
               // 如果有workflowType，但status缺失，默认为'active'
               const workflowStatus = msg.metadata.workflowStatus || "active";
-              latestWorkflow = {
-                type: msg.metadata.workflowType,
-                status: workflowStatus,
-                step: msg.metadata.currentStep || "info_collection",
-                data: {},
-              };
-              console.log(`✅ 从消息 ${i} 恢复工作流:`, latestWorkflow);
+              if (!latestWorkflow) {
+                latestWorkflow = {
+                  type: msg.metadata.workflowType,
+                  status: workflowStatus,
+                  step: msg.metadata.currentStep || "info_collection",
+                  data: {},
+                };
+                console.log(`✅ 从消息 ${i} 恢复工作流:`, latestWorkflow);
+              }
 
               // 关键修复：如果检测到活跃工作流且没有其他工作流被设置，就使用这个
               if (!state.currentWorkflow && workflowStatus === "active") {
@@ -235,44 +238,46 @@ export class LangGraphChatbot {
               (msg.metadata.knownInfo &&
                 Object.keys(msg.metadata.knownInfo).length > 0)
             ) {
-              latestCourseInfo = msg.metadata.knownInfo || {};
-              if (!latestCourseInfo.topic && msg.metadata.courseTopic) {
-                latestCourseInfo.topic = msg.metadata.courseTopic;
+              if (!latestCourseInfo) {
+                latestCourseInfo = msg.metadata.knownInfo || {};
+                if (!latestCourseInfo.topic && msg.metadata.courseTopic) {
+                  latestCourseInfo.topic = msg.metadata.courseTopic;
+                }
+                console.log(`✅ 从消息 ${i} 恢复课程信息:`, latestCourseInfo);
               }
-              console.log(`✅ 从消息 ${i} 恢复课程信息:`, latestCourseInfo);
             }
 
             // 恢复选中上下文（用于CRUD/保存到某班级等）
-            if (msg.metadata.selectedClassId)
+            if (!latestSelectedClassId && msg.metadata.selectedClassId)
               latestSelectedClassId = msg.metadata.selectedClassId;
-            if (msg.metadata.selectedSessionId)
+            if (!latestSelectedSessionId && msg.metadata.selectedSessionId)
               latestSelectedSessionId = msg.metadata.selectedSessionId;
-            if (msg.metadata.selectedAssignmentId)
+            if (
+              !latestSelectedAssignmentId &&
+              msg.metadata.selectedAssignmentId
+            )
               latestSelectedAssignmentId = msg.metadata.selectedAssignmentId;
 
             // 恢复上一次成功创建的实体ID（用于“保存到刚创建的班级”等指代）
-            if (msg.metadata.classId) lastCreatedClassId = msg.metadata.classId;
-            if (msg.metadata.joinCode)
+            if (!lastCreatedClassId && msg.metadata.classId)
+              lastCreatedClassId = msg.metadata.classId;
+            if (!lastCreatedJoinCode && msg.metadata.joinCode)
               lastCreatedJoinCode = msg.metadata.joinCode;
 
             // ReAct agent state (teacher sidebar). Persist and restore from message metadata.
-            if (msg.metadata.agentState) {
-              state.metadata = {
-                ...state.metadata,
-                agentState: msg.metadata.agentState,
-              };
+            if (!latestAgentState && msg.metadata.agentState) {
+              latestAgentState = msg.metadata.agentState;
             }
 
             // Tool execution responses store results under toolResult; recover key IDs/state from it.
             if (msg.metadata.toolResult) {
               const toolResult = msg.metadata.toolResult as any;
-              if (toolResult.classId) lastCreatedClassId = toolResult.classId;
-              if (toolResult.joinCode) lastCreatedJoinCode = toolResult.joinCode;
-              if (toolResult.agentState) {
-                state.metadata = {
-                  ...state.metadata,
-                  agentState: toolResult.agentState,
-                };
+              if (!lastCreatedClassId && toolResult.classId)
+                lastCreatedClassId = toolResult.classId;
+              if (!lastCreatedJoinCode && toolResult.joinCode)
+                lastCreatedJoinCode = toolResult.joinCode;
+              if (!latestAgentState && toolResult.agentState) {
+                latestAgentState = toolResult.agentState;
               }
             }
           }
@@ -304,6 +309,7 @@ export class LangGraphChatbot {
         // 写入恢复到的上下文ID
         state.metadata = {
           ...state.metadata,
+          ...(latestAgentState ? { agentState: latestAgentState } : {}),
           selectedClassId:
             latestSelectedClassId || state.metadata?.selectedClassId,
           selectedSessionId:
