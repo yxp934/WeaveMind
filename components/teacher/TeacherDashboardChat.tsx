@@ -974,7 +974,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessageStream();
+      handleSendMessage();
     }
   };
 
@@ -1179,7 +1179,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
           </button>
 
           <button
-            onClick={handleSendMessageStream}
+            onClick={handleSendMessage}
             disabled={!inputValue.trim() || isTyping}
             className="size-9 bg-[#B882B1] hover:bg-[#a06e9d] disabled:bg-gray-300 disabled:cursor-not-allowed rounded-[8px] flex items-center justify-center transition-colors"
           >

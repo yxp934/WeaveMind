@@ -430,6 +430,14 @@ function getWorkflowDisplayName(workflowType: string): string {
  * 计算缺失信息
  */
 function getMissingInfo(state: ChatbotState): string[] {
+  // Entity management is not a course-building workflow; do not ask course slot questions.
+  if (
+    state.intent?.type === "entity_management" ||
+    state.currentWorkflow?.type === "entity_management"
+  ) {
+    return [];
+  }
+
   if (!state.courseInfo) {
     return [
       "course_topic",

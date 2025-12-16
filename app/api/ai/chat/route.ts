@@ -138,6 +138,57 @@ export async function POST(
     let user = authenticatedUser;
     let isDemoMode = false;
 
+    // ✅ Confirmed tool execution shortcut: do not run LangGraph, execute tool directly
+    if (context?.confirmToolCall?.id && context.confirmToolCall.toolName) {
+      if (!user) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: { code: "UNAUTHORIZED", message: "用户未认证" },
+          },
+          { status: 401 },
+        );
+      }
+
+      const toolName = context.confirmToolCall.toolName;
+      const actionData = context.confirmToolCall.input || {};
+      const meta = {
+        requiresDatabaseAction: true,
+        actionType: toolName,
+        actionData,
+        toolsUsed: [],
+      };
+
+      const dbOperationResult = await runWithRetry(
+        () => handleDatabaseOperation(meta, supabase, user, false),
+        5,
+        5000,
+      );
+
+      const toonMessage = `---BEGIN_TOON---\nintent: entity_management\nstatus: ${dbOperationResult.success ? "ok" : "error"}\nmessage: ${dbOperationResult.message}\n---END_TOON---`;
+
+      return NextResponse.json({
+        success: dbOperationResult.success,
+        data: {
+          message: toonMessage,
+          toolsUsed: dbOperationResult.toolsUsed || [],
+          metadata: {
+            intent: "entity_management",
+            confirmationExecuted: true,
+            confirmedToolCallId: context.confirmToolCall.id,
+            actionType: toolName,
+            timestamp: new Date().toISOString(),
+          },
+        } as any,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestId,
+          mode: "production",
+          processingTime: Date.now() - startTime,
+        },
+      });
+    }
+
     // 如果没有用户但有上下文，或者明确设置为演示模式
     if (!user || (ctx?.userRole && !user)) {
       isDemoMode = true;
