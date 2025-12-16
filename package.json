@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "ai-worker": "tsx workers/ai-generation-worker.ts"
   },
   "dependencies": {

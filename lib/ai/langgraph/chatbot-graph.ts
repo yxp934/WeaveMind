@@ -15,6 +15,7 @@ import {
 import { generalChatNode } from "./nodes/general-chat-node";
 import { responseGeneratorNode } from "./nodes/response-generator-node";
 import { entityManagementNode } from "./nodes/entity-management-node";
+import { teacherReactAgentNode } from "./nodes/teacher-react-agent-node";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 
 /**
@@ -50,6 +51,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
   workflow.addNode("continue_workflow", continueWorkflowNode);
   workflow.addNode("general_chat", generalChatNode);
   workflow.addNode("entity_management", entityManagementNode);
+  workflow.addNode("react_agent", teacherReactAgentNode);
   workflow.addNode("response_generator", responseGeneratorNode);
 
   // 添加边和条件
@@ -64,6 +66,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
     content_generation: "content_generation",
     continue_workflow: "continue_workflow",
     entity_management: "entity_management",
+    react_agent: "react_agent",
     general_chat: "general_chat",
     __end__: "response_generator",
   });
@@ -115,6 +118,7 @@ export function createChatbotGraph(): StateGraph<ChatbotState> {
   // 通用聊天后结束
   workflow.addEdge("general_chat", "response_generator");
   workflow.addEdge("entity_management", "response_generator");
+  workflow.addEdge("react_agent", "response_generator");
 
   // 响应生成后结束
   workflow.addEdge("response_generator", END);
@@ -250,6 +254,27 @@ export class LangGraphChatbot {
             if (msg.metadata.classId) lastCreatedClassId = msg.metadata.classId;
             if (msg.metadata.joinCode)
               lastCreatedJoinCode = msg.metadata.joinCode;
+
+            // ReAct agent state (teacher sidebar). Persist and restore from message metadata.
+            if (msg.metadata.agentState) {
+              state.metadata = {
+                ...state.metadata,
+                agentState: msg.metadata.agentState,
+              };
+            }
+
+            // Tool execution responses store results under toolResult; recover key IDs/state from it.
+            if (msg.metadata.toolResult) {
+              const toolResult = msg.metadata.toolResult as any;
+              if (toolResult.classId) lastCreatedClassId = toolResult.classId;
+              if (toolResult.joinCode) lastCreatedJoinCode = toolResult.joinCode;
+              if (toolResult.agentState) {
+                state.metadata = {
+                  ...state.metadata,
+                  agentState: toolResult.agentState,
+                };
+              }
+            }
           }
         }
 
@@ -300,7 +325,15 @@ export class LangGraphChatbot {
         } else if (msg.role === "assistant") {
           state = {
             ...state,
-            messages: [...state.messages, new AIMessage(msg.content)],
+            messages: [
+              ...state.messages,
+              new AIMessage({
+                content: msg.content,
+                additional_kwargs: {
+                  metadata: msg.metadata || {},
+                },
+              }),
+            ],
           };
         }
       }

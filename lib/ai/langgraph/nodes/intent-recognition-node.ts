@@ -22,6 +22,25 @@ export async function intentRecognitionNode(
     return { ...state };
   }
 
+  // Teacher sidebar chatbot uses a ReAct-style agent node; skip expensive intent routing.
+  if (state.userRole === "teacher") {
+    return {
+      ...state,
+      intent: {
+        type: "react_agent",
+        confidence: 1,
+        parameters: {},
+      },
+      currentWorkflow: undefined,
+      metadata: {
+        ...state.metadata,
+        timestamp: new Date().toISOString(),
+        reasoning: "Teacher role: route to react_agent.",
+        mode: "teacher_react_entry",
+      },
+    };
+  }
+
   // Fast-path lexical detection to avoid model failures on simple list queries
   const rawUserText = lastMessage.content.toString();
   const normalizedUserText = rawUserText.toLowerCase().replace(/\s+/g, "");
@@ -348,6 +367,11 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
  * 路由决策节点 - 根据意图决定下一步操作
  */
 export function routeDecisionNode(state: ChatbotState): string {
+  // Teachers use the ReAct-style agent for all intents.
+  if (state.userRole === "teacher") {
+    return "react_agent";
+  }
+
   // 优先处理实体管理/查询，避免被历史工作流劫持
   const intent = state.intent?.type || "general_chat";
   if (intent === "entity_management") {
@@ -361,6 +385,8 @@ export function routeDecisionNode(state: ChatbotState): string {
 
   // 根据意图类型路由到不同的处理节点
   switch (intent) {
+    case "react_agent":
+      return "react_agent";
     case "course_creation":
     case "课程创建":
       return "course_creation";

@@ -418,7 +418,9 @@ function getMissingInfo(state: ChatbotState): string[] {
   // Entity management is not a course-building workflow; do not ask course slot questions.
   if (
     state.intent?.type === "entity_management" ||
-    state.currentWorkflow?.type === "entity_management"
+    state.currentWorkflow?.type === "entity_management" ||
+    state.intent?.type === "react_agent" ||
+    state.currentWorkflow?.type === "react_agent"
   ) {
     return [];
   }

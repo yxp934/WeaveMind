@@ -424,7 +424,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             });
 
             const conversationHistory = (get().messages || [])
-              .slice(-10)
+              .slice(-50)
               .map((msg) => ({
                 role: msg.role === "assistant" ? "assistant" : "user",
                 content: msg.content,
@@ -566,7 +566,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             // 重新获取最近对话历史，构造异步请求上下文
             const state = get();
             const asyncConversationHistory = (state.messages || [])
-              .slice(-10)
+              .slice(-50)
               .map((msg) => ({
                 role: msg.role === "assistant" ? "assistant" : "user",
                 content: msg.content,
@@ -853,7 +853,7 @@ export const useChatbotStore = create<ChatbotStore>()(
 
           // 获取对话历史
           const conversationHistory = (get().messages || [])
-            .slice(-10)
+            .slice(-50)
             .map((msg) => ({
               role: msg.role === "assistant" ? "assistant" : "user",
               content: msg.content,

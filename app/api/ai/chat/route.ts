@@ -7,16 +7,19 @@ import {
   ChatResponseData,
 } from "@/lib/types/api";
 import { chatbot } from "@/lib/ai/langgraph/chatbot-graph";
-import {
-  createClassTool,
-  createSessionTool,
-  createAssignmentTool,
-} from "@/lib/ai/teacher-dashboard-tools";
 import { z } from "zod";
 import { encode as encodeToon } from "@toon-format/toon";
+import { generateText } from "ai";
+import {
+  createGatewayOpenAI,
+  DEFAULT_MODEL,
+} from "@/lib/ai/langgraph/config/openai-gateway";
+import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
 
 // Use Node.js runtime because this endpoint may perform Supabase admin operations.
 export const runtime = "nodejs";
+
+const openai = createGatewayOpenAI();
 
 async function runWithRetry<T>(
   fn: () => Promise<T>,
@@ -154,6 +157,29 @@ export async function POST(
         );
       }
 
+      // Enforce max tool executions (5) per conversation context.
+      const executedCount =
+        (context.conversationHistory || []).filter(
+          (m: any) => Boolean(m?.metadata?.confirmationExecuted),
+        ).length;
+      if (executedCount >= 5) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "TOOL_LIMIT_REACHED",
+              message:
+                "Tool call limit reached (5). Please simplify your request or start a new goal.",
+            },
+            metadata: {
+              timestamp: new Date().toISOString(),
+              requestId,
+            },
+          },
+          { status: 400 },
+        );
+      }
+
       const toolName = context.confirmToolCall.toolName;
       const actionData = context.confirmToolCall.input || {};
       const meta = {
@@ -188,6 +214,11 @@ export async function POST(
             confirmedToolCallId: context.confirmToolCall.id,
             actionType: toolName,
             timestamp: new Date().toISOString(),
+            classId: (dbOperationResult as any).classId || null,
+            joinCode: (dbOperationResult as any).joinCode || null,
+            assignmentId: (dbOperationResult as any).assignmentId || null,
+            agentState: (dbOperationResult as any).agentState || null,
+            outlineDraft: (dbOperationResult as any).outlineDraft || null,
             toolResult: dbOperationResult,
           },
         } as any,
@@ -969,6 +1000,328 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           classId: classId,
           className: classExists.name,
           toolsUsed: ["createAssignment"],
+        };
+      }
+
+      case "create_sessions_batch": {
+        const classId =
+          actionData?.classId ||
+          metadata.classId ||
+          metadata.selectedClassId ||
+          metadata?.requestContext?.selectedClassId;
+        const sessions = actionData?.sessions;
+
+        if (!classId) {
+          throw new Error("Missing classId for create_sessions_batch");
+        }
+        if (!Array.isArray(sessions) || sessions.length === 0) {
+          throw new Error("Missing sessions array for create_sessions_batch");
+        }
+
+        const { data: cls } = await dbClient
+          .from("classes")
+          .select("id,name,created_by")
+          .eq("id", classId)
+          .maybeSingle();
+
+        if (!cls) {
+          throw new Error("Class not found");
+        }
+
+        const { data: membership } = await dbClient
+          .from("class_members")
+          .select("role")
+          .eq("class_id", classId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (
+          cls.created_by !== user.id &&
+          !membership?.role?.match(/teacher|owner/)
+        ) {
+          throw new Error("Forbidden: not a teacher in this class");
+        }
+
+        const { data: lastSession } = await dbClient
+          .from("course_sessions")
+          .select("session_number")
+          .eq("class_id", classId)
+          .order("session_number", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const startNumber = (lastSession?.session_number || 0) + 1;
+        const capped = sessions.slice(0, 32);
+        const rows = capped.map((session: any, idx: number) => ({
+          class_id: classId,
+          session_number: startNumber + idx,
+          title: session.title,
+          description: session.description || "",
+          scheduled_date: session.scheduledDate || null,
+          start_time: session.startTime || null,
+          end_time: session.endTime || null,
+          duration_minutes: session.durationMinutes || null,
+          created_by: user.id,
+        }));
+
+        const { data: inserted, error: insertError } = await dbClient
+          .from("course_sessions")
+          .insert(rows)
+          .select("id,title,session_number,scheduled_date,start_time");
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        const ordered = (inserted || []).sort(
+          (a: any, b: any) => (a.session_number || 0) - (b.session_number || 0),
+        );
+
+        const lines = ordered.map(
+          (s: any) =>
+            `- #${s.session_number}: ${s.title} (ID: ${s.id})`,
+        );
+
+        return {
+          success: true,
+          message:
+            actionData?.language === "en"
+              ? `Created ${ordered.length} sessions for class "${cls.name}":\n${lines.join("\n")}`
+              : `✅ 已为班级「${cls.name}」创建 ${ordered.length} 节课次：\n${lines.join("\n")}`,
+          classId,
+          sessionIds: ordered.map((s: any) => s.id),
+          toolsUsed: ["createSessionsBatch"],
+          agentState: actionData?.agentState || null,
+        };
+      }
+
+      case "generate_class_outline_draft": {
+        const classId =
+          actionData?.classId ||
+          metadata.classId ||
+          metadata.selectedClassId ||
+          metadata?.requestContext?.selectedClassId;
+        const language: "zh" | "en" =
+          actionData?.language === "en" ? "en" : "zh";
+
+        if (!classId) {
+          throw new Error("Missing classId for generate_class_outline_draft");
+        }
+
+        const { data: cls } = await dbClient
+          .from("classes")
+          .select("id,name,description,created_by")
+          .eq("id", classId)
+          .maybeSingle();
+
+        if (!cls) {
+          throw new Error("Class not found");
+        }
+
+        const { data: membership } = await dbClient
+          .from("class_members")
+          .select("role")
+          .eq("class_id", classId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (
+          cls.created_by !== user.id &&
+          !membership?.role?.match(/teacher|owner/)
+        ) {
+          throw new Error("Forbidden: not a teacher in this class");
+        }
+
+        const { data: sessions } = await dbClient
+          .from("course_sessions")
+          .select("id,title,description,session_number")
+          .eq("class_id", classId)
+          .order("session_number", { ascending: true });
+
+        if (!sessions || sessions.length === 0) {
+          throw new Error("This class has no sessions yet. Create sessions first.");
+        }
+
+        const systemPrompt = `You are an expert teacher. Generate a draft outline for each session of a class.
+
+Rules:
+- Output TOON only (no Markdown fences, no JSON).
+- Write the outline content in ${
+          language === "en" ? "English" : "Chinese"
+        }.
+- Do not assume hidden information. Use only the provided class and session titles/descriptions.
+
+Output keys (TOON):
+requirements: object
+chapters: array of objects, one per session, in session_number order:
+  session_number: number
+  title: string
+  outline: array of bullet strings
+  learning_objectives: array of strings
+`;
+
+        const userPrompt = `Class:
+- name: ${cls.name}
+- description: ${cls.description || ""}
+
+Sessions:
+${sessions
+  .map(
+    (s: any) =>
+      `- session_number: ${s.session_number}; title: ${s.title}; description: ${s.description || ""}`,
+  )
+  .join("\n")}
+
+Teacher goals (optional):
+${actionData?.teachingGoals || ""}`;
+
+        const { text } = await generateText({
+          model: openai.chat(DEFAULT_MODEL),
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+          maxTokens: 1800,
+          temperature: 0.4,
+          abortSignal: AbortSignal.timeout(30000),
+        });
+
+        const outlineDraft = parseModelResponse<{
+          requirements: Record<string, any>;
+          chapters: Array<{
+            session_number: number;
+            title: string;
+            outline: string[];
+            learning_objectives: string[];
+          }>;
+        }>(text);
+
+        const orderedChapters = (outlineDraft.chapters || []).slice().sort(
+          (a, b) => (a.session_number || 0) - (b.session_number || 0),
+        );
+        const first = orderedChapters[0];
+
+        const nextAgentState = {
+          ...(actionData?.agentState || {}),
+          outlineDraft: {
+            requirements: outlineDraft.requirements || {},
+            chapters: orderedChapters,
+          },
+          outlineReviewIndex: 0,
+          outlineClassId: classId,
+          outlineLanguage: language,
+          outlineStatus: "reviewing",
+        };
+
+        const firstBlock =
+          language === "en"
+            ? `Session ${first.session_number}: ${first.title}\n\nOutline:\n- ${(
+                first.outline || []
+              ).join("\n- ")}\n\nLearning objectives:\n- ${(
+                first.learning_objectives || []
+              ).join("\n- ")}`
+            : `第${first.session_number}节：${first.title}\n\n大纲：\n- ${(
+                first.outline || []
+              ).join("\n- ")}\n\n学习目标：\n- ${(
+                first.learning_objectives || []
+              ).join("\n- ")}`;
+
+        const message =
+          language === "en"
+            ? `Generated a draft outline for all sessions in "${cls.name}".\n\nNow let's confirm them one by one.\n\n${firstBlock}\n\nReply with:\n- \"approve\" to accept this session\n- or paste edits to revise it`
+            : `我已经为班级「${cls.name}」生成了所有课次的大纲草案。\n\n现在我们逐节确认。\n\n${firstBlock}\n\n请回复：\n- “确认” 表示接受本节\n- 或直接输入你想修改的内容`;
+
+        return {
+          success: true,
+          message,
+          classId,
+          outlineDraft: nextAgentState.outlineDraft,
+          agentState: nextAgentState,
+          toolsUsed: ["generateClassOutlineDraft"],
+        };
+      }
+
+      case "save_class_outline": {
+        const classId =
+          actionData?.classId ||
+          metadata.classId ||
+          metadata.selectedClassId ||
+          metadata?.requestContext?.selectedClassId;
+        const language: "zh" | "en" =
+          actionData?.language === "en" ? "en" : "zh";
+        const requirements =
+          actionData?.requirements || actionData?.outlineDraft?.requirements;
+        const chapters = actionData?.chapters || actionData?.outlineDraft?.chapters;
+
+        if (!classId) {
+          throw new Error("Missing classId for save_class_outline");
+        }
+        if (!requirements || !chapters) {
+          throw new Error("Missing requirements/chapters for save_class_outline");
+        }
+
+        const { data: cls } = await dbClient
+          .from("classes")
+          .select("id,name,created_by")
+          .eq("id", classId)
+          .maybeSingle();
+
+        if (!cls) {
+          throw new Error("Class not found");
+        }
+
+        const { data: membership } = await dbClient
+          .from("class_members")
+          .select("role")
+          .eq("class_id", classId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (
+          cls.created_by !== user.id &&
+          !membership?.role?.match(/teacher|owner/)
+        ) {
+          throw new Error("Forbidden: not a teacher in this class");
+        }
+
+        const { data: existing } = await dbClient
+          .from("course_outlines")
+          .select("id")
+          .eq("class_id", classId)
+          .eq("created_by", user.id)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const { error: updateError } = await dbClient
+            .from("course_outlines")
+            .update({ requirements, chapters })
+            .eq("id", existing.id);
+
+          if (updateError) {
+            throw updateError;
+          }
+        } else {
+          const { error: insertError } = await dbClient
+            .from("course_outlines")
+            .insert({
+              class_id: classId,
+              requirements,
+              chapters,
+              created_by: user.id,
+            });
+
+          if (insertError) {
+            throw insertError;
+          }
+        }
+
+        return {
+          success: true,
+          message:
+            language === "en"
+              ? `Saved the outline for class "${cls.name}".`
+              : `✅ 已保存班级「${cls.name}」的课程大纲。`,
+          classId,
+          toolsUsed: ["saveClassOutline"],
+          agentState: actionData?.agentState || null,
         };
       }
 

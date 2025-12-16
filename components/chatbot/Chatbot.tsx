@@ -222,7 +222,7 @@ export default function Chatbot({ className = '' }: ChatbotProps) {
         </div>
 
         <div className="mt-2 text-xs text-gray-500">
-          提示：你可以直接说"创建课程"、"生成大纲"、"创建作业"等，我会引导你完成整个流程
+          提示：你可以直接说“创建课程”、“生成大纲”、“创建作业”等，我会引导你完成整个流程
         </div>
       </div>
     </div>

@@ -22,7 +22,8 @@ export interface ChatbotState {
       | "a2a_optimization"
       | "content_generation"
       | "continue_workflow"
-      | "entity_management";
+      | "entity_management"
+      | "react_agent";
     // 真实实现里会出现更多中间态（如等待确认/已确认等）
     status:
       | "active"
