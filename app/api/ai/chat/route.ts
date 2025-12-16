@@ -161,9 +161,45 @@ export async function POST(
 
     // 2. 检查认证状态
     const supabase = await createClient();
-    const {
-      data: { user: authenticatedUser },
-    } = await supabase.auth.getUser();
+    let authenticatedUser: any = null;
+    try {
+      const authResult = await runWithRetry(
+        () =>
+          withTimeout(
+            supabase.auth.getUser(),
+            10_000,
+            "Supabase auth.getUser",
+          ),
+        3,
+        2000,
+      );
+      authenticatedUser = authResult?.data?.user || null;
+    } catch (err: any) {
+      const isZh = /[\u4e00-\u9fff]/.test(message);
+      const msg = isZh
+        ? "登录状态校验超时/失败。请刷新页面后重试，或重新登录。"
+        : "Auth check timed out/failed. Please refresh and try again, or sign in again.";
+      const toonPayload = { intent: "error", status: "error", message: msg };
+      const toonMessage = `---BEGIN_TOON---\n${encodeToon(toonPayload)}\n---END_TOON---`;
+      return NextResponse.json({
+        success: true,
+        data: {
+          message: toonMessage,
+          toolsUsed: [],
+          metadata: {
+            intent: "error",
+            timestamp: new Date().toISOString(),
+            error: err?.message || "auth_timeout",
+          },
+        } as any,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestId,
+          mode: "production",
+          processingTime: Date.now() - startTime,
+        },
+      });
+    }
     let user = authenticatedUser;
     let isDemoMode = false;
 

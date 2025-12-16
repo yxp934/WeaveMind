@@ -568,10 +568,15 @@ export const useChatbotStore = create<ChatbotStore>()(
           } catch (err: any) {
             setLoading(false);
             setStreamingMessage(null);
-            setError(err?.message || "请求失败");
+            const isAbort =
+              err?.name === "AbortError" || /aborted/i.test(err?.message || "");
+            const friendly = isAbort
+              ? "请求超时，请稍后重试。"
+              : err?.message || "请求失败";
+            setError(friendly);
             addMessage({
               role: "system",
-              content: err?.message || "请求失败，请稍后重试。",
+              content: friendly,
             });
           }
 
