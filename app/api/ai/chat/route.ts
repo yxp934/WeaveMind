@@ -41,6 +41,28 @@ async function runWithRetry<T>(
   throw lastError;
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+const TOOL_EXECUTION_TIMEOUT_MS = 25_000;
+
 // AI聊天请求验证模式
 const chatRequestSchema = z.object({
   message: z.string().min(1).max(4000),
@@ -190,7 +212,12 @@ export async function POST(
       };
 
       const dbOperationResult = await runWithRetry(
-        () => handleDatabaseOperation(meta, supabase, user, false),
+        () =>
+          withTimeout(
+            handleDatabaseOperation(meta, supabase, user, false),
+            TOOL_EXECUTION_TIMEOUT_MS,
+            `Tool execution (${toolName})`,
+          ),
         5,
         5000,
       );
@@ -204,7 +231,9 @@ export async function POST(
       const toonMessage = `---BEGIN_TOON---\n${encodeToon(toonPayload)}\n---END_TOON---`;
 
       return NextResponse.json({
-        success: dbOperationResult.success,
+        // The HTTP request succeeded even if the tool failed; keep `success: true`
+        // so the client can render the tool error in chat instead of throwing.
+        success: true,
         data: {
           message: toonMessage,
           toolsUsed: dbOperationResult.toolsUsed || [],
@@ -214,6 +243,7 @@ export async function POST(
             confirmedToolCallId: context.confirmToolCall.id,
             actionType: toolName,
             timestamp: new Date().toISOString(),
+            toolExecutionSuccess: Boolean(dbOperationResult.success),
             classId: (dbOperationResult as any).classId || null,
             joinCode: (dbOperationResult as any).joinCode || null,
             assignmentId: (dbOperationResult as any).assignmentId || null,
