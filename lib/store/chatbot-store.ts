@@ -438,6 +438,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             });
 
             const conversationHistory = (get().messages || [])
+              .filter((m) => m.role !== "system")
               .slice(-50)
               .map((msg) => ({
                 role: msg.role === "assistant" ? "assistant" : "user",
@@ -473,7 +474,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               stream: false,
             });
 
-            // Tool execution requests must retry on disconnect/errors:
+            // All requests must retry on disconnect/errors:
             // wait 5s, retry up to 5 attempts.
             const isToolExecution = Boolean(metadata.confirmToolCall?.id);
             const runFetch = async () => {
@@ -495,7 +496,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             };
             let response: Response;
             let lastError: any = null;
-            for (let attempt = 1; attempt <= (isToolExecution ? 5 : 1); attempt++) {
+            for (let attempt = 1; attempt <= 5; attempt++) {
               try {
                 response = await runFetch();
                 lastError = null;

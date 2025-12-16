@@ -43,13 +43,16 @@ function extractBullets(text: string): string[] {
 function extractClassName(text: string): string | null {
   const patterns: RegExp[] = [
     /班级[:：]\s*([^\n，。,。;；]+)\s*/i,
+    /(班级名|班级名称|班级名字|班名)[:：]\s*([^\n，。,。;；]+)\s*/i,
     /名为[“"]([^”"]+)[”"]/i,
     /named\s+[“"]([^”"]+)[”"]/i,
+    /(class\s*name)[:：]\s*([^\n,.;]+)\s*/i,
   ];
   for (const re of patterns) {
     const m = text.match(re);
-    if (m?.[1]) {
-      const name = m[1].trim();
+    const raw = m?.[2] || m?.[1];
+    if (raw) {
+      const name = raw.trim();
       if (name) return name;
     }
   }
@@ -473,11 +476,29 @@ export async function teacherReactAgentNode(
 
       // Update collected fields from the current user turn (if any).
       const updated = { ...creation };
+      const trimmed = userText.trim();
       if (!updated.className) {
         updated.className = extractClassName(userText) || null;
+        // If we're actively collecting and the user replies with a bare name
+        // (common after we ask "what is the class name?"), accept it directly.
+        if (
+          !updated.className &&
+          !isApproval(userText) &&
+          /^[^\s\n]{1,40}$/.test(trimmed) &&
+          !/^\d+$/.test(trimmed)
+        ) {
+          updated.className = trimmed;
+        }
       }
       if (!updated.sessionCount) {
         updated.sessionCount = extractSessionCount(userText) || null;
+        // If we asked for a number, the user may reply with just "2".
+        if (!updated.sessionCount && /^\d{1,2}$/.test(trimmed)) {
+          const n = Number(trimmed);
+          if (Number.isFinite(n) && n > 0) {
+            updated.sessionCount = Math.min(32, Math.max(1, Math.floor(n)));
+          }
+        }
       }
       if (
         updated.sessionCount &&

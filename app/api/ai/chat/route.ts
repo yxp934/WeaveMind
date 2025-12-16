@@ -167,11 +167,11 @@ export async function POST(
         () =>
           withTimeout(
             supabase.auth.getUser(),
-            10_000,
+            8_000,
             "Supabase auth.getUser",
           ),
-        3,
-        2000,
+        2,
+        1000,
       );
       authenticatedUser = authResult?.data?.user || null;
     } catch (err: any) {
@@ -463,7 +463,7 @@ export async function POST(
             selectedContexts: ctx?.selectedContexts,
           },
         ),
-        35_000,
+        30_000,
         "LangGraph processMessage",
       );
     } catch (err: any) {
