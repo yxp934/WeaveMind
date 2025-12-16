@@ -192,7 +192,7 @@ export default function SidebarChatbot({
       selectedContexts.find((c) => c.type === "assignment")?.id || undefined;
 
     try {
-      await sendMessage("Confirm tool execution", {
+      await sendMessage("CONFIRM_TOOL_CALL", {
         userRole,
         classId: selectedClassId,
         courseId,
@@ -201,6 +201,7 @@ export default function SidebarChatbot({
         selectedAssignmentId,
         selectedContexts,
         confirmToolCall: pendingToolCall,
+        silentUserMessage: true,
         stream: false,
       });
       // Hide the confirmation button on the original message once executed

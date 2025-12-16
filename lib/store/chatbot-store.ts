@@ -22,6 +22,17 @@ export interface ChatMessage {
     pendingToolCallId?: string | null;
     confirmationRequired?: boolean;
     confirmationExecuted?: boolean;
+    silentUserMessage?: boolean;
+    confirmToolCall?: {
+      id: string;
+      toolName: string;
+      input: Record<string, any>;
+    };
+    organizationId?: string;
+    selectedClassId?: string;
+    selectedSessionId?: string;
+    selectedAssignmentId?: string;
+    selectedContexts?: any;
   };
 }
 
@@ -391,12 +402,14 @@ export const useChatbotStore = create<ChatbotStore>()(
             setError(null);
             setStreamingMessage(null);
 
-            // Add user message
-            addMessage({
-              role: "user",
-              content,
-              metadata,
-            });
+            if (!metadata.silentUserMessage) {
+              // Add user message
+              addMessage({
+                role: "user",
+                content,
+                metadata,
+              });
+            }
 
             // Placeholder assistant message
             const aiMessageId = `msg_${Date.now()}_${Math.random()
