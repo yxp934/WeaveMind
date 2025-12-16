@@ -42,6 +42,7 @@ export function responseGeneratorNode(state: ChatbotState): {
     toolsUsed: structuredResponse.toolsUsed || [],
     missing_fields: structuredResponse.metadata?.missingInfo || [],
     pending_tool_call: structuredResponse.metadata?.pendingToolCall || null,
+    agent_state: (state.metadata as any)?.agentState || null,
     metadata: structuredResponse.metadata || {},
   };
   const toonString = renderToon(toonPayload);
@@ -256,6 +257,9 @@ function generateStructuredResponse(
       requiresDatabaseAction: state.metadata?.requiresDatabaseAction,
       actionType: state.metadata?.actionType,
       actionData: state.metadata?.actionData,
+
+      // ReAct/agent state persistence (teacher sidebar)
+      agentState: (state.metadata as any)?.agentState || null,
     },
   };
 }
