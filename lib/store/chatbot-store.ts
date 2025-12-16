@@ -2,6 +2,20 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
 
+function extractMessageFromToon(raw: string): string | null {
+  if (!raw) return null;
+  const begin = raw.indexOf("---BEGIN_TOON---");
+  const end = raw.indexOf("---END_TOON---");
+  const segment =
+    begin !== -1 && end !== -1 && end > begin
+      ? raw.slice(begin + "---BEGIN_TOON---".length, end)
+      : raw;
+  const match = segment.match(/(^|\n)message:\s*(.*)(\n|$)/);
+  if (!match?.[2]) return null;
+  const value = match[2].trim();
+  return value.replace(/^"(.*)"$/, "$1").trim() || null;
+}
+
 // 消息类型定义
 export interface ChatMessage {
   id: string;
@@ -514,6 +528,12 @@ export const useChatbotStore = create<ChatbotStore>()(
               }
             } catch {
               // Not TOON; keep raw string
+            }
+            if (!parsed?.message || typeof parsed.message !== "string") {
+              const extracted = extractMessageFromToon(rawMessage);
+              if (extracted) {
+                displayMessage = extracted;
+              }
             }
 
             const pendingToolCall =

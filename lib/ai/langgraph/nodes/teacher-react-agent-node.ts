@@ -67,31 +67,36 @@ function extractSessionCount(text: string): number | null {
 function parseSessionDrafts(
   text: string,
 ): Array<{ title: string; description?: string }> {
+  // Some UIs collapse newlines; normalize common "- Session" separators into newlines.
+  const normalizedText = text.replace(
+    /\s+-\s+(?=(第\s*\d+\s*节|session\s*\d+))/gi,
+    "\n- ",
+  );
   const drafts: Array<{ idx?: number; title: string; description?: string }> =
     [];
 
   const cnRe = /第\s*(\d+)\s*节\s*[:：]\s*([^\n；;]+)(?:[；;\n]|$)/g;
-  for (const match of text.matchAll(cnRe)) {
+  for (const match of normalizedText.matchAll(cnRe)) {
     const idx = Number(match[1]);
     const title = (match[2] || "").trim();
     if (title) drafts.push({ idx, title });
   }
 
   const enRe = /session\s*(\d+)\s*[:：-]\s*([^\n；;]+)(?:[；;\n]|$)/gi;
-  for (const match of text.matchAll(enRe)) {
+  for (const match of normalizedText.matchAll(enRe)) {
     const idx = Number(match[1]);
     const title = (match[2] || "").trim();
     if (title) drafts.push({ idx, title });
   }
 
-  const bullets = extractBullets(text);
+  const bullets = extractBullets(normalizedText);
   for (const b of bullets) {
     const cleaned = b.replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "").trim();
     if (cleaned) drafts.push({ title: cleaned });
   }
 
   if (drafts.length === 0) {
-    const parts = text
+    const parts = normalizedText
       .split(/[；;\n]+/)
       .map((p) => p.trim())
       .filter(Boolean);
