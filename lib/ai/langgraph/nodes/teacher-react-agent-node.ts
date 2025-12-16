@@ -44,6 +44,7 @@ function extractClassName(text: string): string | null {
   const patterns: RegExp[] = [
     /班级[:：]\s*([^\n，。,。;；]+)\s*/i,
     /(班级名|班级名称|班级名字|班名)[:：]\s*([^\n，。,。;；]+)\s*/i,
+    /叫(?:做)?\s*([^\n，。,。;；]+)\s*/i,
     /名为[“"]([^”"]+)[”"]/i,
     /named\s+[“"]([^”"]+)[”"]/i,
     /(class\s*name)[:：]\s*([^\n,.;]+)\s*/i,
@@ -485,7 +486,9 @@ export async function teacherReactAgentNode(
           !updated.className &&
           !isApproval(userText) &&
           /^[^\s\n]{1,40}$/.test(trimmed) &&
-          !/^\d+$/.test(trimmed)
+          !/^\d+$/.test(trimmed) &&
+          !/[，。,。;；:：]/.test(trimmed) &&
+          !/(创建|新建|建立|一共|需要)/.test(trimmed)
         ) {
           updated.className = trimmed;
         }
