@@ -85,10 +85,20 @@ export default function SidebarChatbot({
   contexts,
   onClose,
 }: SidebarChatbotProps) {
-  const { messages, isLoading, workflow, error, sendMessage, clearMessages } =
-    useChatbotStore();
+  const {
+    messages,
+    isLoading,
+    workflow,
+    error,
+    sendMessage,
+    clearMessages,
+    updateMessage,
+  } = useChatbotStore();
 
   const [input, setInput] = useState("");
+  const [confirmingToolCallId, setConfirmingToolCallId] = useState<
+    string | null
+  >(null);
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [hoveredCategory, setHoveredCategory] = useState<
     "class" | "session" | "assignment" | null
@@ -153,8 +163,49 @@ export default function SidebarChatbot({
       selectedSessionId,
       selectedAssignmentId,
       selectedContexts,
-      stream: true, // 启用流式输出
+      stream: false, // 工具确认模式：非流式更稳定
     });
+  };
+
+  const handleConfirmToolCall = async (
+    messageId: string,
+    pendingToolCall: { id: string; toolName: string; input: Record<string, any> },
+  ) => {
+    if (isLoading || confirmingToolCallId === pendingToolCall.id) {
+      return;
+    }
+
+    setConfirmingToolCallId(pendingToolCall.id);
+    updateMessage(messageId, {
+      metadata: {
+        ...(messages.find((m) => m.id === messageId)?.metadata || {}),
+        confirmationRequired: true,
+      },
+    });
+
+    // 选中的上下文透传到后端（与正常发送保持一致）
+    const selectedClassId =
+      selectedContexts.find((c) => c.type === "class")?.id || classId;
+    const selectedSessionId =
+      selectedContexts.find((c) => c.type === "session")?.id || undefined;
+    const selectedAssignmentId =
+      selectedContexts.find((c) => c.type === "assignment")?.id || undefined;
+
+    try {
+      await sendMessage("Confirm tool execution", {
+        userRole,
+        classId: selectedClassId,
+        courseId,
+        selectedClassId,
+        selectedSessionId,
+        selectedAssignmentId,
+        selectedContexts,
+        confirmToolCall: pendingToolCall,
+        stream: false,
+      });
+    } finally {
+      setConfirmingToolCallId(null);
+    }
   };
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -382,6 +433,43 @@ export default function SidebarChatbot({
 
                       {/* 消息内容 */}
                       <div>{renderMessageContent(message.content)}</div>
+
+                      {/* Tool confirmation gate (every tool call requires explicit user confirmation) */}
+                      {message.role !== "user" &&
+                        message.metadata?.confirmationRequired &&
+                        message.metadata?.pendingToolCall && (
+                          <div className="mt-3 pt-3 border-t border-[rgba(184,130,177,0.25)]">
+                            <p className="text-[12px] text-[#6a7282] mb-2">
+                              This action requires confirmation:{" "}
+                              <span className="font-medium text-[#101828]">
+                                {message.metadata.pendingToolCall.toolName}
+                              </span>
+                            </p>
+                            <button
+                              onClick={() =>
+                                handleConfirmToolCall(
+                                  message.id,
+                                  message.metadata!.pendingToolCall!,
+                                )
+                              }
+                              disabled={
+                                isLoading ||
+                                confirmingToolCallId ===
+                                  message.metadata.pendingToolCall.id
+                              }
+                              className={cn(
+                                "w-full rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+                                "bg-[#B882B1] text-white hover:bg-[#a06e9d]",
+                                "disabled:opacity-60 disabled:cursor-not-allowed",
+                              )}
+                            >
+                              {confirmingToolCallId ===
+                              message.metadata.pendingToolCall.id
+                                ? "Running..."
+                                : "Confirm and run"}
+                            </button>
+                          </div>
+                        )}
 
                       <p className="text-xs opacity-70 mt-1">
                         {new Date(message.timestamp).toLocaleTimeString([], {

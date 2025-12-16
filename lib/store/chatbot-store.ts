@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
 
 // 消息类型定义
 export interface ChatMessage {
@@ -13,6 +14,14 @@ export interface ChatMessage {
     userRole?: "teacher" | "student" | "self-learner";
     classId?: string;
     courseId?: string;
+    pendingToolCall?: {
+      id: string;
+      toolName: string;
+      input: Record<string, any>;
+    } | null;
+    pendingToolCallId?: string | null;
+    confirmationRequired?: boolean;
+    confirmationExecuted?: boolean;
   };
 }
 
@@ -373,6 +382,139 @@ export const useChatbotStore = create<ChatbotStore>()(
       // 发送消息 - 使用真正的流式AI + LangGraph逻辑
       sendMessage: async (content, metadata = {}) => {
         const { addMessage, setLoading, setError, setStreamingMessage } = get();
+        const streamRequested = metadata.stream === true;
+
+        // Non-stream path: used for tool confirmation UI + more reliable responses
+        if (!streamRequested) {
+          try {
+            setLoading(true);
+            setError(null);
+            setStreamingMessage(null);
+
+            // Add user message
+            addMessage({
+              role: "user",
+              content,
+              metadata,
+            });
+
+            // Placeholder assistant message
+            const aiMessageId = `msg_${Date.now()}_${Math.random()
+              .toString(36)
+              .substr(2, 9)}`;
+            addMessage({
+              id: aiMessageId,
+              role: "assistant",
+              content: "",
+              timestamp: new Date(),
+              metadata: { ...metadata, isStreaming: false },
+            });
+
+            const conversationHistory = (get().messages || [])
+              .slice(-10)
+              .map((msg) => ({
+                role: msg.role === "assistant" ? "assistant" : "user",
+                content: msg.content,
+                timestamp:
+                  msg.timestamp instanceof Date
+                    ? msg.timestamp.toISOString()
+                    : new Date(msg.timestamp).toISOString(),
+                toolsUsed: msg.toolCalls?.map((tool) => tool.tool) || [],
+                metadata: msg.metadata,
+              }));
+
+            const normalizedUserRole = (
+              metadata.userRole ||
+              get().userRole ||
+              "teacher"
+            ).replace("self-learner", "self_learner");
+
+            const postBody = JSON.stringify({
+              message: content,
+              context: {
+                courseId: metadata.courseId,
+                classId: metadata.classId,
+                organizationId: metadata.organizationId,
+                userRole: normalizedUserRole as any,
+                selectedClassId: metadata.selectedClassId,
+                selectedSessionId: metadata.selectedSessionId,
+                selectedAssignmentId: metadata.selectedAssignmentId,
+                selectedContexts: metadata.selectedContexts,
+                confirmToolCall: metadata.confirmToolCall,
+                conversationHistory,
+              },
+              stream: false,
+            });
+
+            const response = await fetch("/api/ai/chat", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: postBody,
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data?.success) {
+              throw new Error(
+                data?.error?.message ||
+                  `Chat error: ${response.status} ${response.statusText}`,
+              );
+            }
+
+            const rawMessage = data?.data?.message || "";
+            let displayMessage = rawMessage;
+            let parsed: any = null;
+            try {
+              parsed = parseModelResponse(rawMessage);
+              if (parsed?.message && typeof parsed.message === "string") {
+                displayMessage = parsed.message;
+              }
+            } catch {
+              // Not TOON; keep raw string
+            }
+
+            const pendingToolCall =
+              parsed?.pending_tool_call ||
+              data?.data?.metadata?.pendingToolCall ||
+              null;
+
+            set((state) => ({
+              messages: state.messages.map((msg) =>
+                msg.id === aiMessageId
+                  ? {
+                      ...msg,
+                      content: displayMessage,
+                      metadata: {
+                        ...(msg.metadata || {}),
+                        ...(data?.data?.metadata || {}),
+                        pendingToolCall,
+                        pendingToolCallId:
+                          data?.data?.metadata?.pendingToolCallId ||
+                          pendingToolCall?.id ||
+                          null,
+                        confirmationRequired:
+                          Boolean(data?.data?.metadata?.confirmationRequired) ||
+                          Boolean(pendingToolCall),
+                      },
+                    }
+                  : msg,
+              ),
+              isLoading: false,
+              streamingMessage: null,
+            }));
+          } catch (err: any) {
+            setLoading(false);
+            setStreamingMessage(null);
+            setError(err?.message || "请求失败");
+            addMessage({
+              role: "system",
+              content: err?.message || "请求失败，请稍后重试。",
+            });
+          }
+
+          return;
+        }
 
         // 在整个发送流程作用域内维护累积内容，便于在catch中访问
         let accumulatedContent = "";
