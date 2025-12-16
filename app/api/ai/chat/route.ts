@@ -222,43 +222,148 @@ export async function POST(
         5000,
       );
 
-      const toonPayload = {
-        intent: "tool_execution",
-        status: dbOperationResult.success ? "ok" : "error",
-        tool: toolName,
-        message: dbOperationResult.message,
+      const toolExecutionMeta = {
+        confirmationExecuted: true,
+        confirmedToolCallId: context.confirmToolCall.id,
+        toolExecutionSuccess: Boolean(dbOperationResult.success),
+        lastExecutedTool: toolName,
+        classId: (dbOperationResult as any).classId || null,
+        joinCode: (dbOperationResult as any).joinCode || null,
+        assignmentId: (dbOperationResult as any).assignmentId || null,
+        agentState: (dbOperationResult as any).agentState || null,
+        outlineDraft: (dbOperationResult as any).outlineDraft || null,
+        toolResult: dbOperationResult,
+        toolExecutionTimestamp: new Date().toISOString(),
       };
-      const toonMessage = `---BEGIN_TOON---\n${encodeToon(toonPayload)}\n---END_TOON---`;
 
-      return NextResponse.json({
-        // The HTTP request succeeded even if the tool failed; keep `success: true`
-        // so the client can render the tool error in chat instead of throwing.
-        success: true,
-        data: {
-          message: toonMessage,
-          toolsUsed: dbOperationResult.toolsUsed || [],
-          metadata: {
-            intent: "tool_execution",
-            confirmationExecuted: true,
-            confirmedToolCallId: context.confirmToolCall.id,
-            actionType: toolName,
-            timestamp: new Date().toISOString(),
-            toolExecutionSuccess: Boolean(dbOperationResult.success),
-            classId: (dbOperationResult as any).classId || null,
-            joinCode: (dbOperationResult as any).joinCode || null,
-            assignmentId: (dbOperationResult as any).assignmentId || null,
-            agentState: (dbOperationResult as any).agentState || null,
-            outlineDraft: (dbOperationResult as any).outlineDraft || null,
-            toolResult: dbOperationResult,
-          },
-        } as any,
-        metadata: {
+      // Continue the LangGraph agent after the tool executes so multi-step goals
+      // can propose the next tool (still requiring user confirmation).
+      const priorHistory = context.conversationHistory || [];
+      const historyWithToolResult = [
+        ...priorHistory,
+        {
+          role: "assistant",
+          content: dbOperationResult.message || "",
           timestamp: new Date().toISOString(),
-          requestId,
-          mode: "production",
-          processingTime: Date.now() - startTime,
+          toolsUsed: dbOperationResult.toolsUsed || [],
+          metadata: toolExecutionMeta,
         },
-      });
+      ];
+
+      // Pick a minimal continuation message in the user's language to avoid the
+      // agent switching languages because the confirmation payload is silent.
+      const lastUserMessage = [...historyWithToolResult]
+        .reverse()
+        .find((m: any) => m?.role === "user" && typeof m?.content === "string");
+      const continueMessage = /[\u4e00-\u9fff]/.test(
+        lastUserMessage?.content || "",
+      )
+        ? "继续"
+        : "continue";
+
+      try {
+        const conversationId =
+          user?.id || ctx?.organizationId || crypto.randomUUID();
+        const userRole =
+          context?.userRole || (isDemoMode ? "teacher" : "student");
+        const userId = user?.id || "demo-user";
+
+        const followup = await chatbot.processMessage(
+          continueMessage,
+          conversationId,
+          userRole,
+          userId,
+          historyWithToolResult,
+          {
+            courseId: ctx?.courseId,
+            classId: ctx?.classId,
+            organizationId: ctx?.organizationId,
+            selectedClassId: ctx?.selectedClassId,
+            selectedSessionId: ctx?.selectedSessionId,
+            selectedAssignmentId: ctx?.selectedAssignmentId,
+            selectedContexts: ctx?.selectedContexts,
+          },
+        );
+
+        // If the follow-up proposes another DB/tool action, mark it as pending.
+        let finalFollowup = followup;
+        const actionType = followup.data?.metadata?.actionType;
+        const requiresDatabaseAction = Boolean(
+          followup.success &&
+            followup.data?.metadata?.requiresDatabaseAction &&
+            actionType,
+        );
+        if (requiresDatabaseAction && followup.data?.metadata) {
+          const pendingToolCallId =
+            followup.data.metadata.pendingToolCallId || crypto.randomUUID();
+          finalFollowup = {
+            ...followup,
+            data: {
+              ...followup.data,
+              metadata: {
+                ...followup.data.metadata,
+                pendingToolCall: {
+                  id: pendingToolCallId,
+                  toolName: actionType,
+                  input: followup.data.metadata.actionData || {},
+                },
+                pendingToolCallId,
+                requiresDatabaseAction: true,
+                confirmationRequired: true,
+              },
+            },
+          };
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            ...(finalFollowup.data as any),
+            toolsUsed: [
+              ...new Set([
+                ...(dbOperationResult.toolsUsed || []),
+                ...(finalFollowup.data?.toolsUsed || []),
+              ]),
+            ],
+            metadata: {
+              ...(finalFollowup.data?.metadata || {}),
+              ...toolExecutionMeta,
+            },
+          } as any,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            requestId,
+            mode: "production",
+            processingTime: Date.now() - startTime,
+          },
+        });
+      } catch (err: any) {
+        const toonPayload = {
+          intent: "tool_execution",
+          status: dbOperationResult.success ? "ok" : "error",
+          tool: toolName,
+          message:
+            dbOperationResult.message ||
+            err?.message ||
+            "Tool executed, but follow-up agent step failed.",
+        };
+        const toonMessage = `---BEGIN_TOON---\n${encodeToon(toonPayload)}\n---END_TOON---`;
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            message: toonMessage,
+            toolsUsed: dbOperationResult.toolsUsed || [],
+            metadata: toolExecutionMeta,
+          } as any,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            requestId,
+            mode: "production",
+            processingTime: Date.now() - startTime,
+          },
+        });
+      }
     }
 
     // 如果没有用户但有上下文，或者明确设置为演示模式
