@@ -392,10 +392,17 @@ export async function teacherReactAgentNode(
         updated.sessionsDraft.length < updated.sessionCount &&
         !isApproval(userText)
       ) {
-        const parsed = parseSessionDrafts(userText);
-        for (const s of parsed) {
-          if (updated.sessionsDraft.length >= updated.sessionCount) break;
-          updated.sessionsDraft.push(s);
+        const looksLikeSessionDraft =
+          /第\s*\d+\s*节/i.test(userText) ||
+          /session\s*\d+/i.test(userText) ||
+          /(^|\n)\s*[-*•]\s+/m.test(userText) ||
+          /(^|\n)\s*\d+[.)]\s+/m.test(userText);
+        if (looksLikeSessionDraft) {
+          const parsed = parseSessionDrafts(userText);
+          for (const s of parsed) {
+            if (updated.sessionsDraft.length >= updated.sessionCount) break;
+            updated.sessionsDraft.push(s);
+          }
         }
       }
 
