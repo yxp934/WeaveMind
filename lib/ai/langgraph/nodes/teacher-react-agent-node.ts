@@ -70,6 +70,17 @@ OUTPUT FORMAT
 - You MUST output TOON only (no Markdown fences, no JSON).
 - Always reply in the user's language. If the user writes Chinese, reply in Chinese. Otherwise reply in English.
 
+The response MUST be wrapped exactly like this (no extra text before/after):
+---BEGIN_TOON---
+message: ...
+next_action: ask_user|propose_tool|done
+proposed_tool:
+  toolName: ...
+  input: ...
+agent_state: ...
+reasoning: ...
+---END_TOON---
+
 TOOL CONFIRMATION + EXECUTION RULES
 - You never execute tools directly. You only PROPOSE one tool call at a time.
 - Every proposed tool call requires explicit user confirmation via a UI button.
@@ -444,13 +455,66 @@ export async function teacherReactAgentNode(
     abortSignal: AbortSignal.timeout(25000),
   });
 
-  const parsed = parseModelResponse<{
+  let parsed: {
     message: string;
     next_action: NextAction;
     proposed_tool?: { toolName: string; input: Record<string, any> } | null;
     agent_state?: Record<string, any>;
     reasoning?: string;
-  }>(text);
+  };
+
+  try {
+    parsed = parseModelResponse(text);
+  } catch (err: any) {
+    const normalized = userText.toLowerCase();
+    const wantsList =
+      /(有哪些|列出|查看|show|list|what|which)/i.test(userText) ||
+      /(show|list|what|which)/i.test(normalized);
+    const mentionsClass = /(班级|class|classes)/i.test(userText);
+    const mentionsSession = /(课次|课|session|sessions)/i.test(userText);
+    const mentionsAssignment = /(作业|assignment|assignments)/i.test(userText);
+    const fallbackEntity = mentionsClass
+      ? "class"
+      : mentionsSession
+        ? "session"
+        : mentionsAssignment
+          ? "assignment"
+          : null;
+
+    if (wantsList && fallbackEntity) {
+      parsed = {
+        message:
+          preferredLanguage === "zh"
+            ? "我可以从数据库中查询并列出你的数据。请确认执行查询。"
+            : "I can query the database and list your data. Please confirm to run the query.",
+        next_action: "propose_tool",
+        proposed_tool: {
+          toolName: "entity_management",
+          input: {
+            action: "list",
+            entity: fallbackEntity,
+            classId:
+              state.metadata?.selectedClassId ||
+              state.metadata?.lastCreatedClassId ||
+              null,
+          },
+        },
+        agent_state: state.metadata?.agentState || {},
+        reasoning: `Fallback: model output was not valid TOON (${err?.message || String(err)}).`,
+      };
+    } else {
+      parsed = {
+        message:
+          preferredLanguage === "zh"
+            ? "我刚才没能稳定解析模型输出。请再说一次你的目标（例如：列出班级 / 创建班级 / 创建课次 / 创建作业），我会一步步带你完成。"
+            : "I couldn't reliably parse the model output. Please restate your goal (e.g., list classes / create a class / create sessions / create assignments), and I'll guide you step by step.",
+        next_action: "ask_user",
+        proposed_tool: null,
+        agent_state: state.metadata?.agentState || {},
+        reasoning: `Fallback: model output was not valid TOON (${err?.message || String(err)}).`,
+      };
+    }
+  }
 
   const assistantMessage = new AIMessage({
     content: parsed.message || (preferredLanguage === "zh" ? "我可以帮您。" : "I can help."),
