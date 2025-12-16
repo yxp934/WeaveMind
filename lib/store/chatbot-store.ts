@@ -459,18 +459,26 @@ export const useChatbotStore = create<ChatbotStore>()(
               stream: false,
             });
 
-            const runFetch = async () =>
-              fetch("/api/ai/chat", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: postBody,
-              });
-
             // Tool execution requests must retry on disconnect/errors:
             // wait 5s, retry up to 5 attempts.
             const isToolExecution = Boolean(metadata.confirmToolCall?.id);
+            const runFetch = async () => {
+              const controller = new AbortController();
+              const timeoutMs = isToolExecution ? 30_000 : 60_000;
+              const timer = setTimeout(() => controller.abort(), timeoutMs);
+              try {
+                return await fetch("/api/ai/chat", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: postBody,
+                  signal: controller.signal,
+                });
+              } finally {
+                clearTimeout(timer);
+              }
+            };
             let response: Response;
             let lastError: any = null;
             for (let attempt = 1; attempt <= (isToolExecution ? 5 : 1); attempt++) {
