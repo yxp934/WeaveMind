@@ -276,22 +276,6 @@ export async function POST(
       actionType: result.data?.metadata?.actionType,
     });
 
-    // 强制需要确认的动作标记与默认 actionType
-    const intentType = result.data?.metadata?.intent || result.data?.intent;
-    if (
-      intentType === "entity_management" ||
-      result.data?.metadata?.actionType
-    ) {
-      result.data.metadata.intent = "entity_management";
-      result.data.metadata.requiresDatabaseAction = true;
-      if (!result.data.metadata.actionType) {
-        result.data.metadata.actionType = "entity_management";
-      }
-      if (!result.data.metadata.actionData) {
-        result.data.metadata.actionData = {};
-      }
-    }
-
     if ((result.data?.metadata?.toolsUsed || []).length > 5) {
       return NextResponse.json(
         {
@@ -310,153 +294,37 @@ export async function POST(
       );
     }
 
-    // 6.5 如果是实体管理但缺少确认，直接返回待确认，不执行
-    const pendingToolCallIdBase =
-      result.data?.metadata?.pendingToolCallId || crypto.randomUUID();
-    if (intentType === "entity_management") {
-      if (!context?.confirmToolCall?.id) {
-        finalResult = {
-          ...result,
-          data: {
-            ...result.data,
-            message:
-              result.data.message ||
-              `Pending tool call ${result.data.metadata.actionType || "entity_management"}, awaiting confirmation.`,
-            metadata: {
-              ...result.data.metadata,
-              pendingToolCall: {
-                id: pendingToolCallIdBase,
-                toolName: result.data.metadata.actionType || "entity_management",
-                input: result.data.metadata.actionData || {},
-              },
-              pendingToolCallId: pendingToolCallIdBase,
-              requiresDatabaseAction: true,
-              confirmationRequired: true,
-            },
-          },
-        };
-      } else if (
-        context.confirmToolCall.id ===
-        (result.data.metadata.pendingToolCallId || context.confirmToolCall.id)
-      ) {
-        // 执行在后续 requiresDatabaseAction 分支
-      } else {
-        // mismatched id: treat as pending again
-        finalResult = {
-          ...result,
-          data: {
-            ...result.data,
-            message:
-              result.data.message ||
-              `Pending tool call ${result.data.metadata.actionType || "entity_management"}, awaiting confirmation.`,
-            metadata: {
-              ...result.data.metadata,
-              pendingToolCall: {
-                id: pendingToolCallIdBase,
-                toolName: result.data.metadata.actionType || "entity_management",
-                input: result.data.metadata.actionData || {},
-              },
-              pendingToolCallId: pendingToolCallIdBase,
-              requiresDatabaseAction: true,
-              confirmationRequired: true,
-            },
-          },
-        };
-      }
-    }
-
-    if (
+    // 6.5 Any DB/tool action must be confirmed by the user (separate request).
+    const actionType = result.data?.metadata?.actionType;
+    const requiresDatabaseAction = Boolean(
       result.success &&
-      result.data?.metadata?.requiresDatabaseAction &&
-      context?.confirmToolCall?.id &&
-      context.confirmToolCall.id ===
-        (result.data.metadata.pendingToolCallId || context.confirmToolCall.id)
-    ) {
-      console.log("🔧 检测到工具/数据库调用请求:", result.data.metadata.actionType);
-        const pendingToolCallId =
-          result.data.metadata.pendingToolCallId || crypto.randomUUID();
-      const pendingToolCall = {
-        id: pendingToolCallId,
-        toolName: result.data.metadata.actionType,
-        input: result.data.metadata.actionData || {},
-      };
+        result.data?.metadata?.requiresDatabaseAction &&
+        actionType,
+    );
 
-      // 如果本次请求带有确认且ID匹配，则执行（带重试）
-      // 未确认则直接返回待确认
-      if (!context?.confirmToolCall || context.confirmToolCall.id !== pendingToolCallId) {
-        finalResult = {
-          ...result,
-          data: {
-            ...result.data,
-            message:
-              result.data.message ||
-              `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
-            metadata: {
-              ...result.data.metadata,
-              pendingToolCall,
-              pendingToolCallId,
-              requiresDatabaseAction: true,
-              confirmationRequired: true,
+    if (requiresDatabaseAction && result.data?.metadata) {
+      const pendingToolCallId =
+        result.data.metadata.pendingToolCallId || crypto.randomUUID();
+      finalResult = {
+        ...result,
+        data: {
+          ...result.data,
+          message:
+            result.data.message ||
+            `Pending tool call ${actionType}, awaiting confirmation.`,
+          metadata: {
+            ...result.data.metadata,
+            pendingToolCall: {
+              id: pendingToolCallId,
+              toolName: actionType,
+              input: result.data.metadata.actionData || {},
             },
+            pendingToolCallId,
+            requiresDatabaseAction: true,
+            confirmationRequired: true,
           },
-        };
-      } else {
-        try {
-          const effectiveUser = user || { id: userId };
-          const dbOperationResult = await runWithRetry(
-            () =>
-              handleDatabaseOperation(
-                result.data.metadata,
-                supabase,
-                effectiveUser,
-                isDemoMode,
-              ),
-            5,
-            5000,
-          );
-
-          if (dbOperationResult.success) {
-            finalResult = {
-              ...result,
-              data: {
-                ...result.data,
-                message: dbOperationResult.message,
-                metadata: {
-                  ...result.data.metadata,
-                  classId: dbOperationResult.classId,
-                  joinCode: dbOperationResult.joinCode,
-                  assignmentId: dbOperationResult.assignmentId,
-                  pendingToolCall: null,
-                  pendingToolCallId: null,
-                  toolsUsed: [
-                    ...(result.data.metadata.toolsUsed || []),
-                    ...dbOperationResult.toolsUsed,
-                  ],
-                },
-              },
-            };
-          } else {
-            finalResult = {
-              success: false,
-              error: {
-                code: "DATABASE_OPERATION_FAILED",
-                message:
-                  dbOperationResult.message ||
-                  "Tool execution failed after retries.",
-              },
-            };
-          }
-        } catch (dbError: any) {
-          console.error("❌ 工具调用失败:", dbError);
-          finalResult = {
-            success: false,
-            error: {
-              code: "DATABASE_OPERATION_FAILED",
-              message: `Tool execution failed after retries: ${dbError.message}`,
-            },
-          };
-        }
-      }
+        },
+      };
     }
 
     // 7. 返回JSON响应
@@ -720,97 +588,40 @@ async function handleStreamResponse(
           throw new Error(result.error?.message || "LangGraph处理失败");
         }
 
-        // 强制需要确认的动作标记与默认 actionType
-        const intentType = result.data?.metadata?.intent || result.data?.intent;
-        if (
-          intentType === "entity_management" ||
-          result.data?.metadata?.actionType
-        ) {
-          result.data.metadata.intent = "entity_management";
-          result.data.metadata.requiresDatabaseAction = true;
-          if (!result.data.metadata.actionType) {
-            result.data.metadata.actionType = "entity_management";
-          }
-          if (!result.data.metadata.actionData) {
-            result.data.metadata.actionData = {};
-          }
-        }
-
         // 处理数据库/工具调用请求（流式模式下仅返回待确认信息，不自动执行）
         let finalResult = result;
-        if (result.data?.metadata?.requiresDatabaseAction) {
+        const actionType = result.data?.metadata?.actionType;
+        const requiresDatabaseAction = Boolean(
+          result.success &&
+            result.data?.metadata?.requiresDatabaseAction &&
+            actionType,
+        );
+
+        if (requiresDatabaseAction) {
           const pendingToolCallId =
             result.data.metadata.pendingToolCallId || crypto.randomUUID();
           const pendingToolCall = {
             id: pendingToolCallId,
-            toolName: result.data.metadata.actionType,
+            toolName: actionType,
             input: result.data.metadata.actionData || {},
           };
 
-          if (
-            context?.confirmToolCall &&
-            context.confirmToolCall.id === pendingToolCallId
-          ) {
-            const supabase = await createClient();
-            const {
-              data: { user: authenticatedUser },
-            } = await supabase.auth.getUser();
-
-            try {
-              const dbOperationResult = await runWithRetry(
-                () =>
-                  handleDatabaseOperation(
-                    result.data.metadata,
-                    supabase,
-                    authenticatedUser,
-                    true,
-                  ),
-                5,
-                5000,
-              );
-              if (dbOperationResult.success) {
-                finalResult = {
-                  ...result,
-                  data: {
-                    ...result.data,
-                    message: dbOperationResult.message,
-                    metadata: {
-                      ...result.data.metadata,
-                      classId: dbOperationResult.classId,
-                      joinCode: dbOperationResult.joinCode,
-                      assignmentId: dbOperationResult.assignmentId,
-                      pendingToolCall: null,
-                      pendingToolCallId: null,
-                      toolsUsed: [
-                        ...(result.data.metadata.toolsUsed || []),
-                        ...(dbOperationResult.toolsUsed || []),
-                      ],
-                    },
-                  },
-                };
-              }
-            } catch (dbError: any) {
-              console.error("❌ 工具调用失败:", dbError);
-              throw new Error(`Tool execution failed: ${dbError.message}`);
-            }
-          } else {
-            finalResult = {
-              ...result,
-              data: {
-                ...result.data,
-                message:
-                  result.data.message ||
-                  `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
-                metadata: {
-                  ...result.data.metadata,
-                  pendingToolCall,
-                  pendingToolCallId,
-                  requiresDatabaseAction: true,
-                  confirmationRequired: true,
-                },
+          finalResult = {
+            ...result,
+            data: {
+              ...result.data,
+              message:
+                result.data.message ||
+                `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
+              metadata: {
+                ...result.data.metadata,
+                pendingToolCall,
+                pendingToolCallId,
+                requiresDatabaseAction: true,
+                confirmationRequired: true,
               },
-            };
-          }
+            },
+          };
         }
 
         // 发送进度更新 - 生成响应
