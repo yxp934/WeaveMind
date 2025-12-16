@@ -214,10 +214,19 @@ export async function POST(
       actionType: result.data?.metadata?.actionType,
     });
 
-    // 强制需要确认的动作标记
+    // 强制需要确认的动作标记与默认 actionType
     const intentType = result.data?.metadata?.intent || result.data?.intent;
-    if (result.data?.metadata?.actionType || intentType === "entity_management") {
+    if (
+      intentType === "entity_management" ||
+      result.data?.metadata?.actionType
+    ) {
       result.data.metadata.requiresDatabaseAction = true;
+      if (!result.data.metadata.actionType) {
+        result.data.metadata.actionType = "entity_management";
+      }
+      if (!result.data.metadata.actionData) {
+        result.data.metadata.actionData = {};
+      }
     }
 
     if ((result.data?.metadata?.toolsUsed || []).length > 5) {
@@ -585,13 +594,19 @@ async function handleStreamResponse(
           throw new Error(result.error?.message || "LangGraph处理失败");
         }
 
-        // 强制需要确认的动作标记
-        if (result.data?.metadata?.actionType) {
-          result.data.metadata.requiresDatabaseAction = true;
-        }
+        // 强制需要确认的动作标记与默认 actionType
         const intentType = result.data?.metadata?.intent || result.data?.intent;
-        if (intentType === "entity_management") {
+        if (
+          intentType === "entity_management" ||
+          result.data?.metadata?.actionType
+        ) {
           result.data.metadata.requiresDatabaseAction = true;
+          if (!result.data.metadata.actionType) {
+            result.data.metadata.actionType = "entity_management";
+          }
+          if (!result.data.metadata.actionData) {
+            result.data.metadata.actionData = {};
+          }
         }
 
         // 处理数据库/工具调用请求（流式模式下仅返回待确认信息，不自动执行）
