@@ -33,6 +33,12 @@ export function responseGeneratorNode(state: ChatbotState): {
     additionalKwargs,
   );
 
+  const agentState = (state.metadata as any)?.agentState || null;
+  const metadataForClient = {
+    ...(structuredResponse.metadata || {}),
+    agentState,
+  };
+
   // Wrap message as TOON (no markdown fence). Keep metadata echoed.
   const toonPayload = {
     intent: state.intent?.type || "general_chat",
@@ -42,8 +48,8 @@ export function responseGeneratorNode(state: ChatbotState): {
     toolsUsed: structuredResponse.toolsUsed || [],
     missing_fields: structuredResponse.metadata?.missingInfo || [],
     pending_tool_call: structuredResponse.metadata?.pendingToolCall || null,
-    agent_state: (state.metadata as any)?.agentState || null,
-    metadata: structuredResponse.metadata || {},
+    agent_state: agentState,
+    metadata: metadataForClient,
   };
   const toonString = renderToon(toonPayload);
 
@@ -51,6 +57,7 @@ export function responseGeneratorNode(state: ChatbotState): {
     messages: state.messages,
     response: {
       ...structuredResponse,
+      metadata: metadataForClient,
       message: toonString,
     },
   };

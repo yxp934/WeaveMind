@@ -258,7 +258,7 @@ export async function POST(
         5000,
       );
 
-      const toolExecutionMeta = {
+      const toolExecutionMeta: Record<string, any> = {
         confirmationExecuted: true,
         confirmedToolCallId: context.confirmToolCall.id,
         toolExecutionSuccess: Boolean(dbOperationResult.success),
@@ -266,11 +266,14 @@ export async function POST(
         classId: (dbOperationResult as any).classId || null,
         joinCode: (dbOperationResult as any).joinCode || null,
         assignmentId: (dbOperationResult as any).assignmentId || null,
-        agentState: (dbOperationResult as any).agentState || null,
-        outlineDraft: (dbOperationResult as any).outlineDraft || null,
         toolResult: dbOperationResult,
         toolExecutionTimestamp: new Date().toISOString(),
       };
+      const agentStateFromTool = (dbOperationResult as any).agentState;
+      if (agentStateFromTool) toolExecutionMeta.agentState = agentStateFromTool;
+      const outlineDraftFromTool = (dbOperationResult as any).outlineDraft;
+      if (outlineDraftFromTool)
+        toolExecutionMeta.outlineDraft = outlineDraftFromTool;
 
       // Continue the LangGraph agent after the tool executes so multi-step goals
       // can propose the next tool (still requiring user confirmation).
