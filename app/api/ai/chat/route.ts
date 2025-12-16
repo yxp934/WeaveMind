@@ -54,7 +54,9 @@ const chatRequestSchema = z.object({
         .object({
           id: z.string(),
           toolName: z.string(),
-          input: z.record(z.any()),
+          // z.record() appears to trigger a Zod v4 compilation edge-case in production bundles
+          // when this field is present. Use a catchall object instead.
+          input: z.object({}).catchall(z.any()),
         })
         .optional(),
       selectedContexts: z
