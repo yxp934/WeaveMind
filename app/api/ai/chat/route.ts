@@ -215,7 +215,8 @@ export async function POST(
     });
 
     // 强制需要确认的动作标记
-    if (result.data?.metadata?.actionType) {
+    const intentType = result.data?.metadata?.intent || result.data?.intent;
+    if (result.data?.metadata?.actionType || intentType === "entity_management") {
       result.data.metadata.requiresDatabaseAction = true;
     }
 
@@ -586,6 +587,10 @@ async function handleStreamResponse(
 
         // 强制需要确认的动作标记
         if (result.data?.metadata?.actionType) {
+          result.data.metadata.requiresDatabaseAction = true;
+        }
+        const intentType = result.data?.metadata?.intent || result.data?.intent;
+        if (intentType === "entity_management") {
           result.data.metadata.requiresDatabaseAction = true;
         }
 
