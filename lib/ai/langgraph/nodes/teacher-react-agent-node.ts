@@ -40,6 +40,113 @@ function extractBullets(text: string): string[] {
   return bullets;
 }
 
+function extractClassName(text: string): string | null {
+  const patterns: RegExp[] = [
+    /班级[:：]\s*([^\n，。,。;；]+)\s*/i,
+    /名为[“"]([^”"]+)[”"]/i,
+    /named\s+[“"]([^”"]+)[”"]/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) {
+      const name = m[1].trim();
+      if (name) return name;
+    }
+  }
+  return null;
+}
+
+function extractSessionCount(text: string): number | null {
+  const m = text.match(/(\d+)\s*(节|课|sessions?)/i);
+  if (!m?.[1]) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(32, Math.max(1, Math.floor(n)));
+}
+
+function parseSessionDrafts(
+  text: string,
+): Array<{ title: string; description?: string }> {
+  const drafts: Array<{ idx?: number; title: string; description?: string }> =
+    [];
+
+  const cnRe = /第\s*(\d+)\s*节\s*[:：]\s*([^\n；;]+)(?:[；;\n]|$)/g;
+  for (const match of text.matchAll(cnRe)) {
+    const idx = Number(match[1]);
+    const title = (match[2] || "").trim();
+    if (title) drafts.push({ idx, title });
+  }
+
+  const enRe = /session\s*(\d+)\s*[:：-]\s*([^\n；;]+)(?:[；;\n]|$)/gi;
+  for (const match of text.matchAll(enRe)) {
+    const idx = Number(match[1]);
+    const title = (match[2] || "").trim();
+    if (title) drafts.push({ idx, title });
+  }
+
+  const bullets = extractBullets(text);
+  for (const b of bullets) {
+    const cleaned = b.replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "").trim();
+    if (cleaned) drafts.push({ title: cleaned });
+  }
+
+  if (drafts.length === 0) {
+    const parts = text
+      .split(/[；;\n]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    for (const p of parts) {
+      const cleaned = p
+        .replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "")
+        .replace(/^session\s*\d+\s*[:：-]\s*/i, "")
+        .trim();
+      if (cleaned) drafts.push({ title: cleaned });
+    }
+  }
+
+  const seen = new Set<string>();
+  return drafts
+    .filter((d) => {
+      const key = d.title.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => {
+      if (typeof a.idx === "number" && typeof b.idx === "number") {
+        return a.idx - b.idx;
+      }
+      if (typeof a.idx === "number") return -1;
+      if (typeof b.idx === "number") return 1;
+      return 0;
+    })
+    .map(({ title, description }) => ({ title, description }))
+    .slice(0, 32);
+}
+
+function getLastToolExecution(messages: any[]): {
+  toolName: string | null;
+  success: boolean | null;
+  toolResult: any | null;
+} {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg: any = messages[i];
+    const meta =
+      msg?.additional_kwargs?.metadata || msg?.additional_kwargs || null;
+    if (meta?.confirmationExecuted) {
+      return {
+        toolName: meta?.lastExecutedTool || meta?.actionType || null,
+        success:
+          typeof meta?.toolExecutionSuccess === "boolean"
+            ? meta.toolExecutionSuccess
+            : null,
+        toolResult: meta?.toolResult || null,
+      };
+    }
+  }
+  return { toolName: null, success: null, toolResult: null };
+}
+
 function buildSystemPrompt(params: {
   toolCallsExecuted: number;
   toolCallsRemaining: number;
@@ -184,6 +291,10 @@ export async function teacherReactAgentNode(
 
   const userText = lastMessage.content.toString();
   const preferredLanguage = detectLanguage(userText);
+  const existingAgentState: any = state.metadata?.agentState || {};
+  const toolCallsExecuted = countExecutedToolCallsFromHistory(state.messages);
+  const toolCallsRemaining = Math.max(0, 5 - toolCallsExecuted);
+  const lastToolExecution = getLastToolExecution(state.messages);
 
   // Deterministic fast-path: list queries should reliably propose a read tool.
   const normalized = userText.toLowerCase();
@@ -199,9 +310,677 @@ export async function teacherReactAgentNode(
         ? "assignment"
         : null;
 
-  if (wantsList && listEntity) {
-    const executed = countExecutedToolCallsFromHistory(state.messages);
-    if (executed >= 5) {
+  // Deterministic class creation workflow (class -> sessions -> outline -> save).
+  if (existingAgentState?.outlineStatus !== "reviewing") {
+    const wantsCreateClass =
+      /(创建|新建|建立).*(班级)/.test(userText) ||
+      /(create).*(class)/i.test(userText);
+    const activeCreation = existingAgentState?.classCreation;
+    const isActive =
+      activeCreation?.status && activeCreation.status !== "done";
+
+    if (wantsCreateClass || isActive) {
+      const creation = {
+        status: isActive ? activeCreation.status : "collecting",
+        className: activeCreation?.className || null,
+        classDescription: activeCreation?.classDescription || null,
+        sessionCount: activeCreation?.sessionCount || null,
+        sessionsDraft: Array.isArray(activeCreation?.sessionsDraft)
+          ? activeCreation.sessionsDraft
+          : [],
+        classId: activeCreation?.classId || null,
+        outlineLanguage: activeCreation?.outlineLanguage || null,
+      };
+
+      // Mark completion once the outline has been saved.
+      if (
+        lastToolExecution.toolName === "save_class_outline" &&
+        lastToolExecution.success === true
+      ) {
+        const doneMsg =
+          preferredLanguage === "zh"
+            ? "✅ 班级创建与大纲保存已完成。如果你还想创建作业或调整课次，我也可以继续帮你。"
+            : "✅ Class creation + outline save completed. If you want to create assignments or edit sessions, tell me.";
+        const nextAgentState = {
+          ...existingAgentState,
+          classCreation: { ...creation, status: "done" },
+        };
+        const aiMessage = new AIMessage({
+          content: doneMsg,
+          additional_kwargs: {
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+            },
+          },
+        });
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: nextAgentState,
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+            timestamp: new Date().toISOString(),
+          },
+          currentWorkflow: {
+            type: "react_agent",
+            status: "active",
+            step: "done",
+            data: { phase: "class_creation_done" },
+          },
+        };
+      }
+
+      // Update collected fields from the current user turn (if any).
+      const updated = { ...creation };
+      if (!updated.className) {
+        updated.className = extractClassName(userText) || null;
+      }
+      if (!updated.sessionCount) {
+        updated.sessionCount = extractSessionCount(userText) || null;
+      }
+      if (
+        updated.sessionCount &&
+        updated.sessionsDraft.length < updated.sessionCount &&
+        !isApproval(userText)
+      ) {
+        const parsed = parseSessionDrafts(userText);
+        for (const s of parsed) {
+          if (updated.sessionsDraft.length >= updated.sessionCount) break;
+          updated.sessionsDraft.push(s);
+        }
+      }
+
+      const nextAgentState = {
+        ...existingAgentState,
+        classCreation: updated,
+      };
+
+      if (updated.status === "collecting") {
+        if (!updated.className) {
+          const ask =
+            preferredLanguage === "zh"
+              ? "好的。请告诉我你要创建的班级名称是什么？"
+              : "Sure. What is the class name you want to create?";
+          const aiMessage = new AIMessage({
+            content: ask,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "ask_class_name" },
+            },
+          };
+        }
+
+        if (!updated.sessionCount) {
+          const ask =
+            preferredLanguage === "zh"
+              ? "这个班级需要几节课（sessions）？请给我一个数字，例如：8。"
+              : "How many sessions should this class have? Please reply with a number, e.g. 8.";
+          const aiMessage = new AIMessage({
+            content: ask,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "ask_session_count" },
+            },
+          };
+        }
+
+        const missing = Math.max(
+          0,
+          updated.sessionCount - updated.sessionsDraft.length,
+        );
+        if (missing > 0) {
+          const ask =
+            preferredLanguage === "zh"
+              ? `请再提供 ${missing} 节课的标题（可选描述）。建议每行一个，例如：\n- 第1节：...\n- 第2节：...`
+              : `Please provide ${missing} more session title(s) (optional description). One per line, for example:\n- Session 1: ...\n- Session 2: ...`;
+          const aiMessage = new AIMessage({
+            content: ask,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "ask_session_titles" },
+            },
+          };
+        }
+
+        if (toolCallsRemaining <= 0) {
+          const limitMsg =
+            preferredLanguage === "zh"
+              ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
+              : "Tool call limit reached (5). Please simplify your request or start a new goal.";
+          const aiMessage = new AIMessage({
+            content: limitMsg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "tool_limit" },
+            },
+          };
+        }
+
+        const msg =
+          preferredLanguage === "zh"
+            ? `我可以现在创建班级「${updated.className}」。请确认执行创建。`
+            : `I can now create the class "${updated.className}". Please confirm to run the creation.`;
+
+        const withStatus = {
+          ...nextAgentState,
+          classCreation: { ...updated, status: "await_class_created" },
+        };
+        const aiMessage = new AIMessage({
+          content: msg,
+          additional_kwargs: {
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: true,
+              actionType: "entity_management",
+              actionData: {
+                action: "create",
+                entity: "class",
+                details: {
+                  name: updated.className,
+                  description: updated.classDescription || "",
+                },
+              },
+            },
+          },
+        });
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: withStatus,
+            requiresDatabaseAction: true,
+            actionType: "entity_management",
+            actionData: {
+              action: "create",
+              entity: "class",
+              details: {
+                name: updated.className,
+                description: updated.classDescription || "",
+              },
+            },
+            timestamp: new Date().toISOString(),
+          },
+          currentWorkflow: {
+            type: "react_agent",
+            status: "active",
+            step: "propose_tool",
+            data: { phase: "create_class" },
+          },
+        };
+      }
+
+      if (updated.status === "await_class_created") {
+        const classId =
+          state.metadata?.lastCreatedClassId ||
+          lastToolExecution.toolResult?.classId ||
+          null;
+        if (
+          lastToolExecution.toolName === "entity_management" &&
+          lastToolExecution.success === true &&
+          classId
+        ) {
+          const sessions = (updated.sessionsDraft || [])
+            .slice(0, updated.sessionCount || 0)
+            .map((s: any) => ({
+              title: s.title,
+              description: s.description || "",
+            }));
+
+          const msg =
+            preferredLanguage === "zh"
+              ? `✅ 班级已创建（ID: ${classId}）。下一步我将为该班级创建 ${sessions.length} 节课次。请确认执行。`
+              : `✅ Class created (ID: ${classId}). Next I will create ${sessions.length} sessions for this class. Please confirm to run it.`;
+
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: {
+              ...updated,
+              status: "await_sessions_created",
+              classId,
+            },
+          };
+
+          const aiMessage = new AIMessage({
+            content: msg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: true,
+                actionType: "create_sessions_batch",
+                actionData: {
+                  classId,
+                  sessions,
+                  language: preferredLanguage,
+                  agentState: withStatus,
+                },
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: true,
+              actionType: "create_sessions_batch",
+              actionData: {
+                classId,
+                sessions,
+                language: preferredLanguage,
+                agentState: withStatus,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "propose_tool",
+              data: { phase: "create_sessions_batch" },
+            },
+          };
+        }
+
+        const remind =
+          preferredLanguage === "zh"
+            ? "请先点击上方的“Confirm and run”来执行创建班级。"
+            : "Please click “Confirm and run” above to execute class creation.";
+        const aiMessage = new AIMessage({
+          content: remind,
+          additional_kwargs: {
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+            },
+          },
+        });
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: nextAgentState,
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+            timestamp: new Date().toISOString(),
+          },
+          currentWorkflow: {
+            type: "react_agent",
+            status: "active",
+            step: "ask_user",
+            data: { phase: "waiting_confirmation" },
+          },
+        };
+      }
+
+      if (updated.status === "await_sessions_created") {
+        const classId =
+          updated.classId || state.metadata?.lastCreatedClassId || null;
+        if (
+          lastToolExecution.toolName === "create_sessions_batch" &&
+          lastToolExecution.success === true &&
+          classId
+        ) {
+          const msg =
+            preferredLanguage === "zh"
+              ? "✅ 课次已创建。接下来我将为每节课生成大纲草稿。你希望大纲用中文还是英文？"
+              : "✅ Sessions created. Next I will generate an outline draft for each session. Do you want the outlines in English or Chinese?";
+
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: {
+              ...updated,
+              status: "ask_outline_language",
+              classId,
+            },
+          };
+          const aiMessage = new AIMessage({
+            content: msg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "ask_outline_language" },
+            },
+          };
+        }
+
+        const remind =
+          preferredLanguage === "zh"
+            ? "请先点击上方的“Confirm and run”来执行创建课次。"
+            : "Please click “Confirm and run” above to execute session creation.";
+        const aiMessage = new AIMessage({
+          content: remind,
+          additional_kwargs: {
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+            },
+          },
+        });
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: nextAgentState,
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+            timestamp: new Date().toISOString(),
+          },
+          currentWorkflow: {
+            type: "react_agent",
+            status: "active",
+            step: "ask_user",
+            data: { phase: "waiting_confirmation" },
+          },
+        };
+      }
+
+      if (updated.status === "ask_outline_language") {
+        const classId =
+          updated.classId || state.metadata?.lastCreatedClassId || null;
+        let chosen: "zh" | "en" | null = updated.outlineLanguage;
+        if (!chosen && !isApproval(userText)) {
+          if (/(英文|english)/i.test(userText)) chosen = "en";
+          if (/(中文|chinese)/i.test(userText)) chosen = "zh";
+        }
+
+        if (!chosen) {
+          const ask =
+            preferredLanguage === "zh"
+              ? "你希望大纲用中文还是英文？（回复“中文”或“英文”）"
+              : "Do you want the outlines in Chinese or English? (Reply \"Chinese\" or \"English\")";
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: { ...updated, outlineLanguage: null, classId },
+          };
+          const aiMessage = new AIMessage({
+            content: ask,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "ask_outline_language" },
+            },
+          };
+        }
+
+        if (toolCallsRemaining <= 0) {
+          const limitMsg =
+            preferredLanguage === "zh"
+              ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
+              : "Tool call limit reached (5). Please simplify your request or start a new goal.";
+          const aiMessage = new AIMessage({
+            content: limitMsg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "tool_limit" },
+            },
+          };
+        }
+
+        const msg =
+          preferredLanguage === "zh"
+            ? `好的。我将使用${chosen === "en" ? "英文" : "中文"}为每节课生成大纲草稿。请确认执行生成。`
+            : `Great. I will generate an outline draft in ${chosen === "en" ? "English" : "Chinese"} for each session. Please confirm to run it.`;
+
+        const withStatus = {
+          ...nextAgentState,
+          classCreation: {
+            ...updated,
+            outlineLanguage: chosen,
+            status: "await_outline_draft",
+            classId,
+          },
+        };
+
+        const aiMessage = new AIMessage({
+          content: msg,
+          additional_kwargs: {
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: true,
+              actionType: "generate_class_outline_draft",
+              actionData: {
+                classId,
+                language: chosen,
+                agentState: withStatus,
+              },
+            },
+          },
+        });
+
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: withStatus,
+            requiresDatabaseAction: true,
+            actionType: "generate_class_outline_draft",
+            actionData: {
+              classId,
+              language: chosen,
+              agentState: withStatus,
+            },
+            timestamp: new Date().toISOString(),
+          },
+          currentWorkflow: {
+            type: "react_agent",
+            status: "active",
+            step: "propose_tool",
+            data: { phase: "generate_outline" },
+          },
+        };
+      }
+    }
+  }
+
+  if (wantsList && listEntity && existingAgentState?.outlineStatus !== "reviewing") {
+    if (toolCallsExecuted >= 5) {
       const limitMsg =
         preferredLanguage === "zh"
           ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
@@ -325,7 +1104,6 @@ export async function teacherReactAgentNode(
   }
 
   // Deterministic outline confirmation flow (reduces reliance on the model for state tracking).
-  const existingAgentState: any = state.metadata?.agentState || {};
   if (
     existingAgentState?.outlineStatus === "reviewing" &&
     existingAgentState?.outlineDraft?.chapters &&
@@ -563,9 +1341,6 @@ export async function teacherReactAgentNode(
       },
     };
   }
-
-  const toolCallsExecuted = countExecutedToolCallsFromHistory(state.messages);
-  const toolCallsRemaining = Math.max(0, 5 - toolCallsExecuted);
 
   const systemPrompt = buildSystemPrompt({
     toolCallsExecuted,
