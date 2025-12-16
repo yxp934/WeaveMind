@@ -185,6 +185,145 @@ export async function teacherReactAgentNode(
   const userText = lastMessage.content.toString();
   const preferredLanguage = detectLanguage(userText);
 
+  // Deterministic fast-path: list queries should reliably propose a read tool.
+  const normalized = userText.toLowerCase();
+  const wantsList = /(有哪些|列出|查看|show|list|what|which)/i.test(userText);
+  const mentionsClass = /(班级|class|classes)/i.test(userText);
+  const mentionsSession = /(课次|课|session|sessions)/i.test(userText);
+  const mentionsAssignment = /(作业|assignment|assignments)/i.test(userText);
+  const listEntity = mentionsClass
+    ? "class"
+    : mentionsSession
+      ? "session"
+      : mentionsAssignment
+        ? "assignment"
+        : null;
+
+  if (wantsList && listEntity) {
+    const executed = countExecutedToolCallsFromHistory(state.messages);
+    if (executed >= 5) {
+      const limitMsg =
+        preferredLanguage === "zh"
+          ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
+          : "Tool call limit reached (5). Please simplify your request or start a new goal.";
+      const aiMessage = new AIMessage({
+        content: limitMsg,
+        additional_kwargs: {
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+          },
+        },
+      });
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "tool_limit" },
+        },
+      };
+    }
+
+    // For sessions/assignments listing, we need a class context.
+    const classId =
+      state.metadata?.selectedClassId ||
+      state.metadata?.lastCreatedClassId ||
+      null;
+    if ((listEntity === "session" || listEntity === "assignment") && !classId) {
+      const ask =
+        preferredLanguage === "zh"
+          ? "你想查看哪个班级的内容？请先在界面中选择一个班级，或直接告诉我班级ID。"
+          : "Which class do you want to query? Please select a class in the UI or provide the classId.";
+      const aiMessage = new AIMessage({
+        content: ask,
+        additional_kwargs: {
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+          },
+        },
+      });
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "missing_class_context" },
+        },
+      };
+    }
+
+    const msg =
+      preferredLanguage === "zh"
+        ? "我可以从数据库中查询并列出你的数据。请确认执行查询。"
+        : "I can query the database and list your data. Please confirm to run the query.";
+    const aiMessage = new AIMessage({
+      content: msg,
+      additional_kwargs: {
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          requiresDatabaseAction: true,
+          actionType: "entity_management",
+          actionData: {
+            action: "list",
+            entity: listEntity,
+            classId,
+          },
+        },
+      },
+    });
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      metadata: {
+        ...(state.metadata || {}),
+        intent: "react_agent",
+        requiresDatabaseAction: true,
+        actionType: "entity_management",
+        actionData: {
+          action: "list",
+          entity: listEntity,
+          classId,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      currentWorkflow: {
+        type: "react_agent",
+        status: "active",
+        step: "propose_tool",
+        data: { phase: "list_entity" },
+      },
+    };
+  }
+
   // Deterministic outline confirmation flow (reduces reliance on the model for state tracking).
   const existingAgentState: any = state.metadata?.agentState || {};
   if (
