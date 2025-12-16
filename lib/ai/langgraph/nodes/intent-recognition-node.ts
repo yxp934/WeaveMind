@@ -146,6 +146,7 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
 
     if (hasListVerb && (mentionsClass || mentionsSession || mentionsAssignment)) {
       finalIntent = "entity_management";
+      finalWorkflow = undefined; // override any prior workflow to avoid continue_workflow routing
       intentResult.parameters = {
         ...intentResult.parameters,
         action: "list",
@@ -164,7 +165,7 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
           : mentionsSession
             ? "课次"
             : "作业"
-      }，强制使用 entity_management + list。`;
+      }，强制使用 entity_management + list，并清除旧的工作流上下文以避免误路由。`;
     }
 
     // 如果AI判定为实体管理但缺少动作，默认使用list，避免落入课程创建流
@@ -190,11 +191,11 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
     }
 
     // 映射中文意图到英文
-    const intentMapping: Record<string, string> = {
-      课程创建: "course_creation",
-      大纲生成: "outline_generation",
-      作业创建: "assignment_creation",
-      A2A优化: "a2a_optimization",
+  const intentMapping: Record<string, string> = {
+    课程创建: "course_creation",
+    大纲生成: "outline_generation",
+    作业创建: "assignment_creation",
+    A2A优化: "a2a_optimization",
       内容生成: "content_generation",
       继续工作流: "continue_workflow",
       通用对话: "general_chat",
@@ -230,6 +231,45 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
   } catch (error) {
     console.error("意图识别失败:", error);
 
+    // 兜底规则：在解析失败时，仍然用关键词强制路由班级/课次/作业列表
+    const fallbackText = lastMessage.content.toString();
+    const hasListVerb = /(有哪些|有什么|哪几个|列出|查看|show|list|look at|what|which)/i.test(
+      fallbackText,
+    );
+    const mentionsClass = /(班级|class|classes)/i.test(fallbackText);
+    const mentionsSession = /(课次|课程节|session|sessions|lesson)/i.test(
+      fallbackText,
+    );
+    const mentionsAssignment = /(作业|作业列表|assignment|assignments)/i.test(
+      fallbackText,
+    );
+    if (hasListVerb && (mentionsClass || mentionsSession || mentionsAssignment)) {
+      return {
+        ...state,
+        intent: {
+          type: "entity_management",
+          confidence: 0.3,
+          parameters: {
+            action: "list",
+            entity: mentionsClass
+              ? "class"
+              : mentionsSession
+                ? "session"
+                : "assignment",
+          },
+        },
+        currentWorkflow: undefined,
+        metadata: {
+          ...state.metadata,
+          timestamp: new Date().toISOString(),
+          reasoning: `Fallback keyword routing to list ${
+            mentionsClass ? "classes" : mentionsSession ? "sessions" : "assignments"
+          }`,
+          suggestedResponse: "I will list your items now.",
+        },
+      };
+    }
+
     return {
       ...state,
       intent: {
@@ -259,14 +299,18 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
  * 路由决策节点 - 根据意图决定下一步操作
  */
 export function routeDecisionNode(state: ChatbotState): string {
+  // 优先处理实体管理/查询，避免被历史工作流劫持
+  const intent = state.intent?.type || "general_chat";
+  if (intent === "entity_management") {
+    return "entity_management";
+  }
+
   // 如果有活跃的工作流，继续该工作流
   if (state.currentWorkflow && state.currentWorkflow.status === "active") {
     return "continue_workflow";
   }
 
   // 根据意图类型路由到不同的处理节点
-  const intent = state.intent?.type || "general_chat";
-
   switch (intent) {
     case "course_creation":
     case "课程创建":
@@ -286,9 +330,6 @@ export function routeDecisionNode(state: ChatbotState): string {
     case "continue_workflow":
     case "继续工作流":
       return "continue_workflow";
-    case "entity_management":
-    case "实体管理":
-      return "entity_management";
     case "general_chat":
     case "通用对话":
     default:
