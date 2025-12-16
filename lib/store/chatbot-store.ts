@@ -47,6 +47,7 @@ export interface ChatMessage {
     selectedSessionId?: string;
     selectedAssignmentId?: string;
     selectedContexts?: any;
+    agentState?: any;
   };
 }
 
@@ -389,7 +390,15 @@ export const useChatbotStore = create<ChatbotStore>()(
       updateMessage: (id, updates) => {
         set((state) => ({
           messages: state.messages.map((msg) =>
-            msg.id === id ? { ...msg, ...updates } : msg,
+            msg.id === id
+              ? {
+                  ...msg,
+                  ...updates,
+                  metadata: updates.metadata
+                    ? { ...(msg.metadata || {}), ...(updates.metadata || {}) }
+                    : msg.metadata,
+                }
+              : msg,
           ),
         }));
       },
