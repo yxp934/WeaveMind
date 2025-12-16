@@ -133,6 +133,7 @@ function getLastToolExecution(messages: any[]): {
   toolName: string | null;
   success: boolean | null;
   toolResult: any | null;
+  confirmedToolCallId: string | null;
 } {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const msg: any = messages[i];
@@ -146,10 +147,21 @@ function getLastToolExecution(messages: any[]): {
             ? meta.toolExecutionSuccess
             : null,
         toolResult: meta?.toolResult || null,
+        confirmedToolCallId: meta?.confirmedToolCallId || null,
       };
     }
   }
-  return { toolName: null, success: null, toolResult: null };
+  return {
+    toolName: null,
+    success: null,
+    toolResult: null,
+    confirmedToolCallId: null,
+  };
+}
+
+function isContinuationMessage(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return t === "continue" || t === "继续";
 }
 
 function buildSystemPrompt(params: {
@@ -300,6 +312,81 @@ export async function teacherReactAgentNode(
   const toolCallsExecuted = countExecutedToolCallsFromHistory(state.messages);
   const toolCallsRemaining = Math.max(0, 5 - toolCallsExecuted);
   const lastToolExecution = getLastToolExecution(state.messages);
+
+  // After a confirmed tool execution, the server sends a synthetic "continue/继续" message.
+  // Show the tool's human-readable result and ask what to do next, unless we're in a
+  // stateful workflow (class creation / outline review) that should immediately propose
+  // the next tool.
+  const hasActiveCreation =
+    existingAgentState?.classCreation?.status &&
+    existingAgentState.classCreation.status !== "done";
+  const isOutlineReviewing = existingAgentState?.outlineStatus === "reviewing";
+  const alreadyRenderedToolId =
+    typeof existingAgentState?.lastRenderedToolCallId === "string"
+      ? existingAgentState.lastRenderedToolCallId
+      : null;
+
+  if (
+    isContinuationMessage(userText) &&
+    !hasActiveCreation &&
+    !isOutlineReviewing &&
+    lastToolExecution.toolName &&
+    typeof lastToolExecution.success === "boolean" &&
+    lastToolExecution.confirmedToolCallId &&
+    lastToolExecution.confirmedToolCallId !== alreadyRenderedToolId
+  ) {
+    const toolMessage =
+      (lastToolExecution.toolResult &&
+        typeof lastToolExecution.toolResult.message === "string" &&
+        lastToolExecution.toolResult.message.trim()) ||
+      (preferredLanguage === "zh"
+        ? "工具已执行，但没有返回可展示的信息。"
+        : "The tool executed, but returned no displayable message.");
+
+    const nextPrompt =
+      preferredLanguage === "zh"
+        ? "\n\n接下来你想做什么？你可以让我：列出班级/课次/作业，创建/更新/删除它们，或创建一个新班级。"
+        : "\n\nWhat would you like to do next? I can list/create/update/delete classes, sessions, or assignments, or create a new class.";
+
+    const nextAgentState = {
+      ...existingAgentState,
+      lastRenderedToolCallId: lastToolExecution.confirmedToolCallId,
+    };
+
+    const aiMessage = new AIMessage({
+      content: `${toolMessage}${nextPrompt}`,
+      additional_kwargs: {
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: nextAgentState,
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+        },
+      },
+    });
+
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      metadata: {
+        ...(state.metadata || {}),
+        intent: "react_agent",
+        agentState: nextAgentState,
+        requiresDatabaseAction: false,
+        actionType: null,
+        actionData: null,
+        timestamp: new Date().toISOString(),
+      },
+      currentWorkflow: {
+        type: "react_agent",
+        status: "active",
+        step: "ask_user",
+        data: { phase: "post_tool_observation" },
+      },
+    };
+  }
 
   // Deterministic fast-path: list queries should reliably propose a read tool.
   const normalized = userText.toLowerCase();
