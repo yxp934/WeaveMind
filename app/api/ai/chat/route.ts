@@ -249,36 +249,70 @@ export async function POST(
     }
 
     // 6.5 如果是实体管理但缺少确认，直接返回待确认，不执行
-    if (
-      intentType === "entity_management" &&
-      !context?.confirmToolCall?.id
-    ) {
-      const pendingToolCallId =
-        result.data.metadata.pendingToolCallId || crypto.randomUUID();
-      finalResult = {
-        ...result,
-        data: {
-          ...result.data,
-          message:
-            result.data.message ||
-            `Pending tool call ${result.data.metadata.actionType || "entity_management"}, awaiting confirmation.`,
-          metadata: {
-            ...result.data.metadata,
-            pendingToolCall: {
-              id: pendingToolCallId,
-              toolName: result.data.metadata.actionType || "entity_management",
-              input: result.data.metadata.actionData || {},
+    const pendingToolCallIdBase =
+      result.data?.metadata?.pendingToolCallId || crypto.randomUUID();
+    if (intentType === "entity_management") {
+      if (!context?.confirmToolCall?.id) {
+        finalResult = {
+          ...result,
+          data: {
+            ...result.data,
+            message:
+              result.data.message ||
+              `Pending tool call ${result.data.metadata.actionType || "entity_management"}, awaiting confirmation.`,
+            metadata: {
+              ...result.data.metadata,
+              pendingToolCall: {
+                id: pendingToolCallIdBase,
+                toolName: result.data.metadata.actionType || "entity_management",
+                input: result.data.metadata.actionData || {},
+              },
+              pendingToolCallId: pendingToolCallIdBase,
+              requiresDatabaseAction: true,
+              confirmationRequired: true,
             },
-            pendingToolCallId,
-            requiresDatabaseAction: true,
-            confirmationRequired: true,
           },
-        },
-      };
-    } else if (result.success && result.data?.metadata?.requiresDatabaseAction) {
+        };
+      } else if (
+        context.confirmToolCall.id ===
+        (result.data.metadata.pendingToolCallId || context.confirmToolCall.id)
+      ) {
+        // 执行在后续 requiresDatabaseAction 分支
+      } else {
+        // mismatched id: treat as pending again
+        finalResult = {
+          ...result,
+          data: {
+            ...result.data,
+            message:
+              result.data.message ||
+              `Pending tool call ${result.data.metadata.actionType || "entity_management"}, awaiting confirmation.`,
+            metadata: {
+              ...result.data.metadata,
+              pendingToolCall: {
+                id: pendingToolCallIdBase,
+                toolName: result.data.metadata.actionType || "entity_management",
+                input: result.data.metadata.actionData || {},
+              },
+              pendingToolCallId: pendingToolCallIdBase,
+              requiresDatabaseAction: true,
+              confirmationRequired: true,
+            },
+          },
+        };
+      }
+    }
+
+    if (
+      result.success &&
+      result.data?.metadata?.requiresDatabaseAction &&
+      context?.confirmToolCall?.id &&
+      context.confirmToolCall.id ===
+        (result.data.metadata.pendingToolCallId || context.confirmToolCall.id)
+    ) {
       console.log("🔧 检测到工具/数据库调用请求:", result.data.metadata.actionType);
-      const pendingToolCallId =
-        result.data.metadata.pendingToolCallId || crypto.randomUUID();
+        const pendingToolCallId =
+          result.data.metadata.pendingToolCallId || crypto.randomUUID();
       const pendingToolCall = {
         id: pendingToolCallId,
         toolName: result.data.metadata.actionType,
