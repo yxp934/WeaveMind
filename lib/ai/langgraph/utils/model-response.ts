@@ -60,20 +60,54 @@ export function parseModelResponse<T = any>(text: string): T {
 
   try {
     // 首先尝试TOON格式解码
-    return decodeToon(cleanedTarget) as T;
+    const result = decodeToon(cleanedTarget) as T;
+
+    // 验证解析结果是否为空
+    if (result && typeof result === 'object') {
+      const hasMessage = (result as any).message && (result as any).message.length > 0;
+      const hasNextAction = (result as any).next_action;
+
+      if (!hasMessage && !hasNextAction) {
+        throw new Error("模型返回了空的TOON响应，所有关键字段都为空");
+      }
+    }
+
+    return result;
   } catch (toonError) {
     try {
       // TOON失败后尝试JSON格式
-      return JSON.parse(cleanedTarget) as T;
+      const jsonResult = JSON.parse(cleanedTarget) as T;
+
+      // 同样验证JSON结果
+      if (jsonResult && typeof jsonResult === 'object') {
+        const hasMessage = (jsonResult as any).message && (jsonResult as any).message.length > 0;
+        const hasNextAction = (jsonResult as any).next_action;
+
+        if (!hasMessage && !hasNextAction) {
+          throw new Error("模型返回了空的JSON响应，所有关键字段都为空");
+        }
+      }
+
+      return jsonResult;
     } catch (jsonError) {
       try {
         // 如果JSON也失败，尝试提取结构化信息
-        return extractStructuredFromText(cleanedTarget) as T;
+        const structuredResult = extractStructuredFromText(cleanedTarget) as T;
+
+        // 验证结构化结果
+        if (structuredResult && typeof structuredResult === 'object') {
+          const hasMessage = (structuredResult as any).message && (structuredResult as any).message.length > 0;
+          const hasNextAction = (structuredResult as any).next_action;
+
+          if (!hasMessage && !hasNextAction) {
+            throw new Error("模型返回了空的结构化响应，所有关键字段都为空");
+          }
+        }
+
+        return structuredResult;
       } catch (structuredError) {
         throw new Error(
-          `TOON解码失败: ${(toonError as Error).message}; JSON解析失败: ${(
-            jsonError as Error
-          ).message}`,
+          `TOON解码失败: ${(toonError as Error).message}; JSON解析失败: ${(jsonError as Error).message}`,
         );
       }
     }
@@ -138,23 +172,51 @@ function cleanModelOutput(text: string): string {
 function extractStructuredFromText(text: string): any {
   const result: any = {};
 
-  // 提取message字段
-  const messageMatch = text.match(/message\s*:\s*["']?([^"'\n,}]+)/i) || text.match(/["']?message["']?\s*:\s*["']?([^"'\n,}]+)/i);
-  if (messageMatch) {
-    result.message = messageMatch[1].trim();
+  // 提取message字段 - 支持更宽松的匹配
+  const messagePatterns = [
+    /message\s*:\s*["']?([^"'\n,}]+)/i,
+    /["']?message["']?\s*:\s*["']?([^"'\n,}]+)/i,
+    /"message":\s*"([^"]+)"/,
+    /'message':\s*'([^']+)'/,
+  ];
+
+  for (const pattern of messagePatterns) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[1].trim().length > 0) {
+      result.message = match[1].trim();
+      break;
+    }
   }
 
-  // 提取next_action字段
-  const actionMatch = text.match(/next_action\s*:\s*["']?([^"'\n,}]+)/i) || text.match(/["']?next_action["']?\s*:\s*["']?([^"'\n,}]+)/i);
-  if (actionMatch) {
-    result.next_action = actionMatch[1].trim();
+  // 提取next_action字段 - 支持更宽松的匹配
+  const actionPatterns = [
+    /next_action\s*:\s*["']?([^"'\n,}]+)/i,
+    /["']?next_action["']?\s*:\s*["']?([^"'\n,}]+)/i,
+    /"next_action":\s*"([^"]+)"/,
+    /'next_action':\s*'([^']+)'/,
+  ];
+
+  for (const pattern of actionPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[1].trim().length > 0) {
+      const action = match[1].trim().toLowerCase();
+      // 验证action值是否有效
+      if (['ask_user', 'propose_tool', 'done'].includes(action)) {
+        result.next_action = action;
+        break;
+      }
+    }
   }
 
   // 如果能提取到基本信息，返回结构化对象
-  if (result.message || result.next_action) {
+  if (result.message && result.message.length > 0) {
+    // 确保next_action有默认值
+    if (!result.next_action) {
+      result.next_action = 'ask_user';
+    }
     result.reasoning = "从文本中提取的结构化信息";
     return result;
   }
 
-  throw new Error("无法从文本中提取结构化信息");
+  throw new Error("无法从文本中提取有效的结构化信息");
 }

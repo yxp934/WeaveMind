@@ -276,6 +276,24 @@ export async function POST(
         5000,
       );
 
+      // 增强错误日志记录
+      if (!dbOperationResult.success) {
+        console.error("数据库操作失败详情:", {
+          toolName,
+          actionData,
+          error: dbOperationResult.error,
+          message: dbOperationResult.message,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.log("数据库操作成功:", {
+          toolName,
+          message: dbOperationResult.message,
+          toolsUsed: dbOperationResult.toolsUsed,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const toolExecutionMeta: Record<string, any> = {
         confirmationExecuted: true,
         confirmedToolCallId: context.confirmToolCall.id,
@@ -2082,11 +2100,37 @@ ${actionData?.teachingGoals || ""}`;
         throw new Error(`不支持的操作类型: ${actionType}`);
     }
   } catch (error: any) {
-    console.error("数据库操作失败:", error);
+    console.error("数据库操作失败:", {
+      actionType,
+      actionData,
+      userId: user?.id,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 提供更详细的错误信息
+    const errorMessage = error.message || "未知数据库错误";
+    const isPermissionError = errorMessage.includes("permission") || errorMessage.includes("forbidden") || errorMessage.includes("权限");
+    const isConnectionError = errorMessage.includes("connection") || errorMessage.includes("network") || errorMessage.includes("连接");
+    const isValidationError = errorMessage.includes("validation") || errorMessage.includes("validate") || errorMessage.includes("验证");
+
+    let userFriendlyMessage = `❌ 数据库操作失败: ${errorMessage}`;
+
+    if (isPermissionError) {
+      userFriendlyMessage = "❌ 权限不足，请检查您的账户权限或联系管理员";
+    } else if (isConnectionError) {
+      userFriendlyMessage = "❌ 数据库连接失败，请稍后重试或联系技术支持";
+    } else if (isValidationError) {
+      userFriendlyMessage = "❌ 数据验证失败，请检查输入的数据格式和内容";
+    }
+
     return {
       success: false,
-      message: `❌ 数据库操作失败: ${error.message}`,
-      error: error.message,
+      message: userFriendlyMessage,
+      error: errorMessage,
+      errorType: isPermissionError ? "permission" : isConnectionError ? "connection" : isValidationError ? "validation" : "unknown",
+      timestamp: new Date().toISOString(),
     };
   }
 }

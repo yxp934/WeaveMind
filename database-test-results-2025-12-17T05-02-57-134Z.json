@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-12-17T05:02:57.141Z",
+  "report": {
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "successRate": 80,
+    "results": [
+      {
+        "name": "数据库连接",
+        "result": true
+      },
+      {
+        "name": "基本查询",
+        "result": true
+      },
+      {
+        "name": "管理员权限",
+        "result": true
+      },
+      {
+        "name": "RLS策略",
+        "result": false
+      },
+      {
+        "name": "实体管理",
+        "result": true
+      }
+    ]
+  },
+  "environment": {
+    "supabaseUrl": "configured",
+    "hasAnonKey": true,
+    "hasServiceKey": true
+  }
+}

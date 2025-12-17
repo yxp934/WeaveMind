@@ -188,105 +188,45 @@ function buildSystemPrompt(params: {
     lastCreatedClassId,
   } = params;
 
-  return `You are WeaveMind's teacher-side assistant, running inside a LangGraph agent.
+  return `You are WeaveMind's teacher assistant. You help teachers manage classes, sessions, and assignments.
 
-IMPORTANT DOMAIN RULES
-- The product uses "class" as the top-level teaching unit. A class has many "sessions". There is NO separate "course" entity.
-- Your job is to help the teacher manage classes, sessions, and assignments using tools.
+IMPORTANT: Always respond in ${preferredLanguage === "zh" ? "Chinese" : "English"}.
 
-OUTPUT FORMAT
-- You MUST output TOON only (no Markdown fences, no JSON).
-- Always reply in the user's language. If the user writes Chinese, reply in Chinese. Otherwise reply in English.
-
-The response MUST be wrapped exactly like this (no extra text before/after):
+OUTPUT FORMAT:
+You must output in TOON format using exactly this structure:
 ---BEGIN_TOON---
-message: ...
-next_action: ask_user|propose_tool|done
-proposed_tool:
-  toolName: ...
-  input: ...
-agent_state: ...
-reasoning: ...
+message: [your helpful response here]
+next_action: ask_user
 ---END_TOON---
 
-TOOL CONFIRMATION + EXECUTION RULES
-- You never execute tools directly. You only PROPOSE one tool call at a time.
-- Every proposed tool call requires explicit user confirmation via a UI button.
-- Max tool executions per user goal: 5 total. Already executed: ${toolCallsExecuted}. Remaining: ${toolCallsRemaining}.
-- If remaining tool calls is 0, do not propose a tool; ask the user to simplify or start a new goal.
-- Never invent IDs or pretend data exists. If you need data, propose a read tool first.
-
-AVAILABLE TOOLS (you can propose exactly one per turn)
-1) entity_management
-   Purpose: CRUD for classes/sessions/assignments.
-   Input:
-     action: one of create|read|update|delete|list
-     entity: one of class|session|assignment
-     classId/sessionId/assignmentId: as needed
-     details: object with fields for create/update (name/description for class; title/description/scheduledDate/startTime for session; title/description/dueDate for assignment)
-   Notes:
-     - For session/assignment operations, classId is usually required.
-     - For list operations, if classId is missing and needed, ask the user to select a class or provide the classId.
-
-2) create_sessions_batch
-   Purpose: Create multiple sessions for a class in one database action.
-   Input:
-     classId: UUID
-     sessions: array of { title, description?, scheduledDate?, startTime?, endTime?, durationMinutes? }
-   Notes:
-     - Do not assume dates/times. If scheduling matters, ask.
-
-3) generate_class_outline_draft
-   Purpose: Generate a draft outline for each session of a class (AI generation; no DB write).
-   Input:
-     classId: UUID
-     language: "zh" | "en"
-     teachingGoals?: string
-   Notes:
-     - After generation, you must guide the user to confirm EACH session outline (one by one).
-     - You should not save outlines until the user confirms all.
-
-4) save_class_outline
-   Purpose: Save the confirmed outline into the database (class-based outline).
-   Input:
-     classId: UUID
-     requirements: object
-     chapters: array (one per session)
-     language: "zh" | "en"
-
-SPECIAL WORKFLOW: Creating a class (MUST follow this sequence)
-If the user wants to create a class:
-1) Propose the DB tool to create the class (entity_management: action=create, entity=class).
-2) After it succeeds, create ALL sessions for that class (prefer create_sessions_batch).
-3) After sessions exist, generate outlines for every session (generate_class_outline_draft).
-4) Ask the user to confirm each session's outline (one session per turn). Apply user edits.
-5) Only after all session outlines are confirmed, save to DB (save_class_outline).
-
-CONTEXT YOU MAY USE
-- selectedClassId: ${selectedClassId || "null"}
-- selectedSessionId: ${selectedSessionId || "null"}
-- selectedAssignmentId: ${selectedAssignmentId || "null"}
-- lastCreatedClassId: ${lastCreatedClassId || "null"}
-
-STATEFUL OUTLINE REVIEW (if present in conversation context)
-- If you have an existing outline draft in context (from a prior tool result), continue confirming session outlines.
-- Never lose track of which session is being confirmed.
-
-WHAT TO DO EACH TURN
-- Decide the user's goal.
-- If you need missing parameters, ask the user (no tool proposal).
-- Otherwise propose exactly one tool call needed next.
-- For multi-tool tasks, after each tool executes, summarize what happened and ask for the next required info before proposing the next tool.
-
-Return TOON with these keys:
-message: string
-next_action: ask_user|propose_tool|done
+Or when proposing a tool:
+---BEGIN_TOON---
+message: [explanation of what you will do]
+next_action: propose_tool
 proposed_tool:
-  toolName: string
-  input: object
-agent_state: object (store any needed state such as outlineDraft, outlineIndex, etc)
-reasoning: string (brief)
-`;
+  toolName: [tool name]
+  input: [tool parameters]
+---END_TOON---
+
+AVAILABLE TOOLS:
+1. entity_management - Create, read, update, delete classes/sessions/assignments
+2. create_sessions_batch - Create multiple sessions for a class
+3. generate_class_outline_draft - Generate AI outlines for sessions
+4. save_class_outline - Save confirmed outlines to database
+
+RULES:
+- You can only propose ONE tool per turn
+- All tools need user confirmation before execution
+- Maximum 5 tool calls per goal (${toolCallsRemaining} remaining)
+- If no tool needed, use next_action: ask_user
+- Be helpful and explain what you're doing
+
+CONTEXT:
+- Selected Class: ${selectedClassId || "none"}
+- Selected Session: ${selectedSessionId || "none"}
+- Last Created Class: ${lastCreatedClassId || "none"}
+
+Always be helpful and guide the user step by step.`;
 }
 
 function countExecutedToolCallsFromHistory(
@@ -1574,115 +1514,14 @@ export async function teacherReactAgentNode(
     reasoning?: string;
   };
 
+  // 改进的解析逻辑 - 专门处理简化后的TOON格式
   try {
     parsed = parseModelResponse(text);
   } catch (err: any) {
-    // 改进的错误处理：更智能的意图检测和响应
-    parsed = handleParseError(userText, state, preferredLanguage, err);
-  }
+    console.warn("模型输出解析失败:", err?.message);
 
-  /**
-   * 处理解析错误，提供智能的fallback响应
-   */
-  function handleParseError(userText: string, state: any, preferredLanguage: string, err: any): any {
-    const normalized = userText.toLowerCase();
-
-    // 改进的意图检测模式
-    const intentPatterns = {
-      list: /(有哪些|列出|查看|show|list|what|which|获取|get)/i.test(userText),
-      create: /(创建|create|新增|add|新建|new|开|开设)/i.test(userText),
-      update: /(修改|update|编辑|edit|更改|change|更新)/i.test(userText),
-      delete: /(删除|delete|移除|remove|取消|cancel)/i.test(userText),
-      query: /(查询|search|查找|find|搜索)/i.test(userText),
-    };
-
-    // 实体类型检测
-    const entityPatterns = {
-      class: /(班级|class|classes|年级|grade|班级)/i.test(userText),
-      session: /(课次|课|session|sessions|章节|chapter|课时)/i.test(userText),
-      assignment: /(作业|assignment|assignments|任务|task|练习|exercise)/i.test(userText),
-      course: /(课程|course|课程|subject)/i.test(userText),
-    };
-
-    // 确定主要意图
-    const detectedIntent = Object.keys(intentPatterns).find(key => intentPatterns[key as keyof typeof intentPatterns]) || "ask";
-    const detectedEntity = Object.keys(entityPatterns).find(key => entityPatterns[key as keyof typeof entityPatterns]);
-
-    // 根据意图和实体提供智能响应
-    if (detectedIntent === "list" && detectedEntity) {
-      return {
-        message:
-          preferredLanguage === "zh"
-            ? `我理解您想查看${getEntityNameCn(detectedEntity)}列表。我可以帮您从数据库中获取这些信息。请确认执行查询。`
-            : `I understand you want to list ${detectedEntity}s. I can help retrieve this information from the database. Please confirm to run the query.`,
-        next_action: "propose_tool",
-        proposed_tool: {
-          toolName: "entity_management",
-          input: {
-            action: "list",
-            entity: detectedEntity,
-            classId: state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId || null,
-          },
-        },
-        agent_state: state.metadata?.agentState || {},
-        reasoning: `Fallback: Model output parsing failed (${err?.message || String(err)}). Intention: ${detectedIntent} ${detectedEntity}`,
-      };
-    }
-
-    if (detectedIntent === "create" && detectedEntity) {
-      return {
-        message:
-          preferredLanguage === "zh"
-            ? `我理解您想创建新的${getEntityNameCn(detectedEntity)}。我将指导您完成创建过程。`
-            : `I understand you want to create a new ${detectedEntity}. I'll guide you through the creation process.`,
-        next_action: "ask_user",
-        proposed_tool: {
-          toolName: "entity_management",
-          input: {
-            action: "create",
-            entity: detectedEntity,
-            classId: state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId || null,
-          },
-        },
-        agent_state: state.metadata?.agentState || {},
-        reasoning: `Fallback: Model output parsing failed (${err?.message || String(err)}). Intention: ${detectedIntent} ${detectedEntity}`,
-      };
-    }
-
-    // 不使用预设fallback，让错误真正暴露
-    throw new Error(`模型输出解析失败，无法处理用户意图。原始错误：${err?.message || String(err)}`);
-  }
-
-  /**
-   * 获取实体中文名称
-   */
-  function getEntityNameCn(entity: string): string {
-    const names: Record<string, string> = {
-      class: "班级",
-      session: "课次",
-      assignment: "作业",
-      course: "课程",
-    };
-    return names[entity] || entity;
-  }
-
-  /**
-   * 根据上下文提供建议操作
-   */
-  function getContextualSuggestions(preferredLanguage: string, state: any): string {
-    if (preferredLanguage === "zh") {
-      const hasClass = state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId;
-      if (hasClass) {
-        return "• 列出班级的课次\n• 创建新作业\n• 查看课程内容\n• 查看学生列表";
-      }
-      return "• 创建新班级\n• 查看已创建的班级\n• 管理课程内容";
-    } else {
-      const hasClass = state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId;
-      if (hasClass) {
-        return "• List class sessions\n• Create new assignment\n• View course content\n• View student list";
-      }
-      return "• Create new class\n• View existing classes\n• Manage course content";
-    }
+    // 简化fallback逻辑 - 不使用预设回复，直接抛出错误暴露问题
+    throw new Error(`模型输出解析失败: ${err?.message || String(err)}。请检查提示词和模型设置。`);
   }
 
   const assistantMessage = new AIMessage({
