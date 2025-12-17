@@ -112,26 +112,16 @@ ${conversationHistory}
       }>(text)
     } catch (e) {
       console.error('解析通用聊天响应失败:', e)
-      result = {
-        message: '您好！我是WeaveMind AI学习助手。我可以帮助您创建课程、生成大纲、设计作业等。请告诉我您想做什么？',
-        suggestions: [
-          '帮我创建一个课程',
-          '生成课程大纲',
-          '设计一份作业',
-          '使用A2A优化内容'
-        ],
-        availableActions: ['course_creation', 'outline_generation', 'assignment_creation', 'a2a_optimization'],
-        metadata: {
-          toolsUsed: [],
-          intent: 'general_chat',
-          confidence: 1.0
-        }
-      }
+      // 删除预设消息，抛出错误让用户知道模型解析失败
+      throw new Error(`TOON格式解析失败: ${e.message}。请重新输入您的请求。`)
     }
 
     // 创建AI响应消息
+    if (!result.message) {
+      throw new Error('AI模型返回了空的响应内容')
+    }
     const aiMessage = new AIMessage({
-      content: result.message || '您好！我是WeaveMind AI学习助手。',
+      content: result.message,
       additional_kwargs: {
         intent: 'general_chat',
         suggestions: result.suggestions,

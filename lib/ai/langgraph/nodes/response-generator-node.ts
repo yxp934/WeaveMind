@@ -58,7 +58,8 @@ export function responseGeneratorNode(state: ChatbotState): {
     response: {
       ...structuredResponse,
       metadata: metadataForClient,
-      message: toonString,
+      // 修复：只返回message字段，不返回完整TOON格式
+      // 前端期望自然语言内容，不是TOON格式
     },
   };
 }
