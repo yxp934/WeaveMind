@@ -1649,18 +1649,8 @@ export async function teacherReactAgentNode(
       };
     }
 
-    // 默认友好响应
-    const suggestions = getContextualSuggestions(preferredLanguage, state);
-    return {
-      message:
-        preferredLanguage === "zh"
-          ? `抱歉，我遇到了一些解析问题。但我可以帮助您：\n${suggestions}\n\n请告诉我您想做什么？`
-          : `Sorry, I encountered a parsing issue. But I can help you with:\n${suggestions}\n\nWhat would you like to do?`,
-      next_action: "ask_user",
-      proposed_tool: null,
-      agent_state: state.metadata?.agentState || {},
-      reasoning: `Fallback: Model output parsing failed (${err?.message || String(err)}). Default assistance provided.`,
-    };
+    // 不使用预设fallback，让错误真正暴露
+    throw new Error(`模型输出解析失败，无法处理用户意图。原始错误：${err?.message || String(err)}`);
   }
 
   /**
@@ -1696,7 +1686,7 @@ export async function teacherReactAgentNode(
   }
 
   const assistantMessage = new AIMessage({
-    content: parsed.message || (preferredLanguage === "zh" ? "我可以帮您。" : "I can help."),
+    content: parsed.message,
     additional_kwargs: {
       metadata: {
         ...(state.metadata || {}),

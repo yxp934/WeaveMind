@@ -105,12 +105,6 @@ function tryLooseExtraction(text: string): string {
     return jsonMatch[0];
   }
 
-  // 尝试查找结构化文本
-  const structureMatch = cleaned.match(/message\s*:\s*["'][^"']*["'][\s\S]*?next_action\s*:\s*["'][^"']*["']/i);
-  if (structureMatch) {
-    return `{${structureMatch[0]}}`;
-  }
-
   return "";
 }
 
