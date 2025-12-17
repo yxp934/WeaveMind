@@ -216,10 +216,28 @@ export async function POST(
       }
 
       // Enforce max tool executions (5) per conversation context.
-      const executedCount =
-        (context.conversationHistory || []).filter(
-          (m: any) => Boolean(m?.metadata?.confirmationExecuted),
-        ).length;
+      const executedKeys = new Set<string>();
+      for (const m of context.conversationHistory || []) {
+        const meta = (m as any)?.metadata || null;
+        if (!meta?.confirmationExecuted) continue;
+        const id =
+          typeof meta.confirmedToolCallId === "string"
+            ? meta.confirmedToolCallId
+            : null;
+        const ts =
+          typeof meta.toolExecutionTimestamp === "string"
+            ? meta.toolExecutionTimestamp
+            : null;
+        const tool =
+          typeof meta.lastExecutedTool === "string"
+            ? meta.lastExecutedTool
+            : typeof meta.actionType === "string"
+              ? meta.actionType
+              : "tool";
+        const key = id || (ts ? `${tool}@${ts}` : null);
+        if (key) executedKeys.add(key);
+      }
+      const executedCount = executedKeys.size;
       if (executedCount >= 5) {
         return NextResponse.json(
           {

@@ -1577,53 +1577,121 @@ export async function teacherReactAgentNode(
   try {
     parsed = parseModelResponse(text);
   } catch (err: any) {
-    const normalized = userText.toLowerCase();
-    const wantsList =
-      /(有哪些|列出|查看|show|list|what|which)/i.test(userText) ||
-      /(show|list|what|which)/i.test(normalized);
-    const mentionsClass = /(班级|class|classes)/i.test(userText);
-    const mentionsSession = /(课次|课|session|sessions)/i.test(userText);
-    const mentionsAssignment = /(作业|assignment|assignments)/i.test(userText);
-    const fallbackEntity = mentionsClass
-      ? "class"
-      : mentionsSession
-        ? "session"
-        : mentionsAssignment
-          ? "assignment"
-          : null;
+    // 改进的错误处理：更智能的意图检测和响应
+    parsed = handleParseError(userText, state, preferredLanguage, err);
+  }
 
-    if (wantsList && fallbackEntity) {
-      parsed = {
+  /**
+   * 处理解析错误，提供智能的fallback响应
+   */
+  function handleParseError(userText: string, state: any, preferredLanguage: string, err: any): any {
+    const normalized = userText.toLowerCase();
+
+    // 改进的意图检测模式
+    const intentPatterns = {
+      list: /(有哪些|列出|查看|show|list|what|which|获取|get)/i.test(userText),
+      create: /(创建|create|新增|add|新建|new|开|开设)/i.test(userText),
+      update: /(修改|update|编辑|edit|更改|change|更新)/i.test(userText),
+      delete: /(删除|delete|移除|remove|取消|cancel)/i.test(userText),
+      query: /(查询|search|查找|find|搜索)/i.test(userText),
+    };
+
+    // 实体类型检测
+    const entityPatterns = {
+      class: /(班级|class|classes|年级|grade|班级)/i.test(userText),
+      session: /(课次|课|session|sessions|章节|chapter|课时)/i.test(userText),
+      assignment: /(作业|assignment|assignments|任务|task|练习|exercise)/i.test(userText),
+      course: /(课程|course|课程|subject)/i.test(userText),
+    };
+
+    // 确定主要意图
+    const detectedIntent = Object.keys(intentPatterns).find(key => intentPatterns[key as keyof typeof intentPatterns]) || "ask";
+    const detectedEntity = Object.keys(entityPatterns).find(key => entityPatterns[key as keyof typeof entityPatterns]);
+
+    // 根据意图和实体提供智能响应
+    if (detectedIntent === "list" && detectedEntity) {
+      return {
         message:
           preferredLanguage === "zh"
-            ? "我可以从数据库中查询并列出你的数据。请确认执行查询。"
-            : "I can query the database and list your data. Please confirm to run the query.",
+            ? `我理解您想查看${getEntityNameCn(detectedEntity)}列表。我可以帮您从数据库中获取这些信息。请确认执行查询。`
+            : `I understand you want to list ${detectedEntity}s. I can help retrieve this information from the database. Please confirm to run the query.`,
         next_action: "propose_tool",
         proposed_tool: {
           toolName: "entity_management",
           input: {
             action: "list",
-            entity: fallbackEntity,
-            classId:
-              state.metadata?.selectedClassId ||
-              state.metadata?.lastCreatedClassId ||
-              null,
+            entity: detectedEntity,
+            classId: state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId || null,
           },
         },
         agent_state: state.metadata?.agentState || {},
-        reasoning: `Fallback: model output was not valid TOON (${err?.message || String(err)}).`,
+        reasoning: `Fallback: Model output parsing failed (${err?.message || String(err)}). Intention: ${detectedIntent} ${detectedEntity}`,
       };
-    } else {
-      parsed = {
+    }
+
+    if (detectedIntent === "create" && detectedEntity) {
+      return {
         message:
           preferredLanguage === "zh"
-            ? "我刚才没能稳定解析模型输出。请再说一次你的目标（例如：列出班级 / 创建班级 / 创建课次 / 创建作业），我会一步步带你完成。"
-            : "I couldn't reliably parse the model output. Please restate your goal (e.g., list classes / create a class / create sessions / create assignments), and I'll guide you step by step.",
+            ? `我理解您想创建新的${getEntityNameCn(detectedEntity)}。我将指导您完成创建过程。`
+            : `I understand you want to create a new ${detectedEntity}. I'll guide you through the creation process.`,
         next_action: "ask_user",
-        proposed_tool: null,
+        proposed_tool: {
+          toolName: "entity_management",
+          input: {
+            action: "create",
+            entity: detectedEntity,
+            classId: state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId || null,
+          },
+        },
         agent_state: state.metadata?.agentState || {},
-        reasoning: `Fallback: model output was not valid TOON (${err?.message || String(err)}).`,
+        reasoning: `Fallback: Model output parsing failed (${err?.message || String(err)}). Intention: ${detectedIntent} ${detectedEntity}`,
       };
+    }
+
+    // 默认友好响应
+    const suggestions = getContextualSuggestions(preferredLanguage, state);
+    return {
+      message:
+        preferredLanguage === "zh"
+          ? `抱歉，我遇到了一些解析问题。但我可以帮助您：\n${suggestions}\n\n请告诉我您想做什么？`
+          : `Sorry, I encountered a parsing issue. But I can help you with:\n${suggestions}\n\nWhat would you like to do?`,
+      next_action: "ask_user",
+      proposed_tool: null,
+      agent_state: state.metadata?.agentState || {},
+      reasoning: `Fallback: Model output parsing failed (${err?.message || String(err)}). Default assistance provided.`,
+    };
+  }
+
+  /**
+   * 获取实体中文名称
+   */
+  function getEntityNameCn(entity: string): string {
+    const names: Record<string, string> = {
+      class: "班级",
+      session: "课次",
+      assignment: "作业",
+      course: "课程",
+    };
+    return names[entity] || entity;
+  }
+
+  /**
+   * 根据上下文提供建议操作
+   */
+  function getContextualSuggestions(preferredLanguage: string, state: any): string {
+    if (preferredLanguage === "zh") {
+      const hasClass = state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId;
+      if (hasClass) {
+        return "• 列出班级的课次\n• 创建新作业\n• 查看课程内容\n• 查看学生列表";
+      }
+      return "• 创建新班级\n• 查看已创建的班级\n• 管理课程内容";
+    } else {
+      const hasClass = state.metadata?.selectedClassId || state.metadata?.lastCreatedClassId;
+      if (hasClass) {
+        return "• List class sessions\n• Create new assignment\n• View course content\n• View student list";
+      }
+      return "• Create new class\n• View existing classes\n• Manage course content";
     }
   }
 

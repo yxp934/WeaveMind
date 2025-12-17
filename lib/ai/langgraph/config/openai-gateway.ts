@@ -19,6 +19,6 @@ export function createGatewayOpenAI() {
 
 /**
  * 默认的AI模型配置
- * 使用项目中实际可用的模型
+ * 使用更稳定、更可靠的模型，确保TOON格式输出
  */
-export const DEFAULT_MODEL = 'google/gemini-2.5-flash-lite'
+export const DEFAULT_MODEL = 'meituan/longcat-flash-chat'
