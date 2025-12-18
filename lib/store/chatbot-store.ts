@@ -531,19 +531,21 @@ export const useChatbotStore = create<ChatbotStore>()(
             const rawMessage = data?.data?.message || "";
             let displayMessage = rawMessage;
             let parsed: any = null;
-            try {
-              parsed = parseModelResponse(rawMessage);
-              if (parsed?.message && typeof parsed.message === "string") {
-                displayMessage = parsed.message;
+
+            // 如果原始消息是TOON格式，才进行解析
+            if (rawMessage.includes('---BEGIN_TOON---') || rawMessage.includes('---END_TOON---')) {
+              try {
+                parsed = parseModelResponse(rawMessage);
+                if (parsed?.message && typeof parsed.message === "string") {
+                  displayMessage = parsed.message;
+                }
+              } catch (error) {
+                console.warn('TOON解析失败，使用原始消息:', error);
+                // 解析失败则使用原始消息
               }
-            } catch {
-              // Not TOON; keep raw string
-            }
-            if (!parsed?.message || typeof parsed.message !== "string") {
-              const extracted = extractMessageFromToon(rawMessage);
-              if (extracted) {
-                displayMessage = extracted;
-              }
+            } else {
+              // 纯文本消息直接使用
+              displayMessage = rawMessage;
             }
 
             const pendingToolCall =
