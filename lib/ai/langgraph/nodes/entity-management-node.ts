@@ -33,8 +33,11 @@ export async function entityManagementNode(
   }
 
   const params = state.intent?.parameters || {}
-  const action: CrudAction = params.action || 'read'
-  const entity: EntityType = params.entity || 'class'
+
+  // 优先从 metadata.actionData 获取参数（来自 teacher-react-agent-node 的 propose_tool）
+  const actionData = state.metadata?.actionData || {}
+  const action: CrudAction = params.action || actionData.action || 'read'
+  const entity: EntityType = params.entity || actionData.entity || 'class'
 
   const summary = buildSummary(action, entity)
 
