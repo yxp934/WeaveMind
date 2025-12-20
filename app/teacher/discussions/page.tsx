@@ -117,13 +117,42 @@ export default function TeacherDiscussionsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setCurrentUserId(user.id);
-        // 这里应该从上下文或路由参数获取classId
-        // 临时使用模拟值
-        const mockClassId = 'mock-class-id';
-        setCurrentClassId(mockClassId);
+
+        // Get the user's first class from organization_members
+        const { data: memberData } = await supabase
+          .from('organization_members')
+          .select(`
+            organization_id,
+            organizations!inner(
+              classes(id)
+            )
+          `)
+          .eq('user_id', user.id)
+          .eq('role', 'teacher')
+          .limit(1)
+          .single();
+
+        const orgs = memberData?.organizations as { classes: { id: string }[] } | undefined;
+        if (orgs?.classes?.[0]?.id) {
+          setCurrentClassId(orgs.classes[0].id);
+        } else {
+          // Try to get any class the teacher has access to
+          const { data: classData } = await supabase
+            .from('classes')
+            .select('id')
+            .limit(1)
+            .single();
+
+          if (classData?.id) {
+            setCurrentClassId(classData.id);
+          } else {
+            setIsLoading(false);
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading current user:', error);
+      setIsLoading(false);
     }
   };
 
@@ -720,7 +749,7 @@ export default function TeacherDiscussionsPage() {
                       placeholder="Write a comment..."
                       value={replyContent}
                       onChange={(e) => setReplyContent(e.target.value)}
-                      onKeyPress={(e) => {
+                      onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           handleAddComment();
@@ -730,7 +759,7 @@ export default function TeacherDiscussionsPage() {
                     />
                     <Button
                       onClick={handleAddComment}
-                      size="icon"
+                      size="sm"
                       className="size-8 rounded-lg bg-[#B882B1] hover:opacity-90"
                     >
                       <Send className="size-4" />
