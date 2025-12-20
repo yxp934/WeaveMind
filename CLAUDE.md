@@ -127,6 +127,74 @@ File: `/middleware.ts`
 - Redirects unauthenticated users to `/auth/login`
 - Forces role selection for users without a role
 
+## Specialized AI Development Team
+
+This project uses a specialized AI development team with 5 dedicated agents, each focusing on specific aspects of WeaveMind LMS development. These agents are located in `.claude/agents/` and should be used for all development tasks.
+
+### Team Members
+
+#### 1. WeaveMind Task Dispatch Agent
+**File**: `.claude/agents/weavemind-task-dispatch-agent.md`
+- **Purpose**: Coordinate and delegate development tasks across the team
+- **Responsibilities**: Task decomposition, agent coordination, progress tracking
+- **When to use**: When you need to break down complex tasks and delegate to specialists
+
+#### 2. WeaveMind Frontend Developer Agent
+**File**: `.claude/agents/weavemind-frontend-developer.md`
+- **Purpose**: Frontend development with Next.js 15, React 19, TypeScript, Tailwind CSS
+- **Responsibilities**: Page development, component creation, UI/UX implementation
+- **Technology Stack**: Next.js 15 App Router, React 19, TypeScript, Tailwind CSS, shadcn/ui
+- **When to use**: For any frontend development work
+
+#### 3. WeaveMind Backend Developer Agent
+**File**: `.claude/agents/weavemind-backend-developer.md`
+- **Purpose**: Backend development with Next.js API routes and Supabase
+- **Responsibilities**: API routes, server-side logic, authentication, AI integration
+- **Technology Stack**: Next.js API Routes, Vercel AI SDK, BullMQ, Redis
+- **When to use**: For any backend/API development work
+
+#### 4. WeaveMind Database & Supabase Agent
+**File**: `.claude/agents/weavemind-database-supabase-agent.md`
+- **Purpose**: Database schema design, migrations, and RLS policies
+- **Responsibilities**: Schema design, migration management, RLS policies, optimization
+- **Technology Stack**: PostgreSQL, Supabase, pgvector, RLS
+- **When to use**: For any database-related tasks
+
+#### 5. WeaveMind Audit Agent
+**File**: `.claude/agents/weavemind-audit-agent.md`
+- **Purpose**: Comprehensive testing and auditing using Playwright MCP
+- **Responsibilities**: E2E testing, security auditing, production validation
+- **Testing**: Local testing + Production testing at weavemind.vercel.app
+- **When to use**: For all testing, auditing, and quality assurance tasks
+
+### Agent Collaboration Pattern
+
+**IMPORTANT**: All development tasks MUST use these agents. Never attempt to implement solutions directly without delegating to the appropriate specialist agent.
+
+#### Task Flow:
+1. **Receive task** → WeaveMind Task Dispatch Agent analyzes
+2. **Decompose** → Break into agent-specific subtasks
+3. **Delegate** → Assign to appropriate specialized agents:
+   - Frontend work → Frontend Developer Agent
+   - Backend work → Backend Developer Agent
+   - Database work → Database & Supabase Agent
+   - Testing work → Audit Agent
+4. **Monitor** → Task Dispatch Agent tracks progress
+5. **Validate** → Audit Agent tests all changes
+6. **Report** → Provide status updates to user
+
+#### Testing Workflow (CRITICAL):
+1. **Local Development** → Agents develop locally
+2. **Local Testing** → Audit Agent tests locally with Playwright MCP
+3. **Commit & Push** → Changes pushed to GitHub
+4. **Wait 120 seconds** → Allow Vercel deployment to complete
+5. **Production Testing** → Audit Agent tests at weavemind.vercel.app
+6. **Full Report** → Comprehensive test report with any issues
+
+**Test Account**:
+- Email: jzibclub@jzib.com
+- Password: Lao1dian5
+
 ## Critical Development Rules
 
 ### Development Sequence (CRITICAL)
