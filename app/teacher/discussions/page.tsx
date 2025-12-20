@@ -1,559 +1,861 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  MessageCircle,
-  Plus,
-  Search,
-  Filter,
-  TrendingUp,
-  Users,
-  Clock,
-  Heart,
-  Reply,
-  MoreHorizontal,
-  Pin,
+  ArrowLeft,
+  GraduationCap,
+  Loader2,
   Lock,
-  Globe,
-  BookOpen,
-  Calendar,
-  Award,
-  Target
+  MessageSquare,
+  Pin,
+  Send,
+  ThumbsUp,
+  Trash2,
+  User as UserIcon,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Avatar } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { apiClient } from '@/lib/api-client';
-import { useRealtime } from '@/components/realtime/hooks';
+import { type User } from '@supabase/supabase-js';
+import { Navigation } from '@/components/teacher/design';
+import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
+import { createClient } from '@/lib/supabase/client';
+import { cn } from '@/lib/utils';
 
-// 讨论线程类型
-interface DiscussionThread {
+interface Topic {
   id: string;
   title: string;
-  description: string;
-  category: string;
+  description?: string | null;
+  class_id: string;
+  type: 'general' | 'course' | 'assignment' | 'announcement';
   is_pinned: boolean;
   is_locked: boolean;
-  created_at: string;
-  updated_at: string;
-  author: {
+  last_activity_at: string;
+  post_count: number;
+  creator?: {
     id: string;
-    name: string;
+    username?: string;
+    full_name?: string;
     avatar_url?: string;
-    role: string;
   };
-  posts_count: number;
-  last_post_at?: string;
-  participants_count: number;
-  views_count: number;
-  likes_count: number;
 }
 
-// 讨论帖子类型
-interface DiscussionPost {
+interface DiscussionItem {
   id: string;
+  title?: string | null;
+  content: string;
+  createdAt: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  role: 'teacher' | 'student' | 'assistant' | 'observer' | 'unknown';
+  likes: number;
+  userLiked: boolean;
+  children: DiscussionItem[];
+}
+
+interface ClassMembership {
+  id: string;
+  name: string;
+  role: string;
+}
+
+interface ApiResponse<T> {
+  success?: boolean;
+  data?: T;
+  error?: string;
+}
+
+interface PostWithMeta {
+  id: string;
+  thread_id: string;
+  parent_post_id?: string | null;
+  user_id: string;
+  title?: string | null;
   content: string;
   created_at: string;
-  updated_at: string;
-  author: {
+  author?: {
     id: string;
-    name: string;
+    username?: string;
+    full_name?: string;
     avatar_url?: string;
-    role: string;
   };
-  likes_count: number;
-  replies?: DiscussionPost[];
+  reactions?: {
+    like_count: number;
+    dislike_count: number;
+    user_reaction?: string;
+  };
+  children?: PostWithMeta[];
 }
 
 export default function TeacherDiscussionsPage() {
-  const [threads, setThreads] = useState<DiscussionThread[]>([]);
-  const [selectedThread, setSelectedThread] = useState<DiscussionThread | null>(null);
-  const [posts, setPosts] = useState<DiscussionPost[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('latest');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [newThread, setNewThread] = useState({
-    title: '',
-    description: '',
-    category: 'general'
-  });
-  const [newPostContent, setNewPostContent] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClient(), []);
 
-  // 实时订阅讨论更新
-  const { data: threadUpdates } = useRealtime('discussion_threads', {
-    onInsert: (payload) => {
-      setThreads(prev => [payload, ...prev]);
+  const [user, setUser] = useState<User | null>(null);
+  const [memberships, setMemberships] = useState<ClassMembership[]>([]);
+  const [activeClassId, setActiveClassId] = useState<string | null>(null);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [discussions, setDiscussions] = useState<DiscussionItem[]>([]);
+  const [topicFormOpen, setTopicFormOpen] = useState(false);
+  const [discussionFormOpen, setDiscussionFormOpen] = useState(false);
+  const [topicForm, setTopicForm] = useState({ title: '', description: '', type: 'general' });
+  const [discussionForm, setDiscussionForm] = useState({ title: '', content: '' });
+  const [replyContent, setReplyContent] = useState<Record<string, string>>({});
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [loadingTopics, setLoadingTopics] = useState(false);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [processing, setProcessing] = useState(false);
+
+  const activeTopic = topics.find((t) => t.id === selectedTopicId) || null;
+  const activeClassRole = memberships.find((c) => c.id === activeClassId)?.role;
+
+  const teacherProfile = {
+    name: user?.user_metadata?.full_name || user?.email || 'Teacher',
+    avatar:
+      user?.user_metadata?.avatar_url ||
+      (user?.email ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email)}&background=B882B1&color=fff` : '/default-avatar.png'),
+    organization: user?.user_metadata?.organization || 'WeaveMind',
+  };
+
+  const formatName = (author?: { full_name?: string; username?: string; id?: string }) => {
+    return author?.full_name || author?.username || author?.id || '未知用户';
+  };
+
+  const formatRelativeTime = (date: string) => {
+    const now = Date.now();
+    const diff = now - new Date(date).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes} 分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} 小时前`;
+    const days = Math.floor(hours / 24);
+    return `${days} 天前`;
+  };
+
+  const gatherAuthorRoles = useCallback(
+    async (classId: string, userIds: string[]) => {
+      if (!userIds.length) return {} as Record<string, string>;
+      const { data } = await supabase
+        .from('class_members')
+        .select('user_id, role')
+        .eq('class_id', classId)
+        .in('user_id', Array.from(new Set(userIds)));
+
+      return (data || []).reduce((acc, curr) => {
+        acc[curr.user_id] = curr.role;
+        return acc;
+      }, {} as Record<string, string>);
     },
-    onUpdate: (payload) => {
-      setThreads(prev => prev.map(t => t.id === payload.id ? payload : t));
+    [supabase]
+  );
+
+  const transformPosts = useCallback(
+    (posts: PostWithMeta[], roleMap: Record<string, string>): DiscussionItem[] => {
+      return posts.map((post) => ({
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        createdAt: post.created_at,
+        authorId: post.user_id,
+        authorName: formatName(post.author),
+        authorAvatar:
+          post.author?.avatar_url ||
+          (post.author?.full_name
+            ? `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.full_name)}&background=B882B1&color=fff`
+            : undefined),
+        role: (roleMap[post.user_id] as DiscussionItem['role']) || 'unknown',
+        likes: post.reactions?.like_count || 0,
+        userLiked: post.reactions?.user_reaction === 'like',
+        children: transformPosts(post.children || [], roleMap),
+      }));
     },
-    onDelete: (payload) => {
-      setThreads(prev => prev.filter(t => t.id !== payload.id));
+    []
+  );
+
+  const loadUser = useCallback(async () => {
+    const { data } = await supabase.auth.getUser();
+    setUser(data.user);
+  }, [supabase]);
+
+  const loadClasses = useCallback(async () => {
+    const { data } = await supabase
+      .from('class_members')
+      .select('class_id, role, classes(name)')
+      .eq('user_id', user?.id || '');
+
+    const mapped = (data || []).map((item) => ({
+      id: item.class_id,
+      name: item.classes?.name || '未命名班级',
+      role: item.role,
+    }));
+
+    setMemberships(mapped);
+
+    const presetClass = searchParams.get('classId');
+    const target = presetClass && mapped.find((m) => m.id === presetClass) ? presetClass : mapped[0]?.id;
+    setActiveClassId(target || null);
+  }, [searchParams, supabase, user?.id]);
+
+  const loadTopics = useCallback(async () => {
+    if (!activeClassId) {
+      setTopics([]);
+      setSelectedTopicId(null);
+      return;
     }
-  });
-
-  // 加载讨论线程
-  useEffect(() => {
-    loadThreads();
-  }, [selectedCategory, sortBy]);
-
-  // 加载帖子详情
-  useEffect(() => {
-    if (selectedThread) {
-      loadPosts(selectedThread.id);
-    }
-  }, [selectedThread]);
-
-  const loadThreads = async () => {
+    setLoadingTopics(true);
     try {
-      setIsLoading(true);
-      const data = await apiClient.discussions.listThreads();
-      let filteredData = data || [];
-
-      // 过滤分类
-      if (selectedCategory !== 'all') {
-        filteredData = filteredData.filter((thread: DiscussionThread) =>
-          thread.category === selectedCategory
-        );
+      const response = await fetch(
+        `/api/discussions/threads?class_id=${activeClassId}&sortBy=last_activity_at&sortOrder=desc`,
+        { cache: 'no-store' }
+      );
+      const result: ApiResponse<Topic[]> = await response.json();
+      if (!response.ok || result.error) {
+        setStatusMessage(result.error || '无法加载讨论话题');
+        setTopics([]);
+        return;
       }
 
-      // 搜索过滤
-      if (searchTerm) {
-        filteredData = filteredData.filter((thread: DiscussionThread) =>
-          thread.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          thread.description.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
+      const sorted = (result.data || []).sort((a, b) => {
+        if (a.is_pinned === b.is_pinned) {
+          return new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime();
+        }
+        return a.is_pinned ? -1 : 1;
+      });
 
-      // 排序
-      if (sortBy === 'latest') {
-        filteredData.sort((a: DiscussionThread, b: DiscussionThread) =>
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        );
-      } else if (sortBy === 'popular') {
-        filteredData.sort((a: DiscussionThread, b: DiscussionThread) =>
-          b.posts_count - a.posts_count
-        );
-      } else if (sortBy === 'active') {
-        filteredData.sort((a: DiscussionThread, b: DiscussionThread) =>
-          new Date(b.last_post_at || b.updated_at).getTime() - new Date(a.last_post_at || a.updated_at).getTime()
-        );
+      setTopics(sorted);
+      if (!selectedTopicId || !sorted.find((t) => t.id === selectedTopicId)) {
+        setSelectedTopicId(sorted[0]?.id || null);
       }
-
-      setThreads(filteredData);
-    } catch (error) {
-      console.error('Error loading threads:', error);
     } finally {
-      setIsLoading(false);
+      setLoadingTopics(false);
     }
-  };
+  }, [activeClassId, selectedTopicId]);
 
-  const loadPosts = async (threadId: string) => {
-    try {
-      const data = await apiClient.discussions.listPosts(threadId);
-      setPosts(data || []);
-    } catch (error) {
-      console.error('Error loading posts:', error);
+  const loadPosts = useCallback(async () => {
+    if (!activeTopic) {
+      setDiscussions([]);
+      return;
     }
-  };
-
-  const handleCreateThread = async () => {
+    setLoadingPosts(true);
     try {
-      if (!newThread.title.trim() || !newThread.description.trim()) return;
+      const response = await fetch(`/api/discussions/threads/${activeTopic.id}/posts`, { cache: 'no-store' });
+      const result: ApiResponse<PostWithMeta[]> = await response.json();
+      if (!response.ok || result.error) {
+        setStatusMessage(result.error || '无法加载讨论内容');
+        setDiscussions([]);
+        return;
+      }
 
-      const threadData = {
-        ...newThread,
-        class_id: 'current-class-id', // 需要从上下文获取
-        author_id: 'current-user-id' // 需要从认证上下文获取
+      const userIds: string[] = [];
+      const collectIds = (posts: PostWithMeta[]) => {
+        posts.forEach((p) => {
+          userIds.push(p.user_id);
+          if (p.children?.length) collectIds(p.children);
+        });
       };
+      collectIds(result.data || []);
 
-      const createdThread = await apiClient.discussions.createThread(threadData);
-      setThreads(prev => [createdThread, ...prev]);
-      setNewThread({ title: '', description: '', category: 'general' });
-      setIsCreateDialogOpen(false);
-    } catch (error) {
-      console.error('Error creating thread:', error);
+      const roleMap = await gatherAuthorRoles(activeTopic.class_id, userIds);
+      setDiscussions(transformPosts(result.data || [], roleMap));
+    } finally {
+      setLoadingPosts(false);
     }
-  };
+  }, [activeTopic, gatherAuthorRoles, transformPosts]);
 
-  const handleCreatePost = async () => {
-    if (!selectedThread || !newPostContent.trim()) return;
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
+  useEffect(() => {
+    if (user) {
+      loadClasses();
+    }
+  }, [loadClasses, user]);
+
+  useEffect(() => {
+    loadTopics();
+  }, [loadTopics]);
+
+  useEffect(() => {
+    loadPosts();
+  }, [loadPosts]);
+
+  const createTopic = async () => {
+    if (!activeClassId || !topicForm.title.trim()) {
+      setStatusMessage('请选择班级并填写话题标题');
+      return;
+    }
+    setProcessing(true);
     try {
-      const postData = {
-        thread_id: selectedThread.id,
-        content: newPostContent,
-        author_id: 'current-user-id' // 需要从认证上下文获取
-      };
+      const response = await fetch('/api/discussions/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          class_id: activeClassId,
+          title: topicForm.title,
+          description: topicForm.description,
+          type: topicForm.type,
+        }),
+      });
 
-      const createdPost = await apiClient.discussions.createPost(postData);
-      setPosts(prev => [...prev, createdPost]);
-      setNewPostContent('');
-    } catch (error) {
-      console.error('Error creating post:', error);
+      const result: ApiResponse<Topic> = await response.json();
+      if (!response.ok || result.error || !result.data) {
+        setStatusMessage(result.error || '创建话题失败');
+        return;
+      }
+
+      setTopicForm({ title: '', description: '', type: 'general' });
+      setTopicFormOpen(false);
+      setTopics((prev) => [result.data as Topic, ...prev]);
+      setSelectedTopicId(result.data.id);
+    } finally {
+      setProcessing(false);
     }
   };
 
-  // 获取分类颜色
-  const getCategoryColor = (category: string) => {
-    const colors = {
-      general: 'bg-gray-100 text-gray-800',
-      academic: 'bg-blue-100 text-blue-800',
-      assignment: 'bg-green-100 text-green-800',
-      project: 'bg-purple-100 text-purple-800',
-      technical: 'bg-orange-100 text-orange-800',
-      social: 'bg-pink-100 text-pink-800'
-    };
-    return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  const createDiscussion = async () => {
+    if (!activeTopic || !discussionForm.title.trim() || !discussionForm.content.trim()) {
+      setStatusMessage('请填写完整的讨论标题和内容');
+      return;
+    }
+    setProcessing(true);
+    try {
+      const response = await fetch(`/api/discussions/threads/${activeTopic.id}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: discussionForm.title,
+          content: discussionForm.content,
+          post_type: 'text',
+        }),
+      });
+
+      const result: ApiResponse<PostWithMeta> = await response.json();
+      if (!response.ok || result.error) {
+        setStatusMessage(result.error || '发布讨论失败');
+        return;
+      }
+
+      setDiscussionForm({ title: '', content: '' });
+      setDiscussionFormOpen(false);
+      await loadPosts();
+      await loadTopics();
+    } finally {
+      setProcessing(false);
+    }
   };
 
-  // 获取分类图标
-  const getCategoryIcon = (category: string) => {
-    const icons = {
-      general: MessageCircle,
-      academic: BookOpen,
-      assignment: Target,
-      project: Award,
-      technical: Users,
-      social: Heart
-    };
-    const IconComponent = icons[category as keyof typeof icons] || MessageCircle;
-    return <IconComponent className="w-4 h-4" />;
+  const createComment = async (postId: string) => {
+    if (!activeTopic) return;
+    const content = replyContent[postId];
+    if (!content || !content.trim()) {
+      setStatusMessage('请输入评论内容');
+      return;
+    }
+    setProcessing(true);
+    try {
+      const response = await fetch(`/api/discussions/threads/${activeTopic.id}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent_post_id: postId,
+          content,
+          post_type: 'text',
+        }),
+      });
+
+      const result: ApiResponse<PostWithMeta> = await response.json();
+      if (!response.ok || result.error) {
+        setStatusMessage(result.error || '发布评论失败');
+        return;
+      }
+
+      setReplyContent((prev) => ({ ...prev, [postId]: '' }));
+      await loadPosts();
+      await loadTopics();
+    } finally {
+      setProcessing(false);
+    }
   };
 
-  const categories = [
-    { value: 'all', label: '全部' },
-    { value: 'general', label: '一般讨论' },
-    { value: 'academic', label: '学术讨论' },
-    { value: 'assignment', label: '作业讨论' },
-    { value: 'project', label: '项目讨论' },
-    { value: 'technical', label: '技术支持' },
-    { value: 'social', label: '社交交流' }
-  ];
+  const deletePost = async (postId: string) => {
+    setProcessing(true);
+    try {
+      const response = await fetch(`/api/discussions/posts/${postId}`, { method: 'DELETE' });
+      const result: ApiResponse<{ id: string }> = await response.json();
+      if (!response.ok || result.error) {
+        setStatusMessage(result.error || '删除失败');
+        return;
+      }
+      await loadPosts();
+      await loadTopics();
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const toggleLike = async (postId: string, liked: boolean) => {
+    if (!user) return;
+    setProcessing(true);
+    try {
+      if (liked) {
+        await supabase
+          .from('discussion_reactions')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', user.id)
+          .eq('reaction_type', 'like');
+      } else {
+        await supabase
+          .from('discussion_reactions')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', user.id);
+
+        await supabase.from('discussion_reactions').insert({
+          post_id: postId,
+          user_id: user.id,
+          reaction_type: 'like',
+        });
+      }
+
+      setDiscussions((prev) =>
+        updatePostTree(prev, postId, (post) => ({
+          ...post,
+          userLiked: !liked,
+          likes: Math.max(0, post.likes + (liked ? -1 : 1)),
+        }))
+      );
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const updatePostTree = (
+    items: DiscussionItem[],
+    targetId: string,
+    updater: (post: DiscussionItem) => DiscussionItem
+  ): DiscussionItem[] => {
+    return items.map((item) => {
+      if (item.id === targetId) {
+        return updater(item);
+      }
+      return { ...item, children: updatePostTree(item.children, targetId, updater) };
+    });
+  };
+
+  const renderRoleBadge = (role: DiscussionItem['role']) => {
+    if (role === 'teacher') {
+      return (
+        <div className="size-5 rounded-full bg-[#B882B1] flex items-center justify-center">
+          <GraduationCap className="size-3 text-white" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="size-5 rounded-full bg-[#6a7282] flex items-center justify-center">
+        <UserIcon className="size-3 text-white" />
+      </div>
+    );
+  };
+
+  const classUnavailable = !activeClassId;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 页面头部 */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">讨论管理</h1>
-              <p className="mt-2 text-gray-600">管理和监控课堂讨论，促进学生参与</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button
-                onClick={() => setIsCreateDialogOpen(true)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                创建讨论
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen bg-[#f3e8f4]">
+      <Navigation
+        userName={teacherProfile.name}
+        userAvatar={teacherProfile.avatar}
+        organization={teacherProfile.organization}
+        onNavigateToHome={() => router.push('/teacher')}
+        onNavigateToSettings={() => router.push('/teacher/settings')}
+        onNavigateToNotifications={() => router.push('/teacher/notifications')}
+        onNavigateToDiscussions={() => router.push('/teacher/discussions')}
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 左侧：讨论线程列表 */}
-          <div className="lg:col-span-2">
-            <Card className="p-6">
-              {/* 搜索和过滤 */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    placeholder="搜索讨论..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="w-full sm:w-48">
-                    <SelectValue placeholder="选择分类" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(category => (
-                      <SelectItem key={category.value} value={category.value}>
-                        {category.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-full sm:w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="latest">最新</SelectItem>
-                    <SelectItem value="popular">热门</SelectItem>
-                    <SelectItem value="active">活跃</SelectItem>
-                  </SelectContent>
-                </Select>
+      <div className="px-8 py-6 max-w-[1400px] mx-auto">
+        <button
+          onClick={() => router.push('/teacher')}
+          className="flex items-center gap-2 text-[#6a7282] hover:text-[#B882B1] transition-colors mb-4"
+        >
+          <ArrowLeft className="size-5" />
+          <span className="text-[14px]">返回仪表盘</span>
+        </button>
+
+        {statusMessage && (
+          <div className="mb-4 rounded-xl bg-white p-3 text-[14px] text-[#B882B1] shadow-sm border border-[#B882B1]/20">
+            {statusMessage}
+          </div>
+        )}
+
+        <div className="flex gap-6">
+          <div className="w-[280px] shrink-0">
+            <div className="bg-white rounded-3xl p-6 shadow-sm sticky top-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-['Slackey:Regular',sans-serif] text-[#B882B1] text-[24px] leading-[1.1]">
+                  Topics
+                </h2>
+                {activeClassRole === 'teacher' && (
+                  <button
+                    onClick={() => setTopicFormOpen(!topicFormOpen)}
+                    className="size-8 rounded-xl bg-[#B882B1] text-white flex items-center justify-center hover:opacity-90"
+                  >
+                    <PlusIcon />
+                  </button>
+                )}
               </div>
 
-              {/* 讨论线程列表 */}
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-4">
-                  {isLoading ? (
-                    <div className="text-center py-8 text-gray-500">
-                      加载中...
-                    </div>
-                  ) : threads.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      暂无讨论话题
-                    </div>
-                  ) : (
-                    threads.map(thread => (
-                      <motion.div
-                        key={thread.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={cn(
-                          "p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md",
-                          selectedThread?.id === thread.id
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                        onClick={() => setSelectedThread(thread)}
+              <div className="mb-3">
+                <label className="text-[12px] text-[#6a7282]">选择班级</label>
+                <select
+                  value={activeClassId || ''}
+                  onChange={(e) => setActiveClassId(e.target.value || null)}
+                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-[14px] focus:outline-none focus:border-[#B882B1]"
+                >
+                  {memberships.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} {m.role === 'teacher' ? '(教师)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <AnimatePresence>
+                {topicFormOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="bg-[#f8f5fb] border border-[#B882B1]/20 rounded-2xl p-3 mb-3"
+                  >
+                    <input
+                      placeholder="Topic title"
+                      value={topicForm.title}
+                      onChange={(e) => setTopicForm((prev) => ({ ...prev, title: e.target.value }))}
+                      className="w-full mb-2 px-3 py-2 rounded-xl border border-gray-200 text-[13px] focus:outline-none focus:border-[#B882B1]"
+                    />
+                    <textarea
+                      placeholder="Topic description"
+                      value={topicForm.description}
+                      onChange={(e) => setTopicForm((prev) => ({ ...prev, description: e.target.value }))}
+                      rows={2}
+                      className="w-full mb-2 px-3 py-2 rounded-xl border border-gray-200 text-[13px] focus:outline-none focus:border-[#B882B1] resize-none"
+                    />
+                    <select
+                      value={topicForm.type}
+                      onChange={(e) => setTopicForm((prev) => ({ ...prev, type: e.target.value }))}
+                      className="w-full mb-2 px-3 py-2 rounded-xl border border-gray-200 text-[13px] focus:outline-none focus:border-[#B882B1]"
+                    >
+                      <option value="general">General</option>
+                      <option value="course">Course</option>
+                      <option value="assignment">Assignment</option>
+                      <option value="announcement">Announcement</option>
+                    </select>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setTopicFormOpen(false)}
+                        className="px-3 py-2 rounded-xl text-[13px] text-[#6a7282] hover:bg-gray-100"
+                        disabled={processing}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-2">
-                              {thread.is_pinned && (
-                                <Pin className="w-4 h-4 text-orange-500" />
-                              )}
-                              {thread.is_locked && (
-                                <Lock className="w-4 h-4 text-gray-400" />
-                              )}
-                              <h3 className="font-semibold text-gray-900">{thread.title}</h3>
-                              <Badge
-                                variant="secondary"
-                                className={getCategoryColor(thread.category)}
-                              >
-                                <div className="flex items-center space-x-1">
-                                  {getCategoryIcon(thread.category)}
-                                  <span>{thread.category}</span>
-                                </div>
-                              </Badge>
-                            </div>
-                            <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                              {thread.description}
-                            </p>
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                              <div className="flex items-center space-x-4">
-                                <div className="flex items-center space-x-1">
-                                  <Avatar className="w-6 h-6">
-                                    <img
-                                      src={thread.author.avatar_url || '/default-avatar.png'}
-                                      alt={thread.author.name}
-                                    />
-                                  </Avatar>
-                                  <span>{thread.author.name}</span>
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  <MessageCircle className="w-3 h-3" />
-                                  <span>{thread.posts_count}</span>
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  <Users className="w-3 h-3" />
-                                  <span>{thread.participants_count}</span>
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{new Date(thread.updated_at).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-            </Card>
+                        取消
+                      </button>
+                      <button
+                        onClick={createTopic}
+                        className="px-3 py-2 rounded-xl bg-[#B882B1] text-white text-[13px] hover:opacity-90 flex items-center gap-2"
+                        disabled={processing || !topicForm.title.trim() || classUnavailable}
+                      >
+                        {processing ? <Loader2 className="size-4 animate-spin" /> : <PlusIcon />}
+                        创建
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                {loadingTopics ? (
+                  <p className="text-[13px] text-[#6a7282]">正在加载话题...</p>
+                ) : topics.length === 0 ? (
+                  <p className="text-[13px] text-[#6a7282]">当前班级暂无话题</p>
+                ) : (
+                  topics.map((topic) => (
+                    <button
+                      key={topic.id}
+                      onClick={() => setSelectedTopicId(topic.id)}
+                      className={cn(
+                        'w-full text-left px-4 py-3 rounded-xl transition-all border',
+                        selectedTopicId === topic.id
+                          ? 'bg-[#B882B1] text-white border-[#B882B1] shadow-md'
+                          : 'text-[#6a7282] hover:bg-gray-50 border-gray-200'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {topic.is_pinned && <Pin className="size-4" />}
+                        {topic.is_locked && <Lock className="size-4" />}
+                        <span className="text-[14px] line-clamp-2">{topic.title}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-[12px] opacity-80">
+                        <span>{topic.type}</span>
+                        <span>{topic.post_count} 条讨论</span>
+                        <span>{formatRelativeTime(topic.last_activity_at)}</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* 右侧：讨论详情 */}
-          <div className="lg:col-span-1">
-            <Card className="p-6 h-[700px] flex flex-col">
-              {selectedThread ? (
-                <>
-                  {/* 线程信息 */}
-                  <div className="mb-6">
-                    <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                      {selectedThread.title}
-                    </h2>
-                    <p className="text-gray-600 text-sm mb-4">
-                      {selectedThread.description}
-                    </p>
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <div className="flex items-center space-x-1">
-                        <Avatar className="w-6 h-6">
-                          <img
-                            src={selectedThread.author.avatar_url || '/default-avatar.png'}
-                            alt={selectedThread.author.name}
-                          />
-                        </Avatar>
-                        <span>{selectedThread.author.name}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <MessageCircle className="w-4 h-4" />
-                        <span>{selectedThread.posts_count} 回复</span>
-                      </div>
-                    </div>
-                  </div>
+          <div className="flex-1 space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="font-['Slackey:Regular',sans-serif] text-[#B882B1] text-[42px] leading-[1.1] mb-2">
+                  Discussions
+                </h1>
+                <p className="text-[#6a7282] text-[16px]">
+                  {activeTopic?.title || '请选择话题开始讨论'}
+                </p>
+              </div>
+              <button
+                onClick={() => setDiscussionFormOpen(!discussionFormOpen)}
+                className="px-6 py-3 rounded-xl bg-[#B882B1] text-white text-[14px] hover:opacity-90 transition-all flex items-center gap-2 shadow-md"
+                disabled={!activeTopic || activeTopic.is_locked || classUnavailable}
+              >
+                <MessageSquare className="size-4" />
+                新建讨论
+              </button>
+            </div>
 
-                  {/* 帖子列表 */}
-                  <ScrollArea className="flex-1 mb-4">
-                    <div className="space-y-4">
-                      {posts.map(post => (
-                        <div key={post.id} className="border-l-2 border-blue-200 pl-4">
-                          <div className="flex items-start space-x-3">
-                            <Avatar className="w-8 h-8">
-                              <img
-                                src={post.author.avatar_url || '/default-avatar.png'}
-                                alt={post.author.name}
-                              />
-                            </Avatar>
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <span className="font-medium text-sm">{post.author.name}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {post.author.role}
-                                </Badge>
-                                <span className="text-xs text-gray-500">
-                                  {new Date(post.created_at).toLocaleDateString()}
-                                </span>
+            <AnimatePresence>
+              {discussionFormOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-white rounded-3xl p-6 shadow-sm overflow-hidden"
+                >
+                  <h3 className="text-[#101828] text-[18px] mb-4">发布讨论</h3>
+                  <input
+                    type="text"
+                    placeholder="讨论标题"
+                    value={discussionForm.title}
+                    onChange={(e) => setDiscussionForm((prev) => ({ ...prev, title: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] mb-3 focus:outline-none focus:border-[#B882B1] transition-colors"
+                  />
+                  <textarea
+                    placeholder="想要讨论什么？"
+                    value={discussionForm.content}
+                    onChange={(e) => setDiscussionForm((prev) => ({ ...prev, content: e.target.value }))}
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] mb-3 focus:outline-none focus:border-[#B882B1] transition-colors resize-none"
+                  />
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={() => setDiscussionFormOpen(false)}
+                      className="px-4 py-2 rounded-xl text-[#6a7282] hover:bg-gray-50 transition-colors text-[14px]"
+                      disabled={processing}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={createDiscussion}
+                      className="px-4 py-2 rounded-xl bg-[#B882B1] text-white hover:opacity-90 transition-opacity text-[14px] flex items-center gap-2"
+                      disabled={processing || !discussionForm.title.trim() || !discussionForm.content.trim() || classUnavailable}
+                    >
+                      {processing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                      发布
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {loadingPosts ? (
+              <div className="bg-white rounded-3xl p-10 shadow-sm text-center text-[#6a7282]">
+                正在加载讨论...
+              </div>
+            ) : !activeTopic ? (
+              <div className="bg-white rounded-3xl p-16 shadow-sm text-center">
+                <MessageSquare className="size-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-[#6a7282] text-[16px]">请选择左侧话题后查看讨论</p>
+              </div>
+            ) : discussions.length === 0 ? (
+              <div className="bg-white rounded-3xl p-16 shadow-sm text-center">
+                <MessageSquare className="size-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-[#6a7282] text-[16px]">当前话题暂无讨论</p>
+                <p className="text-[#a5acb8] text-[14px] mt-2">创建首条讨论，邀请同学参与</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {discussions.map((discussion) => (
+                  <motion.div
+                    key={discussion.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex gap-4 mb-4">
+                      <img
+                        src={discussion.authorAvatar || '/default-avatar.png'}
+                        alt={discussion.authorName}
+                        className="size-12 rounded-full object-cover shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-[16px] text-[#101828]">{discussion.authorName}</h3>
+                          {renderRoleBadge(discussion.role)}
+                          {discussion.authorId === user?.id && (
+                            <span className="text-[10px] bg-[#3FA11B] text-white px-2 py-0.5 rounded-full">
+                              You
+                            </span>
+                          )}
+                          <span className="text-[12px] text-[#a5acb8]">· {formatRelativeTime(discussion.createdAt)}</span>
+                        </div>
+                        <h2 className="text-[18px] text-[#101828] mb-2">{discussion.title}</h2>
+                        <p className="text-[14px] text-[#6a7282] leading-relaxed whitespace-pre-wrap">{discussion.content}</p>
+                      </div>
+                      {discussion.authorId === user?.id && (
+                        <button
+                          onClick={() => deletePost(discussion.id)}
+                          className="size-8 rounded-lg hover:bg-red-50 text-red-500 transition-colors flex items-center justify-center shrink-0"
+                          disabled={processing}
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-6 mb-4 pl-16">
+                      <button
+                        onClick={() => toggleLike(discussion.id, discussion.userLiked)}
+                        className={cn(
+                          'flex items-center gap-1 text-[#6a7282] transition-colors',
+                          discussion.userLiked ? 'text-[#3FA11B]' : 'hover:text-[#3FA11B]'
+                        )}
+                        disabled={processing}
+                      >
+                        <ThumbsUp className="size-4" />
+                        <span className="text-[12px]">{discussion.likes}</span>
+                      </button>
+                      <button
+                        onClick={() => setReplyContent((prev) => ({ ...prev, [discussion.id]: prev[discussion.id] || '' }))}
+                        className="flex items-center gap-1 text-[#6a7282] hover:text-[#B882B1] transition-colors"
+                      >
+                        <MessageSquare className="size-4" />
+                        <span className="text-[12px]">{discussion.children.length} 条评论</span>
+                      </button>
+                    </div>
+
+                    {discussion.children.length > 0 && (
+                      <div className="pl-16 border-l-2 border-gray-100 ml-6 space-y-4">
+                        {discussion.children.map((comment) => (
+                          <div key={comment.id} className="flex gap-3">
+                            <img
+                              src={comment.authorAvatar || '/default-avatar.png'}
+                              alt={comment.authorName}
+                              className="size-8 rounded-full object-cover shrink-0"
+                            />
+                            <div className="flex-1 bg-gray-50 rounded-2xl p-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[13px] text-[#101828]">{comment.authorName}</span>
+                                {renderRoleBadge(comment.role)}
+                                {comment.authorId === user?.id && (
+                                  <span className="text-[9px] bg-[#3FA11B] text-white px-1.5 py-0.5 rounded-full">You</span>
+                                )}
+                                <span className="text-[11px] text-[#a5acb8]">· {formatRelativeTime(comment.createdAt)}</span>
                               </div>
-                              <div className="text-sm text-gray-700 mb-2 whitespace-pre-wrap">
-                                {post.content}
-                              </div>
-                              <div className="flex items-center space-x-4 text-xs text-gray-500">
-                                <button className="flex items-center space-x-1 hover:text-red-500">
-                                  <Heart className="w-3 h-3" />
-                                  <span>{post.likes_count}</span>
-                                </button>
-                                <button className="flex items-center space-x-1 hover:text-blue-500">
-                                  <Reply className="w-3 h-3" />
-                                  <span>回复</span>
+                              <p className="text-[13px] text-[#6a7282] leading-relaxed whitespace-pre-wrap">{comment.content}</p>
+                              <div className="flex items-center gap-3 mt-2">
+                                <button
+                                  onClick={() => toggleLike(comment.id, comment.userLiked)}
+                                  className={cn(
+                                    'flex items-center gap-1 text-[#a5acb8] transition-colors',
+                                    comment.userLiked ? 'text-[#3FA11B]' : 'hover:text-[#3FA11B]'
+                                  )}
+                                  disabled={processing}
+                                >
+                                  <ThumbsUp className="size-3" />
+                                  <span className="text-[11px]">{comment.likes}</span>
                                 </button>
                               </div>
                             </div>
+                            {comment.authorId === user?.id && (
+                              <button
+                                onClick={() => deletePost(comment.id)}
+                                className="size-6 rounded-lg hover:bg-red-50 text-red-500 transition-colors flex items-center justify-center shrink-0"
+                                disabled={processing}
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                            )}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                        ))}
+                      </div>
+                    )}
 
-                  {/* 回复输入 */}
-                  {!selectedThread.is_locked && (
-                    <div className="border-t pt-4">
-                      <Textarea
-                        placeholder="输入你的回复..."
-                        value={newPostContent}
-                        onChange={(e) => setNewPostContent(e.target.value)}
-                        className="mb-3"
-                        rows={3}
-                      />
-                      <Button
-                        onClick={handleCreatePost}
-                        disabled={!newPostContent.trim()}
-                        className="w-full"
-                      >
-                        发布回复
-                      </Button>
+                    <div className="pl-16 ml-6 mt-4">
+                      <div className="flex gap-3 items-center">
+                        <img
+                          src={teacherProfile.avatar}
+                          alt={teacherProfile.name}
+                          className="size-8 rounded-full object-cover shrink-0"
+                        />
+                        <div className="flex-1 flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="写下你的评论..."
+                            value={replyContent[discussion.id] || ''}
+                            onChange={(e) =>
+                              setReplyContent((prev) => ({ ...prev, [discussion.id]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                createComment(discussion.id);
+                              }
+                            }}
+                            className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-[13px] focus:outline-none focus:border-[#B882B1] transition-colors"
+                            disabled={processing || classUnavailable || activeTopic?.is_locked}
+                          />
+                          <button
+                            onClick={() => createComment(discussion.id)}
+                            className="size-8 rounded-lg bg-[#B882B1] text-white hover:opacity-90 transition-opacity flex items-center justify-center shrink-0"
+                            disabled={processing || classUnavailable || activeTopic?.is_locked}
+                          >
+                            <Send className="size-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-gray-500">
-                  <div className="text-center">
-                    <MessageCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                    <p>选择一个讨论话题查看详情</p>
-                  </div>
-                </div>
-              )}
-            </Card>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 创建讨论对话框 */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>创建新讨论</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">标题</label>
-              <Input
-                placeholder="讨论标题..."
-                value={newThread.title}
-                onChange={(e) => setNewThread(prev => ({ ...prev, title: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">描述</label>
-              <Textarea
-                placeholder="讨论描述..."
-                value={newThread.description}
-                onChange={(e) => setNewThread(prev => ({ ...prev, description: e.target.value }))}
-                rows={3}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">分类</label>
-              <Select
-                value={newThread.category}
-                onValueChange={(value) => setNewThread(prev => ({ ...prev, category: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.slice(1).map(category => (
-                    <SelectItem key={category.value} value={category.value}>
-                      {category.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
-              >
-                取消
-              </Button>
-              <Button
-                onClick={handleCreateThread}
-                disabled={!newThread.title.trim() || !newThread.description.trim()}
-              >
-                创建讨论
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FloatingActionMenu sessions={[]} />
     </div>
   );
 }
 
-function cn(...classes: string[]) {
-  return classes.filter(Boolean).join(' ');
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="size-4"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
 }
