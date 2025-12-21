@@ -171,16 +171,21 @@ export async function GET(
     }, {});
 
     // Fetch comment counts to avoid stale reply_count caused by deletes
-    const { data: commentCounts } = await supabase
+    const { data: replyRows, error: replyCountError } = await supabase
       .from('discussion_posts')
-      .select('parent_post_id, count:count()')
-      .eq('thread_id', params.topicId)
+      .select('parent_post_id')
+      .eq('thread_id', threadId)
       .not('parent_post_id', 'is', null)
-      .eq('is_deleted', false)
-      .group('parent_post_id');
+      .eq('is_deleted', false);
 
-    const commentCountMap = (commentCounts || []).reduce<Record<string, number>>((acc, row: any) => {
-      acc[row.parent_post_id] = row.count as number;
+    if (replyCountError) {
+      console.error('Error fetching reply counts:', replyCountError);
+    }
+
+    const commentCountMap = (replyRows || []).reduce<Record<string, number>>((acc, row) => {
+      if (row.parent_post_id) {
+        acc[row.parent_post_id] = (acc[row.parent_post_id] || 0) + 1;
+      }
       return acc;
     }, {});
 
