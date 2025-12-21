@@ -1,6 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+type Profile = {
+  id: string;
+  full_name: string | null;
+  avatar_url?: string | null;
+  role?: string | null;
+};
+
+async function fetchProfiles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userIds: string[]
+): Promise<Record<string, Profile>> {
+  if (userIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url, role')
+    .in('id', userIds);
+
+  if (error) {
+    console.error('Error fetching profiles:', error);
+    return {};
+  }
+
+  return (data || []).reduce<Record<string, Profile>>((acc, profile) => {
+    acc[profile.id] = profile;
+    return acc;
+  }, {});
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -14,17 +43,25 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const { data: topics, error } = await supabase
-      .from('discussion_topics')
-      .select(`
-        id,
-        name,
-        created_by,
-        created_at,
-        updated_at,
-        profiles:created_by(full_name)
-      `)
+    const { data: membership } = await supabase
+      .from('class_members')
+      .select('id')
+      .eq('class_id', classId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { data: threads, error } = await supabase
+      .from('discussion_threads')
+      .select('id, title, description, created_by, created_at, class_id')
       .eq('class_id', classId)
       .order('created_at', { ascending: false });
 
@@ -35,6 +72,17 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const profileMap = await fetchProfiles(
+      supabase,
+      (threads || []).map((thread) => thread.created_by)
+    );
+
+    const topics = (threads || []).map((thread) => ({
+      ...thread,
+      name: thread.title,
+      profiles: profileMap[thread.created_by] || null
+    }));
 
     return NextResponse.json({ topics });
   } catch (error) {
@@ -69,38 +117,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify user is a teacher in any organization
-    const { data: memberData, error: memberError } = await supabase
-      .from('organization_members')
+    // Verify user is a teacher for the class
+    const { data: classMember, error: memberError } = await supabase
+      .from('class_members')
       .select('role')
+      .eq('class_id', classId)
       .eq('user_id', user.id)
-      .in('role', ['teacher', 'owner'])
-      .limit(1)
-      .maybeSingle();
+      .single();
 
-    if (memberError || !memberData) {
-      console.error('Member check error:', memberError);
+    if (memberError || !classMember || classMember.role !== 'teacher') {
+      console.error('Class member check error:', memberError);
       return NextResponse.json(
         { error: 'Only teachers can create discussion topics' },
         { status: 403 }
       );
     }
 
-    // Create the topic
-    const { data: topic, error: createError } = await supabase
-      .from('discussion_topics')
+    const { data: classData, error: classError } = await supabase
+      .from('classes')
+      .select('organization_id')
+      .eq('id', classId)
+      .single();
+
+    if (classError || !classData) {
+      return NextResponse.json(
+        { error: 'Class not found' },
+        { status: 404 }
+      );
+    }
+
+    // Create the topic (discussion thread)
+    const { data: thread, error: createError } = await supabase
+      .from('discussion_threads')
       .insert({
-        name,
+        title: name,
+        description: name,
         class_id: classId,
+        organization_id: classData.organization_id,
+        type: 'general',
         created_by: user.id
       })
-      .select(`
-        id,
-        name,
-        created_by,
-        created_at,
-        updated_at
-      `)
+      .select('id, title, description, created_by, created_at, class_id')
       .single();
 
     if (createError) {
@@ -111,7 +168,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ topic }, { status: 201 });
+    const profileMap = await fetchProfiles(supabase, [user.id]);
+
+    return NextResponse.json({
+      topic: {
+        ...thread,
+        name: thread.title,
+        profiles: profileMap[user.id] || null
+      }
+    }, { status: 201 });
   } catch (error) {
     console.error('Error in POST /api/discussions/topics:', error);
     return NextResponse.json(

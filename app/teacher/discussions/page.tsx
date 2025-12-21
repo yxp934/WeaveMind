@@ -43,9 +43,7 @@ interface Discussion {
     full_name: string;
   };
   like_count: number;
-  discussion_comments?: {
-    id: string;
-  }[];
+  comment_count: number;
 }
 
 interface Comment {
@@ -62,7 +60,7 @@ interface Comment {
 
 interface LikeStatus {
   liked: boolean;
-  likeId: string | null;
+  like_count?: number;
 }
 
 export default function TeacherDiscussionsPage() {
@@ -100,6 +98,8 @@ export default function TeacherDiscussionsPage() {
   // 加载discussions
   useEffect(() => {
     if (activeTopic) {
+      setSelectedDiscussion(null);
+      setComments([]);
       loadDiscussions();
     }
   }, [activeTopic]);
@@ -108,7 +108,7 @@ export default function TeacherDiscussionsPage() {
   useEffect(() => {
     if (selectedDiscussion) {
       loadComments();
-      loadLikeStatus(selectedDiscussion.id, 'discussion');
+      loadLikeStatus(selectedDiscussion.id);
     }
   }, [selectedDiscussion]);
 
@@ -118,27 +118,27 @@ export default function TeacherDiscussionsPage() {
       if (user) {
         setCurrentUserId(user.id);
 
-        // Get user's organization and their first class
-        const { data: memberData } = await supabase
-          .from('organization_members')
+        // Get user's first class as teacher
+        const { data: classMembership, error: classError } = await supabase
+          .from('class_members')
           .select(`
-            organization_id,
-            organizations!inner(
-              classes(id, name)
-            )
+            class_id,
+            classes!inner(id, name)
           `)
           .eq('user_id', user.id)
-          .in('role', ['teacher', 'owner'])
+          .eq('role', 'teacher')
           .limit(1)
           .maybeSingle();
 
-        const orgs = memberData?.organizations as { classes: { id: string, name: string }[] } | undefined;
-        if (orgs?.classes?.[0]?.id) {
-          console.log('Found class:', orgs.classes[0]);
-          setCurrentClassId(orgs.classes[0].id);
+        const classInfo = classMembership?.classes as { id: string; name: string } | undefined;
+        if (classMembership?.class_id && classInfo?.id) {
+          setCurrentClassId(classMembership.class_id);
         } else {
           console.log('No class found for user');
-          toast.error('No class found for your organization');
+          if (classError) {
+            console.error('Error loading class membership:', classError);
+          }
+          toast.error('No class found for your classes');
           setIsLoading(false);
         }
       } else {
@@ -154,6 +154,11 @@ export default function TeacherDiscussionsPage() {
   const loadTopics = async () => {
     try {
       setIsLoading(true);
+      setTopics([]);
+      setActiveTopic('');
+      setDiscussions([]);
+      setSelectedDiscussion(null);
+      setComments([]);
       const response = await fetch(`/api/discussions/topics?classId=${currentClassId}`);
       const data = await response.json();
       if (data.topics) {
@@ -192,8 +197,17 @@ export default function TeacherDiscussionsPage() {
         setComments(data.comments);
         // 为每个comment加载like状态
         data.comments.forEach((comment: Comment) => {
-          loadLikeStatus(comment.id, 'comment');
+          loadLikeStatus(comment.id);
         });
+        setSelectedDiscussion(prev => prev ? {
+          ...prev,
+          comment_count: data.comments.length
+        } : prev);
+        setDiscussions(prev => prev.map((discussion) =>
+          discussion.id === selectedDiscussion.id
+            ? { ...discussion, comment_count: data.comments.length }
+            : discussion
+        ));
       }
     } catch (error) {
       console.error('Error loading comments:', error);
@@ -201,20 +215,30 @@ export default function TeacherDiscussionsPage() {
     }
   };
 
-  const loadLikeStatus = async (targetId: string, targetType: 'discussion' | 'comment') => {
+  const loadLikeStatus = async (targetId: string) => {
     try {
-      const response = await fetch(`/api/discussions/likes?targetType=${targetType}&targetId=${targetId}`);
+      const response = await fetch(`/api/discussions/likes?targetId=${targetId}`);
       const data = await response.json();
       setLikeStatuses(prev => ({
         ...prev,
         [targetId]: data
       }));
+
+      if (typeof data.like_count === 'number') {
+        setDiscussions(prev => prev.map(item => item.id === targetId ? { ...item, like_count: data.like_count } : item));
+        setComments(prev => prev.map(item => item.id === targetId ? { ...item, like_count: data.like_count } : item));
+        setSelectedDiscussion(prev => prev && prev.id === targetId ? { ...prev, like_count: data.like_count } : prev);
+      }
     } catch (error) {
       console.error('Error loading like status:', error);
     }
   };
 
   const handleCreateTopic = async () => {
+    if (!currentClassId) {
+      toast.error('No class selected');
+      return;
+    }
     if (!newTopicName.trim()) {
       toast.error('Please enter a topic name');
       return;
@@ -237,6 +261,7 @@ export default function TeacherDiscussionsPage() {
 
       const data = await response.json();
       setTopics([data.topic, ...topics]);
+      setActiveTopic(data.topic.id);
       setNewTopicName('');
       setShowNewTopicForm(false);
       toast.success('Topic created successfully');
@@ -247,6 +272,10 @@ export default function TeacherDiscussionsPage() {
   };
 
   const handleCreateDiscussion = async () => {
+    if (!activeTopic) {
+      toast.error('Please select a topic first');
+      return;
+    }
     if (!newDiscussionTitle.trim() || !newDiscussionContent.trim()) {
       toast.error('Please fill in both title and content');
       return;
@@ -269,6 +298,8 @@ export default function TeacherDiscussionsPage() {
 
       const data = await response.json();
       setDiscussions([data.discussion, ...discussions]);
+      setSelectedDiscussion(data.discussion);
+      setComments([]);
       setNewDiscussionTitle('');
       setNewDiscussionContent('');
       setShowNewDiscussionForm(false);
@@ -301,6 +332,14 @@ export default function TeacherDiscussionsPage() {
 
       const data = await response.json();
       setComments([...comments, data.comment]);
+      setDiscussions(discussions.map((discussion) => discussion.id === selectedDiscussion.id
+        ? { ...discussion, comment_count: (discussion.comment_count || 0) + 1 }
+        : discussion
+      ));
+      setSelectedDiscussion(prev => prev ? {
+        ...prev,
+        comment_count: (prev.comment_count || 0) + 1
+      } : prev);
       setReplyContent('');
       toast.success('Comment added successfully');
     } catch (error: any) {
@@ -344,6 +383,16 @@ export default function TeacherDiscussionsPage() {
       }
 
       setComments(comments.filter(c => c.id !== commentId));
+      if (selectedDiscussion) {
+        setDiscussions(discussions.map((discussion) => discussion.id === selectedDiscussion.id
+          ? { ...discussion, comment_count: Math.max(0, (discussion.comment_count || 0) - 1) }
+          : discussion
+        ));
+        setSelectedDiscussion({
+          ...selectedDiscussion,
+          comment_count: Math.max(0, (selectedDiscussion.comment_count || 0) - 1)
+        });
+      }
       toast.success('Comment deleted successfully');
     } catch (error: any) {
       console.error('Error deleting comment:', error);
@@ -360,7 +409,6 @@ export default function TeacherDiscussionsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetType,
           targetId,
           action
         })
@@ -383,7 +431,11 @@ export default function TeacherDiscussionsPage() {
           if (d.id === targetId) {
             return {
               ...d,
-              like_count: data.liked ? d.like_count + 1 : Math.max(0, d.like_count - 1)
+              like_count: typeof data.like_count === 'number'
+                ? data.like_count
+                : data.liked
+                  ? d.like_count + 1
+                  : Math.max(0, d.like_count - 1)
             };
           }
           return d;
@@ -393,7 +445,11 @@ export default function TeacherDiscussionsPage() {
           if (c.id === targetId) {
             return {
               ...c,
-              like_count: data.liked ? c.like_count + 1 : Math.max(0, c.like_count - 1)
+              like_count: typeof data.like_count === 'number'
+                ? data.like_count
+                : data.liked
+                  ? c.like_count + 1
+                  : Math.max(0, c.like_count - 1)
             };
           }
           return c;
@@ -667,7 +723,7 @@ export default function TeacherDiscussionsPage() {
                       >
                         <MessageSquare className="size-4" />
                         <span className="text-[12px]">
-                          {discussion.discussion_comments?.length || 0} comments
+                          {discussion.comment_count || 0} comments
                         </span>
                       </button>
                     </div>

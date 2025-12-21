@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+async function fetchLikeCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  postId: string
+) {
+  const { data, error } = await supabase
+    .from('discussion_posts')
+    .select('like_count')
+    .eq('id', postId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching like count:', error);
+    return 0;
+  }
+
+  return data?.like_count || 0;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -15,23 +33,22 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const targetType = searchParams.get('targetType');
     const targetId = searchParams.get('targetId');
 
-    if (!targetType || !targetId) {
+    if (!targetId) {
       return NextResponse.json(
-        { error: 'targetType and targetId parameters are required' },
+        { error: 'targetId parameter is required' },
         { status: 400 }
       );
     }
 
     // Check if user has liked this item
     const { data: existingLike, error: likeError } = await supabase
-      .from('discussion_likes')
+      .from('discussion_reactions')
       .select('id')
       .eq('user_id', user.id)
-      .eq('target_type', targetType)
-      .eq('target_id', targetId)
+      .eq('post_id', targetId)
+      .eq('reaction_type', 'like')
       .maybeSingle();
 
     if (likeError) {
@@ -42,9 +59,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const likeCount = await fetchLikeCount(supabase, targetId);
+
     return NextResponse.json({
       liked: !!existingLike,
-      likeId: existingLike?.id || null
+      likeId: existingLike?.id || null,
+      like_count: likeCount
     });
   } catch (error) {
     console.error('Error in GET /api/discussions/likes:', error);
@@ -69,11 +89,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { targetType, targetId, action } = body;
+    const { targetId, action } = body;
 
-    if (!targetType || !targetId || !action) {
+    if (!targetId || !action) {
       return NextResponse.json(
-        { error: 'targetType, targetId, and action are required' },
+        { error: 'targetId and action are required' },
         { status: 400 }
       );
     }
@@ -85,26 +105,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['discussion', 'comment'].includes(targetType)) {
-      return NextResponse.json(
-        { error: 'targetType must be "discussion" or "comment"' },
-        { status: 400 }
-      );
-    }
-
     if (action === 'like') {
       // Try to create a like
-      const { data: like, error: likeError } = await supabase
-        .from('discussion_likes')
+      const { error: likeError } = await supabase
+        .from('discussion_reactions')
         .insert({
           user_id: user.id,
-          target_type: targetType,
-          target_id: targetId
-        })
-        .select('id')
-        .single();
+          post_id: targetId,
+          reaction_type: 'like'
+        });
 
-      // If like already exists (error), that's fine - user already liked it
       if (likeError && !likeError.message.includes('duplicate key')) {
         console.error('Error creating like:', likeError);
         return NextResponse.json(
@@ -112,19 +122,14 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-
-      return NextResponse.json({
-        liked: true,
-        likeId: like?.id || null
-      });
     } else {
       // Unlike - delete the like
       const { error: unlikeError } = await supabase
-        .from('discussion_likes')
+        .from('discussion_reactions')
         .delete()
         .eq('user_id', user.id)
-        .eq('target_type', targetType)
-        .eq('target_id', targetId);
+        .eq('post_id', targetId)
+        .eq('reaction_type', 'like');
 
       if (unlikeError) {
         console.error('Error deleting like:', unlikeError);
@@ -133,9 +138,14 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-
-      return NextResponse.json({ liked: false });
     }
+
+    const likeCount = await fetchLikeCount(supabase, targetId);
+
+    return NextResponse.json({
+      liked: action === 'like',
+      like_count: likeCount
+    });
   } catch (error) {
     console.error('Error in POST /api/discussions/likes:', error);
     return NextResponse.json(

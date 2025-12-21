@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+async function recalcThreadCounts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  threadId: string
+) {
+  const { count } = await supabase
+    .from('discussion_posts')
+    .select('*', { count: 'exact', head: true })
+    .eq('thread_id', threadId)
+    .is('parent_post_id', null)
+    .eq('is_deleted', false);
+
+  await supabase
+    .from('discussion_threads')
+    .update({ post_count: count || 0 })
+    .eq('id', threadId);
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { discussionId: string } }
@@ -19,10 +36,11 @@ export async function DELETE(
 
     // Check if the discussion exists and belongs to the user
     const { data: discussion, error: fetchError } = await supabase
-      .from('discussions')
-      .select('author_id')
+      .from('discussion_posts')
+      .select('user_id, thread_id')
       .eq('id', params.discussionId)
-      .single();
+      .is('parent_post_id', null)
+      .maybeSingle();
 
     if (fetchError || !discussion) {
       return NextResponse.json(
@@ -31,16 +49,16 @@ export async function DELETE(
       );
     }
 
-    if (discussion.author_id !== user.id) {
+    if (discussion.user_id !== user.id) {
       return NextResponse.json(
         { error: 'You can only delete your own discussions' },
         { status: 403 }
       );
     }
 
-    // Delete the discussion (RLS policies will handle authorization)
+    // Delete the discussion (RLS policies will handle authorization and cascade replies)
     const { error: deleteError } = await supabase
-      .from('discussions')
+      .from('discussion_posts')
       .delete()
       .eq('id', params.discussionId);
 
@@ -50,6 +68,10 @@ export async function DELETE(
         { error: 'Failed to delete discussion' },
         { status: 500 }
       );
+    }
+
+    if (discussion.thread_id) {
+      await recalcThreadCounts(supabase, discussion.thread_id);
     }
 
     return NextResponse.json({ success: true });
