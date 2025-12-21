@@ -22,6 +22,17 @@ export async function DELETE(
   { params }: { params: { commentId: string } }
 ) {
   try {
+    const commentId =
+      params?.commentId || request.nextUrl.pathname.split('/')?.[4];
+
+    if (!commentId || commentId === 'undefined') {
+      console.error('Invalid commentId for DELETE', {
+        commentId,
+        pathname: request.nextUrl.pathname
+      });
+      return NextResponse.json({ error: 'commentId is required' }, { status: 400 });
+    }
+
     const supabase = await createClient();
 
     // Get the current user
@@ -37,7 +48,7 @@ export async function DELETE(
     const { data: comment, error: fetchError } = await supabase
       .from('discussion_posts')
       .select('user_id, parent_post_id, thread_id')
-      .eq('id', params.commentId)
+      .eq('id', commentId)
       .maybeSingle();
 
     if (fetchError || !comment || !comment.parent_post_id) {
@@ -58,7 +69,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('discussion_posts')
       .delete()
-      .eq('id', params.commentId);
+      .eq('id', commentId);
 
     if (deleteError) {
       console.error('Error deleting comment:', deleteError);

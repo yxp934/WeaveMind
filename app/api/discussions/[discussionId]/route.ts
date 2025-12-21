@@ -23,6 +23,17 @@ export async function DELETE(
   { params }: { params: { discussionId: string } }
 ) {
   try {
+    const discussionId =
+      params?.discussionId || request.nextUrl.pathname.split('/')?.[3];
+
+    if (!discussionId || discussionId === 'undefined') {
+      console.error('Invalid discussionId for DELETE', {
+        discussionId,
+        pathname: request.nextUrl.pathname
+      });
+      return NextResponse.json({ error: 'discussionId is required' }, { status: 400 });
+    }
+
     const supabase = await createClient();
 
     // Get the current user
@@ -38,7 +49,7 @@ export async function DELETE(
     const { data: discussion, error: fetchError } = await supabase
       .from('discussion_posts')
       .select('user_id, thread_id')
-      .eq('id', params.discussionId)
+      .eq('id', discussionId)
       .is('parent_post_id', null)
       .maybeSingle();
 
@@ -60,7 +71,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('discussion_posts')
       .delete()
-      .eq('id', params.discussionId);
+      .eq('id', discussionId);
 
     if (deleteError) {
       console.error('Error deleting discussion:', deleteError);

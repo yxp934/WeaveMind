@@ -48,18 +48,33 @@ async function getDiscussionWithThread(
   return data;
 }
 
+function isValidUUID(value: string | undefined) {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { discussionId: string } }
 ) {
   try {
+    const discussionId =
+      params?.discussionId || request.nextUrl.pathname.split('/')?.[3];
+
+    if (!isValidUUID(discussionId)) {
+      console.error('Invalid discussionId for comments GET', {
+        discussionId,
+        pathname: request.nextUrl.pathname
+      });
+      return NextResponse.json({ error: 'discussionId is required' }, { status: 400 });
+    }
+
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const parentPost = await getDiscussionWithThread(supabase, params.discussionId);
+    const parentPost = await getDiscussionWithThread(supabase, discussionId);
     if (!parentPost || parentPost.is_deleted) {
       return NextResponse.json({ error: 'Discussion not found' }, { status: 404 });
     }
@@ -68,7 +83,7 @@ export async function GET(
       .from('discussion_posts')
       .select('id, content, user_id, created_at, like_count, is_deleted')
       .eq('thread_id', parentPost.thread_id)
-      .eq('parent_post_id', params.discussionId)
+      .eq('parent_post_id', discussionId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: true });
 
@@ -133,6 +148,17 @@ export async function POST(
   { params }: { params: { discussionId: string } }
 ) {
   try {
+    const discussionId =
+      params?.discussionId || request.nextUrl.pathname.split('/')?.[3];
+
+    if (!isValidUUID(discussionId)) {
+      console.error('Invalid discussionId for comments POST', {
+        discussionId,
+        pathname: request.nextUrl.pathname
+      });
+      return NextResponse.json({ error: 'discussionId is required' }, { status: 400 });
+    }
+
     const supabase = await createClient();
 
     // Get the current user
@@ -154,7 +180,7 @@ export async function POST(
       );
     }
 
-    const parentPost = await getDiscussionWithThread(supabase, params.discussionId);
+    const parentPost = await getDiscussionWithThread(supabase, discussionId);
     if (!parentPost || parentPost.is_deleted) {
       return NextResponse.json({ error: 'Discussion not found' }, { status: 404 });
     }
@@ -194,7 +220,7 @@ export async function POST(
       .from('discussion_posts')
       .insert({
         thread_id: parentPost.thread_id,
-        parent_post_id: params.discussionId,
+        parent_post_id: discussionId,
         content,
         user_id: user.id,
         depth: 1
