@@ -107,7 +107,9 @@ export default function TeacherDiscussionsPage() {
   // 加载comments
   useEffect(() => {
     if (selectedDiscussion) {
-      loadComments();
+      setComments([]);
+      setReplyContent('');
+      loadComments(selectedDiscussion.id);
       loadLikeStatus(selectedDiscussion.id);
     }
   }, [selectedDiscussion]);
@@ -188,10 +190,10 @@ export default function TeacherDiscussionsPage() {
     }
   };
 
-  const loadComments = async () => {
-    if (!selectedDiscussion) return;
+  const loadComments = async (discussionId: string) => {
+    if (!discussionId) return;
     try {
-      const response = await fetch(`/api/discussions/${selectedDiscussion.id}/comments`);
+      const response = await fetch(`/api/discussions/${discussionId}/comments`);
       const data = await response.json();
       if (data.comments) {
         setComments(data.comments);
@@ -199,12 +201,12 @@ export default function TeacherDiscussionsPage() {
         data.comments.forEach((comment: Comment) => {
           loadLikeStatus(comment.id);
         });
-        setSelectedDiscussion(prev => prev ? {
+        setSelectedDiscussion(prev => prev && prev.id === discussionId ? {
           ...prev,
           comment_count: data.comments.length
         } : prev);
         setDiscussions(prev => prev.map((discussion) =>
-          discussion.id === selectedDiscussion.id
+          discussion.id === discussionId
             ? { ...discussion, comment_count: data.comments.length }
             : discussion
         ));
