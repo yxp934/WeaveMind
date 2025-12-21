@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 type Profile = {
@@ -6,6 +7,12 @@ type Profile = {
   full_name: string | null;
   avatar_url?: string | null;
   role?: string | null;
+};
+
+type ThreadAccess = {
+  thread: { id: string; class_id: string; is_locked: boolean } | null;
+  memberRole?: string | null;
+  forbidden?: boolean;
 };
 
 async function fetchProfiles(
@@ -30,21 +37,72 @@ async function fetchProfiles(
   }, {});
 }
 
-async function getThread(
+async function getThreadWithAccess(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  threadId: string
-) {
-  const { data: thread, error } = await supabase
+  threadId: string,
+  userId: string
+): Promise<ThreadAccess> {
+  const { data: thread, error: threadError } = await supabase
     .from('discussion_threads')
     .select('id, class_id, is_locked')
     .eq('id', threadId)
     .maybeSingle();
 
-  if (error) {
-    console.error('Error fetching thread info:', error);
+  if (thread) {
+    const { data: membership, error: membershipError } = await supabase
+      .from('class_members')
+      .select('role')
+      .eq('class_id', thread.class_id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Error fetching class membership:', membershipError);
+    }
+
+    return {
+      thread,
+      memberRole: membership?.role ?? null,
+      forbidden: !membership
+    };
   }
 
-  return thread;
+  if (threadError) {
+    console.error('Error fetching thread info:', threadError);
+  }
+
+  // Fallback to admin client to avoid false 404s when RLS blocks the initial fetch.
+  const admin = createAdminClient();
+  const { data: adminThread, error: adminThreadError } = await admin
+    .from('discussion_threads')
+    .select('id, class_id, is_locked')
+    .eq('id', threadId)
+    .maybeSingle();
+
+  if (adminThreadError) {
+    console.error('Admin fetch thread error:', adminThreadError);
+  }
+
+  if (!adminThread) {
+    return { thread: null };
+  }
+
+  const { data: adminMembership, error: adminMembershipError } = await admin
+    .from('class_members')
+    .select('role')
+    .eq('class_id', adminThread.class_id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (adminMembershipError) {
+    console.error('Admin fetch membership error:', adminMembershipError);
+  }
+
+  return {
+    thread: adminThread,
+    memberRole: adminMembership?.role ?? null,
+    forbidden: !adminMembership
+  };
 }
 
 export async function GET(
@@ -58,10 +116,19 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const thread = await getThread(supabase, params.topicId);
-    if (!thread) {
-      return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
+    const access = await getThreadWithAccess(supabase, params.topicId, user.id);
+    if (!access.thread) {
+      return NextResponse.json(
+        { error: access.forbidden ? 'You are not part of this class' : 'Topic not found' },
+        { status: access.forbidden ? 403 : 404 }
+      );
     }
+
+    if (access.forbidden) {
+      return NextResponse.json({ error: 'You are not part of this class' }, { status: 403 });
+    }
+
+    const thread = access.thread;
 
     const { data: posts, error } = await supabase
       .from('discussion_posts')
@@ -154,34 +221,29 @@ export async function POST(
       );
     }
 
-    const thread = await getThread(supabase, params.topicId);
-    if (!thread) {
-      return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
-    }
-
-    if (thread.is_locked) {
+    const access = await getThreadWithAccess(supabase, params.topicId, user.id);
+    if (!access.thread) {
       return NextResponse.json(
-        { error: 'Topic is locked' },
-        { status: 403 }
+        { error: access.forbidden ? 'You are not part of this class' : 'Topic not found' },
+        { status: access.forbidden ? 403 : 404 }
       );
     }
 
-    // Validate class membership
-    const { data: classMember, error: memberError } = await supabase
-      .from('class_members')
-      .select('role')
-      .eq('class_id', thread.class_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (memberError || !classMember) {
+    if (access.forbidden || !access.memberRole) {
       return NextResponse.json(
         { error: 'You are not part of this class' },
         { status: 403 }
       );
     }
 
-    const authorRole = classMember.role === 'teacher' ? 'teacher' : 'student';
+    if (access.thread.is_locked) {
+      return NextResponse.json(
+        { error: 'Topic is locked' },
+        { status: 403 }
+      );
+    }
+
+    const authorRole = access.memberRole === 'teacher' ? 'teacher' : 'student';
 
     // Create the discussion (root post)
     const { data: post, error: createError } = await supabase
