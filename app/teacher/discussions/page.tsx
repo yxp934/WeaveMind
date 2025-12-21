@@ -118,25 +118,13 @@ export default function TeacherDiscussionsPage() {
       if (user) {
         setCurrentUserId(user.id);
 
-        // First, try to get any class directly
-        const { data: classData } = await supabase
-          .from('classes')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-
-        if (classData?.id) {
-          setCurrentClassId(classData.id);
-          return;
-        }
-
-        // If no class found, check organization structure
+        // Get user's organization and their first class
         const { data: memberData } = await supabase
           .from('organization_members')
           .select(`
             organization_id,
             organizations!inner(
-              classes(id)
+              classes(id, name)
             )
           `)
           .eq('user_id', user.id)
@@ -144,12 +132,13 @@ export default function TeacherDiscussionsPage() {
           .limit(1)
           .maybeSingle();
 
-        const orgs = memberData?.organizations as { classes: { id: string }[] } | undefined;
+        const orgs = memberData?.organizations as { classes: { id: string, name: string }[] } | undefined;
         if (orgs?.classes?.[0]?.id) {
+          console.log('Found class:', orgs.classes[0]);
           setCurrentClassId(orgs.classes[0].id);
         } else {
-          // No class found at all
           console.log('No class found for user');
+          toast.error('No class found for your organization');
           setIsLoading(false);
         }
       } else {
@@ -157,6 +146,7 @@ export default function TeacherDiscussionsPage() {
       }
     } catch (error) {
       console.error('Error loading current user:', error);
+      toast.error('Failed to load user data');
       setIsLoading(false);
     }
   };
