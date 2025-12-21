@@ -104,15 +104,17 @@ export default function TeacherDiscussionsPage() {
     }
   }, [activeTopic]);
 
+  const selectedDiscussionId = selectedDiscussion?.id;
+
   // 加载comments
   useEffect(() => {
-    if (selectedDiscussion) {
+    if (selectedDiscussionId) {
       setComments([]);
       setReplyContent('');
-      loadComments(selectedDiscussion.id);
-      loadLikeStatus(selectedDiscussion.id);
+      loadComments(selectedDiscussionId);
+      loadLikeStatus(selectedDiscussionId);
     }
-  }, [selectedDiscussion]);
+  }, [selectedDiscussionId]);
 
   const loadCurrentUser = async () => {
     try {
