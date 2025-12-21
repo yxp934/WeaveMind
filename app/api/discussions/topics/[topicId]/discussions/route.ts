@@ -110,13 +110,24 @@ export async function GET(
   { params }: { params: { topicId: string } }
 ) {
   try {
+    const threadId =
+      params?.topicId || request.nextUrl.pathname.split('/')?.[4];
+
+    if (!threadId || threadId === 'undefined') {
+      console.error('Missing threadId in route params', {
+        pathname: request.nextUrl.pathname,
+        params
+      });
+      return NextResponse.json({ error: 'topicId is required' }, { status: 400 });
+    }
+
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const access = await getThreadWithAccess(supabase, params.topicId, user.id);
+    const access = await getThreadWithAccess(supabase, threadId, user.id);
     if (!access.thread) {
       return NextResponse.json(
         { error: access.forbidden ? 'You are not part of this class' : 'Topic not found' },
@@ -133,7 +144,7 @@ export async function GET(
     const { data: posts, error } = await supabase
       .from('discussion_posts')
       .select('id, title, content, user_id, created_at, like_count, reply_count, is_deleted')
-      .eq('thread_id', params.topicId)
+      .eq('thread_id', threadId)
       .is('parent_post_id', null)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
@@ -200,6 +211,17 @@ export async function POST(
   { params }: { params: { topicId: string } }
 ) {
   try {
+    const threadId =
+      params?.topicId || request.nextUrl.pathname.split('/')?.[4];
+
+    if (!threadId || threadId === 'undefined') {
+      console.error('Missing threadId in route params', {
+        pathname: request.nextUrl.pathname,
+        params
+      });
+      return NextResponse.json({ error: 'topicId is required' }, { status: 400 });
+    }
+
     const supabase = await createClient();
 
     // Get the current user
@@ -221,7 +243,7 @@ export async function POST(
       );
     }
 
-    const access = await getThreadWithAccess(supabase, params.topicId, user.id);
+    const access = await getThreadWithAccess(supabase, threadId, user.id);
     if (!access.thread) {
       return NextResponse.json(
         { error: access.forbidden ? 'You are not part of this class' : 'Topic not found' },
@@ -249,7 +271,7 @@ export async function POST(
     const { data: post, error: createError } = await supabase
       .from('discussion_posts')
       .insert({
-        thread_id: params.topicId,
+        thread_id: threadId,
         title,
         content,
         user_id: user.id,
