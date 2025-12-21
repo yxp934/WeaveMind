@@ -118,7 +118,19 @@ export default function TeacherDiscussionsPage() {
       if (user) {
         setCurrentUserId(user.id);
 
-        // Get the user's first class from organization_members
+        // First, try to get any class directly
+        const { data: classData } = await supabase
+          .from('classes')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+
+        if (classData?.id) {
+          setCurrentClassId(classData.id);
+          return;
+        }
+
+        // If no class found, check organization structure
         const { data: memberData } = await supabase
           .from('organization_members')
           .select(`
@@ -128,27 +140,20 @@ export default function TeacherDiscussionsPage() {
             )
           `)
           .eq('user_id', user.id)
-          .eq('role', 'teacher')
+          .in('role', ['teacher', 'owner'])
           .limit(1)
-          .single();
+          .maybeSingle();
 
         const orgs = memberData?.organizations as { classes: { id: string }[] } | undefined;
         if (orgs?.classes?.[0]?.id) {
           setCurrentClassId(orgs.classes[0].id);
         } else {
-          // Try to get any class the teacher has access to
-          const { data: classData } = await supabase
-            .from('classes')
-            .select('id')
-            .limit(1)
-            .single();
-
-          if (classData?.id) {
-            setCurrentClassId(classData.id);
-          } else {
-            setIsLoading(false);
-          }
+          // No class found at all
+          console.log('No class found for user');
+          setIsLoading(false);
         }
+      } else {
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Error loading current user:', error);

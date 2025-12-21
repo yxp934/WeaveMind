@@ -69,19 +69,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify user is a teacher in the organization
-    const { data: classData, error: classError } = await supabase
-      .from('classes')
-      .select(`
-        organization_id,
-        organization_members!inner(role)
-      `)
-      .eq('id', classId)
-      .eq('organization_members.user_id', user.id)
-      .eq('organization_members.role', 'teacher')
-      .single();
+    // Verify user is a teacher in any organization
+    const { data: memberData, error: memberError } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .in('role', ['teacher', 'owner'])
+      .limit(1)
+      .maybeSingle();
 
-    if (classError || !classData) {
+    if (memberError || !memberData) {
+      console.error('Member check error:', memberError);
       return NextResponse.json(
         { error: 'Only teachers can create discussion topics' },
         { status: 403 }
@@ -101,15 +99,14 @@ export async function POST(request: NextRequest) {
         name,
         created_by,
         created_at,
-        updated_at,
-        profiles:created_by(full_name)
+        updated_at
       `)
       .single();
 
     if (createError) {
       console.error('Error creating discussion topic:', createError);
       return NextResponse.json(
-        { error: 'Failed to create discussion topic' },
+        { error: 'Failed to create discussion topic: ' + createError.message },
         { status: 500 }
       );
     }
