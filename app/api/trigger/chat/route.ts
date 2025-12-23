@@ -289,6 +289,7 @@ export async function GET(request: NextRequest) {
   const adapterStatus = langGraphAdapter.getWorkflowStatus();
 
   return NextResponse.json({
+    success: true, // 添加success字段以匹配前端期望
     status: "healthy",
     version: "1.0.0",
     adapter: adapterStatus,

@@ -530,7 +530,15 @@ export const useChatbotStore = create<ChatbotStore>()(
 
             const data = await response.json().catch(() => null);
             console.log('[CHATBOT] Response data:', data);
-            if (!response.ok || !data?.success) {
+
+            // 兼容多种响应格式
+            const isSuccess = response.ok && (
+              data?.success === true ||
+              data?.status === "healthy" ||
+              data?.response
+            );
+
+            if (!isSuccess) {
               console.error('[CHATBOT] API call failed:', { status: response.status, statusText: response.statusText, data });
               throw new Error(
                 data?.error?.message ||
@@ -538,7 +546,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               );
             }
 
-            const rawMessage = data?.data?.message || "";
+            const rawMessage = data?.data?.message || data?.response || "";
             let displayMessage = rawMessage;
             let parsed: any = null;
 
