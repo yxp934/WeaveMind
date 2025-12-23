@@ -540,16 +540,16 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     setStreamingMessage(''); // 重置流式消息
 
     try {
-      // 使用升级后的流式API（支持LangGraph）发送请求
-      const response = await fetch('/api/ai/chat', {
+      // 使用Trigger.dev增强的流式API
+      const response = await fetch('/api/trigger/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageText,
-          stream: true, // 启用流式输出
           context: {
             ...selectedContext,
             userRole: 'teacher',
+            conversationId: `conv_${Date.now()}`,
             conversationHistory: messages.map(msg => ({
               role: msg.isUser ? 'user' : 'assistant',
               content: msg.text,
@@ -558,62 +558,72 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
               metadata: msg.metadata || {}
             }))
           },
+          options: {
+            stream: true,
+            includeMetadata: true,
+            aiModel: 'google/gemini-2.5-flash-lite-preview-09-2025',
+          },
         }),
       });
 
       let currentMessageId = (Date.now() + 1).toString();
       let aiMessageCreated = false; // 标记是否已创建AI消息
 
-      // 处理流式响应
+      // 处理流式响应 - 支持Trigger.dev格式
       await handleStreamResponse(
         response,
         // onMessage - 处理每个数据块，实现真正的实时显示
         (data) => {
           if (data.type === 'start') {
-            console.log('流式响应开始:', data);
+            console.log('Trigger.dev流式响应开始:', data);
             // 立即创建AI消息占位符
             const placeholderMessage: Message = {
               id: currentMessageId,
-              text: '',
+              text: '🤖 正在启动AI助手...',
               isUser: false,
               timestamp: new Date(),
               choices: undefined,
               functionResult: undefined,
-              metadata: undefined,
+              metadata: { executionMode: 'trigger' },
             };
             setMessages(prev => [...prev, placeholderMessage]);
             aiMessageCreated = true;
           } else if (data.type === 'progress') {
-            console.log('处理进度:', data.progress, data.message);
+            console.log('Trigger.dev处理进度:', data.progress, data.stage);
             // 更新进度信息
             if (aiMessageCreated) {
               setMessages(prev => prev.map(msg =>
                 msg.id === currentMessageId
-                  ? { ...msg, text: `🤖 ${data.message}` }
+                  ? { ...msg, text: `🤖 ${data.stage} (${data.progress}%)` }
                   : msg
               ));
             }
-          } else if (data.type === 'streaming') {
+          } else if (data.type === 'token') {
             // 新的流式内容事件 - 实时更新AI响应内容
-            console.log('流式内容更新:', data.content);
+            console.log('Trigger.dev流式内容:', data.content);
             if (aiMessageCreated) {
               setMessages(prev => prev.map(msg =>
                 msg.id === currentMessageId
-                  ? { ...msg, text: `🤖 ${data.content}` }
+                  ? { ...msg, text: msg.text + data.content }
                   : msg
               ));
             }
-          } else if (data.type === 'complete') {
-            // 完整的AI响应，替换占位符
+          } else if (data.type === 'response') {
+            // Trigger.dev完整响应
             const responseData = data.data || {};
             if (aiMessageCreated) {
               setMessages(prev => prev.map(msg =>
                 msg.id === currentMessageId
                   ? {
                       ...msg,
-                      text: responseData.message || '响应完成',
+                      text: responseData.response || responseData.message || '响应完成',
                       choices: responseData.choices || undefined,
-                      metadata: responseData.metadata || undefined,
+                      metadata: {
+                        ...msg.metadata,
+                        executionMode: 'trigger',
+                        processingTime: responseData.metadata?.processingTime,
+                        streamId: responseData.metadata?.streamId,
+                      },
                     }
                   : msg
               ));
@@ -621,23 +631,32 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
               // 如果还没创建，就创建一个新消息
               const aiMessage: Message = {
                 id: currentMessageId,
-                text: responseData.message || '响应完成',
+                text: responseData.response || responseData.message || '响应完成',
                 isUser: false,
                 timestamp: new Date(),
                 choices: responseData.choices || undefined,
                 functionResult: undefined,
-                metadata: responseData.metadata || undefined,
+                metadata: {
+                  executionMode: 'trigger',
+                  processingTime: responseData.metadata?.processingTime,
+                },
               };
               setMessages(prev => [...prev, aiMessage]);
             }
             setStreamingMessage(''); // 清空流式消息
+          } else if (data.type === 'complete') {
+            // 流完成
+            console.log('Trigger.dev流式响应完成');
+            setStreamingMessage(''); // 清空流式消息
           } else if (data.type === 'error') {
             // 处理错误
+            console.error('Trigger.dev错误:', data.error);
             const errorMessage: Message = {
               id: currentMessageId,
-              text: data.error || '处理失败，请重试',
+              text: data.error?.message || '处理失败，请重试',
               isUser: false,
               timestamp: new Date(),
+              metadata: { executionMode: 'trigger', error: true },
             };
             setMessages(prev => [...prev, errorMessage]);
             setStreamingMessage(''); // 清空流式消息
@@ -694,9 +713,9 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     setRetryCount(0);
 
     try {
-      // 使用重试机制发送API请求
+      // 使用Trigger.dev增强的重试机制发送API请求
       const response = await retryApiCall(async () => {
-        const res = await fetch('/api/ai/chat', {
+        const res = await fetch('/api/trigger/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -704,7 +723,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
             context: {
               ...selectedContext,
               userRole: 'teacher',
-              // 关键修复：传递正确的metadata用于上下文恢复
+              conversationId: `conv_${Date.now()}`,
               conversationHistory: messages.map(msg => ({
                 role: msg.isUser ? 'user' : 'assistant',
                 content: msg.text,
@@ -712,6 +731,11 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
                 toolsUsed: [],
                 metadata: msg.metadata || {}
               }))
+            },
+            options: {
+              stream: false,
+              includeMetadata: true,
+              aiModel: 'google/gemini-2.5-flash-lite-preview-09-2025',
             },
           }),
         });
