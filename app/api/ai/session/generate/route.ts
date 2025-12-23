@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { generateText } from 'ai'
 import { A2A_BUILDER_PROMPT, A2A_CRITIC_PROMPT } from '@/lib/ai/prompts'
 
@@ -160,18 +160,10 @@ async function runA2AGeneration({
 }) {
   try {
     // Verify AI Gateway configuration
-    const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-    if (!gatewayKey) {
-      throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-    }
-
-    // Create OpenAI client with Vercel AI Gateway
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    let builder_feedback = []
+    // 使用全局统一的 Gateway 配置
+// Create OpenAI client with Vercel AI Gateway
+    const openai = createGatewayOpenAI()
+let builder_feedback = []
     let critic_feedback = []
     let current_iteration = 0
     let final_content = {}
@@ -183,7 +175,7 @@ async function runA2AGeneration({
       try {
         // Builder agent creates content
         const builderResponse = await generateText({
-          model: openai.chat('meituan/longcat-flash-chat'),
+          model: openai.chat(DEFAULT_MODEL),
           system: A2A_BUILDER_PROMPT,
           prompt: `
             Session Details:
@@ -215,7 +207,7 @@ async function runA2AGeneration({
 
         // Critic agent reviews and provides feedback
         const criticResponse = await generateText({
-          model: openai.chat('meituan/longcat-flash-chat'),
+          model: openai.chat(DEFAULT_MODEL),
           system: A2A_CRITIC_PROMPT,
           prompt: `
             Review the following session content from a student learning perspective:

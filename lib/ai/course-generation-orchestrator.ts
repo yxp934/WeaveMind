@@ -1,9 +1,7 @@
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createGatewayOpenAI, DEFAULT_MODEL } from './langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
 const MAX_COMPONENTS_PER_CHAPTER = 6
 const MAX_ITERATIONS_PER_CHAPTER = 3
 const MIN_ITERATIONS_PER_CHAPTER = 3
@@ -30,13 +28,8 @@ type RunRow = {
   max_iterations_per_chapter: number | null
 }
 
-function ensureGatewayClient() {
-  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-  if (!gatewayKey) {
-    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-  }
-  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
-}
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 function extractJson(text: string): any {
   try {
@@ -260,7 +253,6 @@ export async function runCourseGeneration(runId: string) {
   // Ensure we use at least MIN_ITERATIONS_PER_CHAPTER
   const requestedIterations = (run as RunRow).max_iterations_per_chapter || MAX_ITERATIONS_PER_CHAPTER
   const iterationsLimit = Math.max(requestedIterations, MIN_ITERATIONS_PER_CHAPTER)
-  const openai = ensureGatewayClient()
 
   let completed = 0
 
@@ -332,7 +324,7 @@ async function runChapterGeneration(params: {
 
     // Builder generates content (with previous feedback if available)
     const { text: builderText } = await generateText({
-      model: openai.chat(MODEL_NAME),
+      model: openai.chat(DEFAULT_MODEL),
       system: 'You are the Builder agent in a dual-agent system for course creation. Your goal is to create detailed, pedagogically sound content that helps slow learners understand concepts thoroughly.',
       prompt: buildBuilderPrompt(courseTitle, chapter, requirements, previousFeedback),
       temperature: 0.7,
@@ -344,7 +336,7 @@ async function runChapterGeneration(params: {
 
     // Critic evaluates content (knows current iteration number)
     const { text: criticText } = await generateText({
-      model: openai.chat(MODEL_NAME),
+      model: openai.chat(DEFAULT_MODEL),
       system: 'You are the Critic agent. You pretend to be a slow learner from the target audience who needs very detailed explanations. You must find issues in the first few iterations to ensure quality.',
       prompt: buildCriticPrompt(courseTitle, chapter, requirements, builderJson, iterations),
       temperature: 0.3,

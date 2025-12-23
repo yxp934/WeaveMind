@@ -7,20 +7,12 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
-
-function ensureGatewayClient() {
-  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-  if (!gatewayKey) {
-    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-  }
-  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
-}
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 function extractJson(text: string): any {
   try {
@@ -67,7 +59,7 @@ export const createLearningPathwayTool = tool({
   }),
   execute: async ({ userId, learningObjectives, prerequisiteKnowledge, availableTime, learningStyle, constraints }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取用户历史学习数据
     const { data: userHistory } = await supabase
@@ -214,7 +206,7 @@ ${JSON.stringify(availableCourses?.slice(0, 10), null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.6,
         maxOutputTokens: 3000,
@@ -315,7 +307,7 @@ export const optimizePathwayProgressTool = tool({
   }),
   execute: async ({ pathwayId, userId, currentProgress, challenges, preferences }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取原始路径信息
     const { data: pathway } = await supabase
@@ -455,7 +447,7 @@ ${JSON.stringify({
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.4,
         maxOutputTokens: 2500,
@@ -555,7 +547,7 @@ export const suggestLearningResourcesTool = tool({
   }),
   execute: async ({ learningTopic, currentLevel, targetLevel, learningStyle, timeAvailable, resourceTypes, constraints }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 搜索相关的现有课程资源
     const { data: existingCourses } = await supabase
@@ -666,7 +658,7 @@ ${JSON.stringify(constraints, null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.5,
         maxOutputTokens: 2200,
@@ -749,7 +741,7 @@ export const analyzeLearningEfficiencyTool = tool({
   }),
   execute: async ({ userId, timeRange, learningActivities, performanceMetrics }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取补充的学习事件数据
     const { data: learningEvents } = await supabase
@@ -865,7 +857,7 @@ ${JSON.stringify(efficiencyMetrics, null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.3,
         maxOutputTokens: 2800,

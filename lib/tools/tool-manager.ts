@@ -1,10 +1,10 @@
 import { type SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { generateText } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 export interface ToolDefinition {
   id: string
@@ -268,7 +268,7 @@ export class ToolManager {
       `
 
       const { text } = await generateText({
-        model: openai.chat(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.7
       })

@@ -7,20 +7,12 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
-
-function ensureGatewayClient() {
-  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-  if (!gatewayKey) {
-    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-  }
-  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
-}
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 function extractJson(text: string): any {
   try {
@@ -50,7 +42,7 @@ export const createDiscussionThreadTool = tool({
   }),
   execute: async ({ classId, courseId, title, description, tags = [], type, targetAudience, difficultyLevel }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取班级和课程信息
     const { data: classData } = await supabase
@@ -112,7 +104,7 @@ ${courseData ? `课程信息：${courseData.title} - ${courseData.description ||
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.7,
         maxOutputTokens: 1500,
@@ -206,7 +198,7 @@ export const suggestDiscussionTopicsTool = tool({
   }),
   execute: async ({ courseId, targetAudience, topicCount, focusAreas, difficultyRange }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取课程内容
     const { data: course } = await supabase
@@ -279,7 +271,7 @@ ${difficultyRange ? `【难度范围】\n${difficultyRange.min} - ${difficultyRa
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.8,
         maxOutputTokens: 2000,
@@ -323,7 +315,7 @@ export const analyzeDiscussionEngagementTool = tool({
   }),
   execute: async ({ threadId, timeRange, includeAnonymous, analysisDepth }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取讨论主题信息
     const { data: thread } = await supabase
@@ -510,7 +502,7 @@ ${JSON.stringify(analysisData.time_distribution, null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.3,
         maxOutputTokens: 1500,
@@ -596,7 +588,7 @@ export const moderateDiscussionContentTool = tool({
     customRules: z.array(z.string()).optional().describe('自定义审核规则'),
   }),
   execute: async ({ content, context, moderationLevel, customRules }) => {
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 构建审核提示
     let prompt = `作为内容审核专家，请对以下讨论内容进行审核：
@@ -672,7 +664,7 @@ ${customRules ? `【自定义规则】\n${customRules.join('\n')}` : ''}`
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.2,
         maxOutputTokens: 1200,

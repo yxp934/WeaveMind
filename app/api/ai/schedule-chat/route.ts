@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { streamText } from 'ai'
 import { SCHEDULE_REQUIREMENT_SYSTEM_PROMPT } from '@/lib/ai/prompts'
 
@@ -15,14 +15,10 @@ export async function POST(req: Request) {
     }
 
     // Create OpenAI client with Vercel AI Gateway
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    // Stream the AI response
+    const openai = createGatewayOpenAI()
+// Stream the AI response
     const result = streamText({
-      model: openai.chat('meituan/longcat-flash-chat'),
+      model: openai.chat(DEFAULT_MODEL),
       system: SCHEDULE_REQUIREMENT_SYSTEM_PROMPT,
       messages,
       temperature: 0.7,

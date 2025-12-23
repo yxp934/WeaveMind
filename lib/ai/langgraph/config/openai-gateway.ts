@@ -22,8 +22,8 @@ export function createGatewayOpenAI() {
  * 按照TOON格式输出能力和响应速度排序
  */
 export const AVAILABLE_MODELS = {
-  // 当前使用的模型
-  DEFAULT: 'meituan/longcat-flash-chat',
+  // 当前使用的模型（推荐：Gemini 2.5 Flash Lite - 最快响应速度）
+  DEFAULT: 'google/gemini-2.5-flash-lite-preview-09-2025',
 
   // OpenAI系列
   GPT_4O: 'openai/gpt-4o',
@@ -57,6 +57,9 @@ export const AVAILABLE_MODELS = {
   // 其他可靠模型
   QWEN_PLUS: 'qwen/qwen-plus',
   QWEN_MAX: 'qwen/qwen-max',
+
+  // 美团系列（备用）
+  LONGCAT_FLASH_CHAT: 'meituan/longcat-flash-chat',
 } as const;
 
 /**
@@ -71,7 +74,7 @@ export const AVAILABLE_MODELS = {
  *
  * 备选: xai/grok-4.1-fast-non-reasoning (1-2秒响应，100%格式正确)
  */
-export const DEFAULT_MODEL = process.env.AI_MODEL || AVAILABLE_MODELS.GEMINI_2_5_FLASH_LITE;
+export const DEFAULT_MODEL = process.env.AI_MODEL || AVAILABLE_MODELS.DEFAULT;
 
 /**
  * 获取模型显示名称

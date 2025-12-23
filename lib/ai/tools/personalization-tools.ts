@@ -7,20 +7,12 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
-
-function ensureGatewayClient() {
-  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-  if (!gatewayKey) {
-    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-  }
-  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
-}
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 function extractJson(text: string): any {
   try {
@@ -98,7 +90,7 @@ export const generatePersonalizedRecommendationsTool = tool({
   }),
   execute: async ({ userId, userProfile, behaviorHistory, context, recommendationTypes }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取用户基本信息和设置
     const { data: userSettings } = await supabase
@@ -290,7 +282,7 @@ ${recommendationTypes ? recommendationTypes.join(', ') : '全部类型'}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.6,
         maxOutputTokens: 3500,
@@ -368,7 +360,7 @@ export const adaptContentDifficultyTool = tool({
   }),
   execute: async ({ userId, contentId, contentType, currentDifficulty, userCapabilityProfile, adaptationGoals, constraints }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取内容详情
     const contentQuery = supabase
@@ -500,7 +492,7 @@ ${JSON.stringify(constraints, null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.4,
         maxOutputTokens: 2800,
@@ -618,7 +610,7 @@ export const createStudyRemindersTool = tool({
   }),
   execute: async ({ userId, studyPlan, userPreferences, contextualFactors, behavioralPatterns }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取用户历史提醒设置和响应数据
     const { data: reminderHistory } = await supabase
@@ -795,7 +787,7 @@ ${JSON.stringify(reminderResponsePattern, null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.5,
         maxOutputTokens: 3200,

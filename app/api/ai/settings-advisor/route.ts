@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { SettingsAdvisorRequest, StandardApiResponse, SettingsAdvisorResponseData } from '@/lib/types/api'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 
 export const runtime = 'edge'
 
 // 初始化OpenAI客户端 - 使用Vercel AI Gateway
-const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-if (!gatewayKey) {
-  throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-}
-
-const openai = createOpenAI({
-  apiKey: gatewayKey,
-  baseURL: 'https://ai-gateway.vercel.sh/v1',
-})
-
+// 使用全局统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 // 设置顾问请求验证模式
 const settingsAdvisorRequestSchema = z.object({
   action: z.enum(['optimize_learning_path', 'recommend_notifications', 'personalize_interface', 'analyze_usage']),
@@ -289,7 +281,7 @@ async function optimizeLearningPath({
 以JSON格式返回优化结果。`
 
   const { object } = await generateObject({
-    model: openai.chat('meituan/longcat-flash-chat'),
+    model: openai.chat(DEFAULT_MODEL),
     schema: z.object({
       learning_path: z.object({
         current_stage: z.string(),
@@ -366,7 +358,7 @@ async function recommendNotifications({
 以JSON格式返回推荐结果。`
 
   const { object } = await generateObject({
-    model: openai.chat('meituan/longcat-flash-chat'),
+    model: openai.chat(DEFAULT_MODEL),
     schema: z.object({
       recommendations: z.array(z.object({
         setting_category: z.string(),
@@ -445,7 +437,7 @@ ${context.userRole === 'teacher' ? '教师界面建议考虑: 课程管理效率
 以JSON格式返回推荐结果。`
 
   const { object } = await generateObject({
-    model: openai.chat('meituan/longcat-flash-chat'),
+    model: openai.chat(DEFAULT_MODEL),
     schema: z.object({
       recommendations: z.array(z.object({
         setting_category: z.string(),
@@ -524,7 +516,7 @@ ${Object.entries(usageStats.activityDistribution).map(([type, count]) => `${type
 以JSON格式返回分析结果。`
 
   const { object } = await generateObject({
-    model: openai.chat('meituan/longcat-flash-chat'),
+    model: openai.chat(DEFAULT_MODEL),
     schema: z.object({
       usage_analysis: z.object({
         total_sessions: z.number(),

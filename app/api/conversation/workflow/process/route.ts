@@ -2,18 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createStateManager, type StateManager, type ConversationMessage } from '@/lib/conversation/state-manager'
 import { generateText } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
-
-function ensureGatewayClient() {
-  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-  if (!gatewayKey) {
-    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-  }
-  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
-}
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 /**
  * 构建工作流对话系统提示词
@@ -141,7 +133,7 @@ export async function POST(request: NextRequest) {
     try {
       const openai = ensureGatewayClient()
       const { text } = await generateText({
-        model: openai.chat(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt: contextPrompt,
         temperature: 0.7,
       })

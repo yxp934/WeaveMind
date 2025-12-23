@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { generateText } from 'ai'
 import { NextResponse } from 'next/server'
 
@@ -47,12 +47,8 @@ export async function POST(req: Request) {
       )
     }
 
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    const prompt = `Current outline:
+    const openai = createGatewayOpenAI()
+const prompt = `Current outline:
 ${JSON.stringify(chapters, null, 2)}
 
 Instruction: ${instruction}
@@ -60,7 +56,7 @@ Instruction: ${instruction}
 Please apply the requested changes and return the updated outline as a JSON array.`
 
     const { text } = await generateText({
-      model: openai.chat('meituan/longcat-flash-chat'),
+      model: openai.chat(DEFAULT_MODEL),
       system: OUTLINE_EDITING_SYSTEM_PROMPT,
       prompt,
       temperature: 0.7,

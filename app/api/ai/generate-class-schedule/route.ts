@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { generateText } from 'ai'
 
 // Parse schedule requirements from conversation text
@@ -510,7 +510,7 @@ Generate exactly ${requirements.totalClasses} highly specific, progressive, and 
     try {
       // Call AI to generate session topics using generateText
       const { text } = await generateText({
-        model: openai.chat('meituan/longcat-flash-chat'),
+        model: openai.chat(DEFAULT_MODEL),
         prompt: sessionTopicPrompt,
         temperature: 0.3
       })

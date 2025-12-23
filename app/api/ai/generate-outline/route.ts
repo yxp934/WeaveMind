@@ -1,9 +1,12 @@
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { OUTLINE_GENERATION_SYSTEM_PROMPT, buildOutlinePrompt, type CourseRequirements } from '@/lib/ai/prompts'
 import { createClient } from '@/lib/supabase/server'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 
 export const runtime = 'edge'
+
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 export async function POST(req: Request) {
   try {
@@ -37,21 +40,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Verify Vercel Gateway key
-    const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-    if (!gatewayKey) {
-      return new Response('AI Gateway not configured', { status: 500 })
-    }
-
-    // Create OpenAI client with Vercel AI Gateway
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    // Generate outline using AI
+    // Generate outline using AI - 使用统一的默认模型
     const { text } = await generateText({
-      model: openai.chat('meituan/longcat-flash-chat'),
+      model: openai.chat(DEFAULT_MODEL),
       system: OUTLINE_GENERATION_SYSTEM_PROMPT,
       prompt: buildOutlinePrompt(requirements),
       temperature: 0.7,

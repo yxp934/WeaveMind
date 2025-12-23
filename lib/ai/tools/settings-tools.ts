@@ -7,20 +7,12 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '../langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
-
-function ensureGatewayClient() {
-  const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-  if (!gatewayKey) {
-    throw new Error('AI Gateway not configured (VERCEL_GATEWAY_KEY missing)')
-  }
-  return createOpenAI({ apiKey: gatewayKey, baseURL: GATEWAY_BASE_URL })
-}
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 function extractJson(text: string): any {
   try {
@@ -70,7 +62,7 @@ export const optimizeUserSettingsTool = tool({
   }),
   execute: async ({ userId, organizationId, currentSettings, behaviorData, optimizationGoals }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取当前设置
     let userSettings = currentSettings
@@ -205,7 +197,7 @@ ${analysisData.optimization_goals.join(', ')}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.4,
         maxOutputTokens: 2000,
@@ -275,7 +267,7 @@ export const suggestLearningPreferencesTool = tool({
   }),
   execute: async ({ userId, learningHistory, learningGoals, currentCourses, preferredLearningStyle }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取学习历史数据
     let userLearningHistory = learningHistory
@@ -421,7 +413,7 @@ ${JSON.stringify(learningPatternAnalysis, null, 2)}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.5,
         maxOutputTokens: 1800,
@@ -470,7 +462,7 @@ export const analyzeUsagePatternsTool = tool({
   }),
   execute: async ({ userId, timeRange, includeFeatures, analysisDepth }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 设置默认时间范围（最近30天）
     const endTime = timeRange?.end || new Date().toISOString()
@@ -604,7 +596,7 @@ ${includeFeatures ? `【重点分析功能】\n${includeFeatures.join(', ')}` : 
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.3,
         maxOutputTokens: 2000,
@@ -668,7 +660,7 @@ export const recommendNotificationSettingsTool = tool({
   }),
   execute: async ({ userId, userRole, organizationId, activityTypes, currentPreferences, timezone, workingHours }) => {
     const supabase = createAdminClient()
-    const openai = ensureGatewayClient()
+    // 使用全局统一的 openai 客户端
 
     // 获取用户组织信息
     const { data: orgMember } = await supabase
@@ -785,7 +777,7 @@ ${workingHours ? `${workingHours.start} - ${workingHours.end}` : '未设置'}
 
     try {
       const { text: aiResponse } = await generateText({
-        model: openai(MODEL_NAME),
+        model: openai.chat(DEFAULT_MODEL),
         prompt,
         temperature: 0.4,
         maxOutputTokens: 1800,

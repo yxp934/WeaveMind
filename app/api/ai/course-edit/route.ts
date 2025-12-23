@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { courseEditingTools } from '@/lib/ai/editing-tool-definitions'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 
-const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
-const MODEL_NAME = 'meituan/longcat-flash-chat'
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
 
 /**
  * POST /api/ai/course-edit
@@ -89,7 +89,7 @@ If the instruction is ambiguous, ask for clarification.`
 
     // Generate response with tool calling
     const result = await generateText({
-      model: openai.chat(MODEL_NAME),
+      model: openai.chat(DEFAULT_MODEL),
       system: systemPrompt,
       prompt: instruction,
       tools: courseEditingTools,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { generateText, streamText } from 'ai'
 import {
   buildTeacherAgentPrompt,
@@ -174,12 +174,8 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
       return NextResponse.json({ error: 'AI Gateway not configured' }, { status: 500 })
     }
 
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    // Build A2A context with schedule context
+    const openai = createGatewayOpenAI()
+// Build A2A context with schedule context
     const a2aContext: A2AContext = {
       className: className || entityTitle,
       classDescription: classDescription || entityDescription || '',
@@ -225,7 +221,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
             const teacherPrompt = buildTeacherAgentPrompt(a2aContext, iteration, studentFeedback?.overall_feedback)
 
             const teacherResult = await generateText({
-              model: openai.chat('meituan/longcat-flash-chat'),
+              model: openai.chat(DEFAULT_MODEL),
               prompt: teacherPrompt,
               temperature: 0.7,
             })
@@ -256,7 +252,7 @@ IMPORTANT: Build upon the topics covered in previous sessions. Avoid repeating c
               const contentToReview = JSON.stringify(currentComponents, null, 2)
 
               const studentResult = await generateText({
-                model: openai.chat('meituan/longcat-flash-chat'),
+                model: openai.chat(DEFAULT_MODEL),
                 prompt: `${studentPrompt}\n\n**CONTENT TO REVIEW:**\n${contentToReview}`,
                 temperature: 0.5,
               })

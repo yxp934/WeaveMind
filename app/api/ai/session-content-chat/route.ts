@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { streamText } from 'ai'
 import { createClient } from '@/lib/supabase/server'
 
@@ -168,12 +168,8 @@ NOTE: This session should build upon previous sessions and avoid repeating conte
       return new Response('AI Gateway not configured', { status: 500 })
     }
 
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    // Get compression context for enhanced conversation
+    const openai = createGatewayOpenAI()
+// Get compression context for enhanced conversation
     let compressionContextInfo = ''
     try {
       const { compressionContextService } = await import('@/lib/compression-context')
@@ -207,7 +203,7 @@ Sessions Context: ${JSON.stringify(compressionContext.session_contexts || [])}
 
     // Stream the response
     const result = await streamText({
-      model: openai.chat('meituan/longcat-flash-chat'),
+      model: openai.chat(DEFAULT_MODEL),
       system: enhancedSystemPrompt,
       messages,
       temperature: 0.7,

@@ -1,28 +1,19 @@
-import { createOpenAI } from '@ai-sdk/openai'
+import { createGatewayOpenAI, DEFAULT_MODEL } from '@/lib/ai/langgraph/config/openai-gateway'
 import { streamText } from 'ai'
 import { COURSE_REQUIREMENT_SYSTEM_PROMPT } from '@/lib/ai/prompts'
 
 export const runtime = 'edge'
 
+// 使用统一的 Gateway 配置
+const openai = createGatewayOpenAI()
+
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json()
 
-    // Verify Vercel Gateway key
-    const gatewayKey = process.env.VERCEL_GATEWAY_KEY
-    if (!gatewayKey) {
-      return new Response('AI Gateway not configured', { status: 500 })
-    }
-
-    // Create OpenAI client with Vercel AI Gateway
-    const openai = createOpenAI({
-      apiKey: gatewayKey,
-      baseURL: 'https://ai-gateway.vercel.sh/v1',
-    })
-
-    // Stream the AI response
+    // Stream the AI response - 使用统一的默认模型
     const result = streamText({
-      model: openai.chat('meituan/longcat-flash-chat'),
+      model: openai.chat(DEFAULT_MODEL),
       system: COURSE_REQUIREMENT_SYSTEM_PROMPT,
       messages,
       temperature: 0.7,
