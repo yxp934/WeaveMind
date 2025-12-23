@@ -115,6 +115,7 @@ interface ChatbotStore {
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   deleteMessage: (id: string) => void;
   clearMessages: () => void;
+  setConversationId: (conversationId: string | null) => void;
 
   // 工作流操作
   startWorkflow: (type: WorkflowState["type"], data?: any) => void;
@@ -415,6 +416,7 @@ export const useChatbotStore = create<ChatbotStore>()(
 
       // 发送消息 - 使用真正的流式AI + LangGraph逻辑
       sendMessage: async (content, metadata = {}) => {
+        console.log('[CHATBOT] sendMessage called with:', { content, metadata });
         const { addMessage, setLoading, setError, setStreamingMessage } = get();
         const streamRequested = metadata.stream === true;
 
@@ -483,6 +485,8 @@ export const useChatbotStore = create<ChatbotStore>()(
               stream: false,
             });
 
+            console.log('[CHATBOT] Making API request to /api/trigger/chat');
+
             // All requests must retry on disconnect/errors:
             // wait 5s, retry up to 5 attempts.
             const isToolExecution = Boolean(metadata.confirmToolCall?.id);
@@ -507,21 +511,27 @@ export const useChatbotStore = create<ChatbotStore>()(
             let lastError: any = null;
             for (let attempt = 1; attempt <= 5; attempt++) {
               try {
+                console.log(`[CHATBOT] Attempt ${attempt}/5: Fetching...`);
                 response = await runFetch();
+                console.log(`[CHATBOT] Response status:`, response.status);
                 lastError = null;
                 break;
               } catch (err) {
+                console.error(`[CHATBOT] Attempt ${attempt} failed:`, err);
                 lastError = err;
                 if (attempt >= 5) break;
                 await new Promise((r) => setTimeout(r, 5000));
               }
             }
             if (!response) {
+              console.error('[CHATBOT] No response received, throwing error');
               throw lastError || new Error("Network error");
             }
 
             const data = await response.json().catch(() => null);
+            console.log('[CHATBOT] Response data:', data);
             if (!response.ok || !data?.success) {
+              console.error('[CHATBOT] API call failed:', { status: response.status, statusText: response.statusText, data });
               throw new Error(
                 data?.error?.message ||
                   `Chat error: ${response.status} ${response.statusText}`,

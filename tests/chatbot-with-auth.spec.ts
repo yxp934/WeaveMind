@@ -39,7 +39,7 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     console.log('🧪 测试 1: 登录并访问Chatbot');
 
     // 导航到登录页面
-    await page.goto('http://localhost:3000/auth/login');
+    await page.goto('/auth/login');
     await page.waitForTimeout(2000);
 
     // 登录
@@ -62,7 +62,7 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     }
 
     // 导航到教师页面
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     console.log('✅ 成功访问教师页面');
@@ -72,7 +72,7 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     console.log('🧪 测试 2: 验证修复效果 - 无预设消息');
 
     // 先登录
-    await page.goto('http://localhost:3000/auth/login');
+    await page.goto('/auth/login');
     await page.waitForTimeout(1000);
     await page.fill('input[type="email"]', 'jzibclub@jzib.com');
     await page.fill('input[type="password"]', 'Lao1dian5');
@@ -80,7 +80,7 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     await page.waitForTimeout(5000);
 
     // 导航到教师页面
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     // 查找Chatbot输入框
@@ -137,14 +137,14 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     console.log('🧪 测试 3: 真实工作流 - 班级管理完整流程');
 
     // 登录流程
-    await page.goto('http://localhost:3000/auth/login');
+    await page.goto('/auth/login');
     await page.waitForTimeout(1000);
     await page.fill('input[type="email"]', 'jzibclub@jzib.com');
     await page.fill('input[type="password"]', 'Lao1dian5');
     await page.click('button[type="submit"]');
     await page.waitForTimeout(5000);
 
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     const chatbotInput = await findChatbotInput(page);
@@ -221,14 +221,14 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     console.log('🧪 测试 4: 多轮对话连续性和上下文保持');
 
     // 登录
-    await page.goto('http://localhost:3000/auth/login');
+    await page.goto('/auth/login');
     await page.waitForTimeout(1000);
     await page.fill('input[type="email"]', 'jzibclub@jzib.com');
     await page.fill('input[type="password"]', 'Lao1dian5');
     await page.click('button[type="submit"]');
     await page.waitForTimeout(5000);
 
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     const chatbotInput = await findChatbotInput(page);
@@ -289,14 +289,14 @@ test.describe('带认证的真实Chatbot多轮对话测试', () => {
     console.log('🧪 测试 5: 错误处理和系统稳定性');
 
     // 登录
-    await page.goto('http://localhost:3000/auth/login');
+    await page.goto('/auth/login');
     await page.waitForTimeout(1000);
     await page.fill('input[type="email"]', 'jzibclub@jzib.com');
     await page.fill('input[type="password"]', 'Lao1dian5');
     await page.click('button[type="submit"]');
     await page.waitForTimeout(5000);
 
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     const chatbotInput = await findChatbotInput(page);

@@ -30,7 +30,7 @@ test.describe('真实多轮对话工作流测试', () => {
   test.beforeEach(async ({ page: testPage }) => {
     page = testPage;
     // 导航到教师页面
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
   });
 

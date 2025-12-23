@@ -1,0 +1,387 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - heading "WeaveMind" [level=1] [ref=e6] [cursor=pointer]
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - img [ref=e9]
+          - textbox "Search courses, assignments..." [active] [ref=e12]: 测试API调用
+        - button [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+        - button [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+        - button [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+        - generic [ref=e26]:
+          - img "Teacher" [ref=e27] [cursor=pointer]
+          - generic [ref=e28]:
+            - generic [ref=e29]: Teacher
+            - generic [ref=e30]:
+              - img [ref=e31]
+              - generic [ref=e35]: Your Organization
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - heading "Welcome Back!" [level=1] [ref=e40]
+          - paragraph [ref=e41]: Let's manage your classes today
+        - generic [ref=e42]:
+          - heading "Classes" [level=2] [ref=e43]
+          - generic [ref=e44]:
+            - generic [ref=e47] [cursor=pointer]:
+              - img [ref=e49]
+              - generic [ref=e51]:
+                - heading "Introduction to LLM with Applications" [level=4] [ref=e52]
+                - paragraph [ref=e53]: Teacher
+                - generic [ref=e54]:
+                  - generic [ref=e55]:
+                    - img [ref=e56]
+                    - generic [ref=e59]: 0/20
+                  - generic [ref=e60]:
+                    - img [ref=e61]
+                    - generic [ref=e66]: "1"
+                - generic [ref=e70]: 0%
+            - generic [ref=e73] [cursor=pointer]:
+              - img [ref=e75]
+              - generic [ref=e77]:
+                - heading "LangGraph修复验证班" [level=4] [ref=e78]
+                - paragraph [ref=e79]: Teacher
+                - generic [ref=e80]:
+                  - generic [ref=e81]:
+                    - img [ref=e82]
+                    - generic [ref=e85]: 0/20
+                  - generic [ref=e86]:
+                    - img [ref=e87]
+                    - generic [ref=e92]: "0"
+                - generic [ref=e96]: 0%
+            - generic [ref=e99] [cursor=pointer]:
+              - img [ref=e101]
+              - generic [ref=e103]:
+                - heading "ReAct测试班" [level=4] [ref=e104]
+                - paragraph [ref=e105]: Teacher
+                - generic [ref=e106]:
+                  - generic [ref=e107]:
+                    - img [ref=e108]
+                    - generic [ref=e111]: 0/20
+                  - generic [ref=e112]:
+                    - img [ref=e113]
+                    - generic [ref=e118]: "0"
+                - generic [ref=e122]: 0%
+            - generic [ref=e125] [cursor=pointer]:
+              - img [ref=e127]
+              - generic [ref=e129]:
+                - heading "ReAct自动化测试班" [level=4] [ref=e130]
+                - paragraph [ref=e131]: Teacher
+                - generic [ref=e132]:
+                  - generic [ref=e133]:
+                    - img [ref=e134]
+                    - generic [ref=e137]: 0/20
+                  - generic [ref=e138]:
+                    - img [ref=e139]
+                    - generic [ref=e144]: "0"
+                - generic [ref=e148]: 0%
+            - generic [ref=e151] [cursor=pointer]:
+              - img [ref=e153]
+              - generic [ref=e155]:
+                - heading "自动化测试班3" [level=4] [ref=e156]
+                - paragraph [ref=e157]: Teacher
+                - generic [ref=e158]:
+                  - generic [ref=e159]:
+                    - img [ref=e160]
+                    - generic [ref=e163]: 0/20
+                  - generic [ref=e164]:
+                    - img [ref=e165]
+                    - generic [ref=e170]: "0"
+                - generic [ref=e174]: 0%
+            - generic [ref=e177] [cursor=pointer]:
+              - img [ref=e179]
+              - generic [ref=e181]:
+                - heading "自动化测试班4" [level=4] [ref=e182]
+                - paragraph [ref=e183]: Teacher
+                - generic [ref=e184]:
+                  - generic [ref=e185]:
+                    - img [ref=e186]
+                    - generic [ref=e189]: 0/20
+                  - generic [ref=e190]:
+                    - img [ref=e191]
+                    - generic [ref=e196]: "0"
+                - generic [ref=e200]: 0%
+            - generic [ref=e203] [cursor=pointer]:
+              - img [ref=e205]
+              - generic [ref=e207]:
+                - heading "自动化抓包班" [level=4] [ref=e208]
+                - paragraph [ref=e209]: Teacher
+                - generic [ref=e210]:
+                  - generic [ref=e211]:
+                    - img [ref=e212]
+                    - generic [ref=e215]: 0/20
+                  - generic [ref=e216]:
+                    - img [ref=e217]
+                    - generic [ref=e222]: "0"
+                - generic [ref=e226]: 0%
+            - generic [ref=e229] [cursor=pointer]:
+              - img [ref=e231]
+              - generic [ref=e233]:
+                - heading "自动化抓包班2" [level=4] [ref=e234]
+                - paragraph [ref=e235]: Teacher
+                - generic [ref=e236]:
+                  - generic [ref=e237]:
+                    - img [ref=e238]
+                    - generic [ref=e241]: 0/20
+                  - generic [ref=e242]:
+                    - img [ref=e243]
+                    - generic [ref=e248]: "0"
+                - generic [ref=e252]: 0%
+            - generic [ref=e255] [cursor=pointer]:
+              - img [ref=e257]
+              - generic [ref=e259]:
+                - heading "自动化抓包班3" [level=4] [ref=e260]
+                - paragraph [ref=e261]: Teacher
+                - generic [ref=e262]:
+                  - generic [ref=e263]:
+                    - img [ref=e264]
+                    - generic [ref=e267]: 0/20
+                  - generic [ref=e268]:
+                    - img [ref=e269]
+                    - generic [ref=e274]: "0"
+                - generic [ref=e278]: 0%
+            - generic [ref=e281] [cursor=pointer]:
+              - img [ref=e283]
+              - generic [ref=e285]:
+                - heading "自动化抓包班6" [level=4] [ref=e286]
+                - paragraph [ref=e287]: Teacher
+                - generic [ref=e288]:
+                  - generic [ref=e289]:
+                    - img [ref=e290]
+                    - generic [ref=e293]: 0/20
+                  - generic [ref=e294]:
+                    - img [ref=e295]
+                    - generic [ref=e300]: "0"
+                - generic [ref=e304]: 0%
+            - generic [ref=e307] [cursor=pointer]:
+              - img [ref=e309]
+              - generic [ref=e311]:
+                - heading "终测班1" [level=4] [ref=e312]
+                - paragraph [ref=e313]: Teacher
+                - generic [ref=e314]:
+                  - generic [ref=e315]:
+                    - img [ref=e316]
+                    - generic [ref=e319]: 0/20
+                  - generic [ref=e320]:
+                    - img [ref=e321]
+                    - generic [ref=e326]: "0"
+                - generic [ref=e330]: 0%
+            - generic [ref=e333] [cursor=pointer]:
+              - img [ref=e335]
+              - generic [ref=e337]:
+                - heading "终测班2" [level=4] [ref=e338]
+                - paragraph [ref=e339]: Teacher
+                - generic [ref=e340]:
+                  - generic [ref=e341]:
+                    - img [ref=e342]
+                    - generic [ref=e345]: 0/20
+                  - generic [ref=e346]:
+                    - img [ref=e347]
+                    - generic [ref=e352]: "0"
+                - generic [ref=e356]: 0%
+            - generic [ref=e359] [cursor=pointer]:
+              - img [ref=e361]
+              - generic [ref=e363]:
+                - heading "终测班3" [level=4] [ref=e364]
+                - paragraph [ref=e365]: Teacher
+                - generic [ref=e366]:
+                  - generic [ref=e367]:
+                    - img [ref=e368]
+                    - generic [ref=e371]: 0/20
+                  - generic [ref=e372]:
+                    - img [ref=e373]
+                    - generic [ref=e378]: "0"
+                - generic [ref=e382]: 0%
+            - generic [ref=e385] [cursor=pointer]:
+              - img [ref=e387]
+              - generic [ref=e389]:
+                - heading "批量课次终测" [level=4] [ref=e390]
+                - paragraph [ref=e391]: Teacher
+                - generic [ref=e392]:
+                  - generic [ref=e393]:
+                    - img [ref=e394]
+                    - generic [ref=e397]: 0/20
+                  - generic [ref=e398]:
+                    - img [ref=e399]
+                    - generic [ref=e404]: "0"
+                - generic [ref=e408]: 0%
+            - generic [ref=e411] [cursor=pointer]:
+              - img [ref=e413]
+              - generic [ref=e415]:
+                - heading "课次工具排查" [level=4] [ref=e416]
+                - paragraph [ref=e417]: Teacher
+                - generic [ref=e418]:
+                  - generic [ref=e419]:
+                    - img [ref=e420]
+                    - generic [ref=e423]: 0/20
+                  - generic [ref=e424]:
+                    - img [ref=e425]
+                    - generic [ref=e430]: "0"
+                - generic [ref=e434]: 0%
+            - generic [ref=e437] [cursor=pointer]:
+              - img [ref=e439]
+              - generic [ref=e441]:
+                - heading "scheduledDate修复测试" [level=4] [ref=e442]
+                - paragraph [ref=e443]: Teacher
+                - generic [ref=e444]:
+                  - generic [ref=e445]:
+                    - img [ref=e446]
+                    - generic [ref=e449]: 0/20
+                  - generic [ref=e450]:
+                    - img [ref=e451]
+                    - generic [ref=e456]: "0"
+                - generic [ref=e460]: 0%
+        - generic [ref=e461]:
+          - generic [ref=e462]:
+            - heading "Upcoming Sessions" [level=2] [ref=e463]
+            - generic [ref=e464]:
+              - generic [ref=e468] [cursor=pointer]:
+                - 'heading "Session 4: Your knowledge integration methods" [level=5] [ref=e469]'
+                - paragraph [ref=e470]: Introduction to LLM with Applications
+                - generic [ref=e471]:
+                  - generic [ref=e472]:
+                    - img [ref=e473]
+                    - generic [ref=e475]: Dec 23
+                  - generic [ref=e476]:
+                    - img [ref=e477]
+                    - generic [ref=e480]: 4:00 AM
+                  - generic [ref=e481]:
+                    - img [ref=e482]
+                    - generic [ref=e485]: Classroom
+              - generic [ref=e489] [cursor=pointer]:
+                - heading "第3节：LangGraph修复验证班" [level=5] [ref=e490]
+                - paragraph [ref=e491]: LangGraph修复验证班
+                - generic [ref=e492]:
+                  - generic [ref=e493]:
+                    - img [ref=e494]
+                    - generic [ref=e496]: Dec 27
+                  - generic [ref=e497]:
+                    - img [ref=e498]
+                    - generic [ref=e501]: 9:00 AM
+                  - generic [ref=e502]:
+                    - img [ref=e503]
+                    - generic [ref=e506]: Classroom
+              - generic [ref=e510] [cursor=pointer]:
+                - 'heading "Session 5: Your coding intuition development" [level=5] [ref=e511]'
+                - paragraph [ref=e512]: Introduction to LLM with Applications
+                - generic [ref=e513]:
+                  - generic [ref=e514]:
+                    - img [ref=e515]
+                    - generic [ref=e517]: Dec 30
+                  - generic [ref=e518]:
+                    - img [ref=e519]
+                    - generic [ref=e522]: 4:00 AM
+                  - generic [ref=e523]:
+                    - img [ref=e524]
+                    - generic [ref=e527]: Classroom
+              - generic [ref=e531] [cursor=pointer]:
+                - heading "第4节：LangGraph修复验证班" [level=5] [ref=e532]
+                - paragraph [ref=e533]: LangGraph修复验证班
+                - generic [ref=e534]:
+                  - generic [ref=e535]:
+                    - img [ref=e536]
+                    - generic [ref=e538]: Jan 3
+                  - generic [ref=e539]:
+                    - img [ref=e540]
+                    - generic [ref=e543]: 9:00 AM
+                  - generic [ref=e544]:
+                    - img [ref=e545]
+                    - generic [ref=e548]: Classroom
+              - generic [ref=e552] [cursor=pointer]:
+                - 'heading "Session 6: Your tool connection strategies" [level=5] [ref=e553]'
+                - paragraph [ref=e554]: Introduction to LLM with Applications
+                - generic [ref=e555]:
+                  - generic [ref=e556]:
+                    - img [ref=e557]
+                    - generic [ref=e559]: Jan 6
+                  - generic [ref=e560]:
+                    - img [ref=e561]
+                    - generic [ref=e564]: 4:00 AM
+                  - generic [ref=e565]:
+                    - img [ref=e566]
+                    - generic [ref=e569]: Classroom
+              - generic [ref=e573] [cursor=pointer]:
+                - 'heading "Session 7: Your ethical AI boundaries" [level=5] [ref=e574]'
+                - paragraph [ref=e575]: Introduction to LLM with Applications
+                - generic [ref=e576]:
+                  - generic [ref=e577]:
+                    - img [ref=e578]
+                    - generic [ref=e580]: Jan 13
+                  - generic [ref=e581]:
+                    - img [ref=e582]
+                    - generic [ref=e585]: 4:00 AM
+                  - generic [ref=e586]:
+                    - img [ref=e587]
+                    - generic [ref=e590]: Classroom
+              - generic [ref=e594] [cursor=pointer]:
+                - 'heading "Session 8: Your personalized AI future" [level=5] [ref=e595]'
+                - paragraph [ref=e596]: Introduction to LLM with Applications
+                - generic [ref=e597]:
+                  - generic [ref=e598]:
+                    - img [ref=e599]
+                    - generic [ref=e601]: Jan 20
+                  - generic [ref=e602]:
+                    - img [ref=e603]
+                    - generic [ref=e606]: 4:00 AM
+                  - generic [ref=e607]:
+                    - img [ref=e608]
+                    - generic [ref=e611]: Classroom
+          - generic [ref=e612]:
+            - heading "Assignments" [level=2] [ref=e613]
+            - generic [ref=e616] [cursor=pointer]:
+              - img [ref=e618]
+              - generic [ref=e621]:
+                - heading "research paper on machine learning pioneers" [level=5] [ref=e622]
+                - paragraph [ref=e623]: Introduction to LLM with Applications
+                - generic [ref=e625]: "Due: Jan 1, 1970"
+                - generic [ref=e627]:
+                  - generic [ref=e628]:
+                    - img [ref=e629]
+                    - generic [ref=e634]: Submissions
+                  - generic [ref=e635]: 0/0
+      - generic [ref=e638]:
+        - generic [ref=e640]:
+          - generic [ref=e641]:
+            - img [ref=e643]
+            - generic [ref=e648]:
+              - heading "Weaver AI" [level=3] [ref=e649]
+              - paragraph [ref=e650]: 智能学习助手
+          - button "清除聊天" [ref=e652] [cursor=pointer]:
+            - img [ref=e653]
+        - generic [ref=e657]:
+          - img [ref=e661]
+          - paragraph [ref=e666]: How can I help you?
+          - paragraph [ref=e667]: Suggestions on what to ask
+          - generic [ref=e668]:
+            - button "帮我创建一个神经科学的入门课" [ref=e669] [cursor=pointer]
+            - button "生成课程大纲" [ref=e670] [cursor=pointer]
+            - button "使用A2A优化内容" [ref=e671] [cursor=pointer]
+            - button "分析学生学习进度" [ref=e672] [cursor=pointer]
+        - generic [ref=e674]:
+          - textbox "输入您的问题或需求..." [ref=e675]
+          - button [ref=e676] [cursor=pointer]:
+            - img [ref=e677]
+          - button [disabled] [ref=e678]:
+            - img [ref=e679]
+    - generic [ref=e684]:
+      - button "Start Session" [ref=e685] [cursor=pointer]:
+        - img [ref=e686]
+        - generic: Start Session
+      - button "Prepare" [ref=e688] [cursor=pointer]:
+        - img [ref=e689]
+        - generic: Prepare
+      - button "New Class" [ref=e691] [cursor=pointer]:
+        - img [ref=e692]
+        - generic: New Class
+      - button "Calendar" [ref=e693] [cursor=pointer]:
+        - img [ref=e694]
+        - generic: Calendar
+  - alert [ref=e696]
+```

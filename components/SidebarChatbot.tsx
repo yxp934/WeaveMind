@@ -140,11 +140,14 @@ export default function SidebarChatbot({
   }, [messages]);
 
   const handleSend = async () => {
+    console.log('[SIDEBAR_CHATBOT] handleSend called');
     if (!input.trim() || isLoading) {
+      console.log('[SIDEBAR_CHATBOT] Send cancelled:', { input: input.trim(), isLoading });
       return;
     }
 
     const messageContent = input.trim();
+    console.log('[SIDEBAR_CHATBOT] Sending message:', messageContent);
     setInput("");
 
     // 选中的上下文透传到后端，便于LangGraph执行真实CRUD
@@ -155,7 +158,7 @@ export default function SidebarChatbot({
     const selectedAssignmentId =
       selectedContexts.find((c) => c.type === "assignment")?.id || undefined;
 
-    await sendMessage(messageContent, {
+    console.log('[SIDEBAR_CHATBOT] Calling sendMessage with metadata:', {
       userRole,
       classId: selectedClassId,
       courseId,
@@ -163,8 +166,24 @@ export default function SidebarChatbot({
       selectedSessionId,
       selectedAssignmentId,
       selectedContexts,
-      stream: false, // 工具确认模式：非流式更稳定
+      stream: false,
     });
+
+    try {
+      await sendMessage(messageContent, {
+        userRole,
+        classId: selectedClassId,
+        courseId,
+        selectedClassId,
+        selectedSessionId,
+        selectedAssignmentId,
+        selectedContexts,
+        stream: false, // 工具确认模式：非流式更稳定
+      });
+      console.log('[SIDEBAR_CHATBOT] sendMessage completed successfully');
+    } catch (error) {
+      console.error('[SIDEBAR_CHATBOT] sendMessage failed:', error);
+    }
   };
 
   const handleConfirmToolCall = async (

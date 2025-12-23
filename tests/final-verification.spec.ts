@@ -38,13 +38,13 @@ test.describe('最终验证测试 - 核心修复效果', () => {
     console.log('🧪 测试 1: 系统基础状态检查');
 
     // 检查主页
-    await page.goto('http://localhost:3000');
+    await page.goto('');
     await page.waitForTimeout(2000);
     const title = await page.title();
     console.log(`📄 页面标题: ${title}`);
 
     // 检查教师页面访问控制
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     // 检查是否需要登录
@@ -70,7 +70,7 @@ test.describe('最终验证测试 - 核心修复效果', () => {
     console.log('🧪 测试 2: 修复效果核心验证');
 
     // 尝试访问系统并检查修复效果
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     // 检查当前页面状态
@@ -95,7 +95,7 @@ test.describe('最终验证测试 - 核心修复效果', () => {
           await page.waitForTimeout(3000);
         }
 
-        await page.goto('http://localhost:3000/teacher');
+        await page.goto('/teacher');
         await page.waitForTimeout(3000);
 
       } catch (error) {
@@ -171,7 +171,7 @@ test.describe('最终验证测试 - 核心修复效果', () => {
   test('3. 工作流基本功能验证', async () => {
     console.log('🧪 测试 3: 工作流基本功能验证');
 
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     const chatbotInput = await findChatbotInput(page);
@@ -217,7 +217,7 @@ test.describe('最终验证测试 - 核心修复效果', () => {
   test('4. 系统稳定性和性能检查', async () => {
     console.log('🧪 测试 4: 系统稳定性和性能检查');
 
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
 
     const chatbotInput = await findChatbotInput(page);
@@ -270,12 +270,12 @@ test.describe('最终验证测试 - 核心修复效果', () => {
     console.log('🧪 测试 5: 总结验证报告');
 
     // 检查整个系统的状态
-    await page.goto('http://localhost:3000');
+    await page.goto('');
     await page.waitForTimeout(2000);
     const homepageTitle = await page.title();
     console.log(`📄 首页标题: ${homepageTitle}`);
 
-    await page.goto('http://localhost:3000/teacher');
+    await page.goto('/teacher');
     await page.waitForTimeout(3000);
     const teacherPageStatus = page.url().includes('/login') ? '需要登录' : '可直接访问';
     console.log(`🔒 教师页面状态: ${teacherPageStatus}`);
