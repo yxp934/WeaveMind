@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         executionTime: "2ms",
         workflowName: "enhanced_chat_stream",
         timestamp: new Date().toISOString(),
-        bridgeVersion: "1.0.0",
+        bridgeVersion: "2.0.0", // Updated to reflect real LangGraph integration
       },
       executionMode,
     };

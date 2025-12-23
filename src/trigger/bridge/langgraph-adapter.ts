@@ -1,17 +1,38 @@
 /**
  * LangGraph Adapter - Bridge Layer for Trigger.dev Integration
  *
+ * REFACTORED VERSION: Now integrates with actual LangGraph workflows instead of mock implementations
+ *
  * This adapter enables Trigger.dev tasks to work seamlessly with existing
  * LangGraph workflows in WeaveMind. It provides:
  *
- * 1. Legacy workflow compatibility
+ * 1. Real workflow integration - No more mocks!
  * 2. Gradual migration path
  * 3. Hybrid execution mode
  * 4. State synchronization
+ *
+ * INTEGRATION DETAILS:
+ *
+ * - chatbot (from /lib/ai/langgraph/chatbot-graph.ts):
+ *   - Used for: general chat, intent recognition, A2A optimization
+ *   - Method: processMessage(message, conversationId, userRole, userId?, conversationHistory?, requestContext?)
+ *
+ * - runCourseGeneration (from /lib/ai/course-generation-orchestrator.ts):
+ *   - Used for: course generation workflows
+ *   - Method: runCourseGeneration(runId)
+ *
+ * RESPONSE FORMAT CONVERSION:
+ * - LangGraph responses are automatically converted to Bridge layer's expected format
+ * - Maintains success, output, executionMode, and metadata fields
+ * - Proper error handling with detailed error messages
  */
 
 import type { StateGraph } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
+
+// Import existing LangGraph workflows
+import { chatbot } from "../../../lib/ai/langgraph/chatbot-graph";
+import { runCourseGeneration } from "../../../lib/ai/course-generation-orchestrator";
 
 // Types for the bridge layer
 export interface BridgeConfig {
@@ -28,6 +49,25 @@ export interface WorkflowRequest {
     userId: string;
     conversationId: string;
     userRole: "teacher" | "student" | "self_learner";
+  };
+  // Optional parameters
+  conversationHistory?: Array<{
+    role: "user" | "assistant";
+    content: string;
+    metadata?: any;
+  }>;
+  requestContext?: {
+    courseId?: string;
+    classId?: string;
+    organizationId?: string;
+    selectedClassId?: string;
+    selectedSessionId?: string;
+    selectedAssignmentId?: string;
+    selectedContexts?: Array<{
+      type: "class" | "session" | "assignment";
+      id: string;
+      title?: string;
+    }>;
   };
 }
 
@@ -142,7 +182,7 @@ export class LangGraphAdapter {
           executionTime,
           workflowName: request.workflowName,
           timestamp: new Date().toISOString(),
-          bridgeVersion: "1.0.0",
+          bridgeVersion: "2.0.0", // Updated to reflect real LangGraph integration
         },
       };
 
@@ -171,14 +211,12 @@ export class LangGraphAdapter {
 
     console.log(`LangGraph Adapter: Executing legacy workflow ${workflow.name}`);
 
-    // TODO: Replace with actual LangGraph workflow execution
-    // This will integrate with existing /lib/ai/langgraph/ workflows
-
-    const result = await workflow.handler(request.payload, request.context);
+    // Call the appropriate handler with proper parameter mapping
+    const result = await workflow.handler(request);
 
     return {
       ...result,
-      executionMode: "langgraph",
+      executionMode: "langgraph" as const,
       workflowName: workflow.name,
     };
   }
@@ -307,38 +345,197 @@ export class LangGraphAdapter {
     }
   }
 
-  // Legacy workflow handlers (to be replaced with actual LangGraph integration)
+  // Legacy workflow handlers (integrated with actual LangGraph workflows)
 
-  private async handleLegacyCourseGeneration(payload: any, context: any) {
-    // TODO: Integrate with existing course generation workflow
-    return {
-      success: true,
-      course: { id: payload.courseId, title: payload.outline?.title },
-    };
+  /**
+   * Handle course generation workflow using runCourseGeneration
+   */
+  private async handleLegacyCourseGeneration(request: WorkflowRequest) {
+    try {
+      const { payload, context } = request;
+      const runId = payload.runId || payload.courseId;
+
+      if (!runId) {
+        throw new Error("Course generation requires runId or courseId in payload");
+      }
+
+      console.log(`LangGraph Adapter: Starting course generation for runId: ${runId}`);
+
+      // Call the actual course generation orchestrator
+      await runCourseGeneration(runId);
+
+      return {
+        success: true,
+        output: {
+          runId,
+          status: "completed",
+          message: "Course generation completed successfully",
+        },
+      };
+    } catch (error) {
+      console.error("Course generation failed:", error);
+      return {
+        success: false,
+        output: {
+          error: (error as Error).message,
+          runId: request.payload.runId || request.payload.courseId,
+        },
+      };
+    }
   }
 
-  private async handleLegacyIntentRecognition(payload: any, context: any) {
-    // TODO: Integrate with existing intent recognition
-    return {
-      intent: "general_chat",
-      confidence: 0.8,
-    };
+  /**
+   * Handle intent recognition using chatbot's intent recognition
+   */
+  private async handleLegacyIntentRecognition(request: WorkflowRequest) {
+    try {
+      const { payload, context, conversationHistory = [], requestContext = {} } = request;
+      const message = payload.message || payload.text || "Identify intent";
+
+      console.log(`LangGraph Adapter: Recognizing intent for message: ${message}`);
+
+      // Use chatbot to process the message (intent recognition is part of the process)
+      const result = await chatbot.processMessage(
+        message,
+        context.conversationId,
+        context.userRole,
+        context.userId,
+        conversationHistory,
+        requestContext
+      );
+
+      // Extract intent from the result
+      const intent = result.metadata?.intent || "general_chat";
+      const confidence = result.metadata?.confidence || 0.8;
+
+      return {
+        success: true,
+        output: {
+          intent,
+          confidence,
+          metadata: {
+            source: "langgraph_intent_recognition",
+            workflowName: "intent_recognition",
+            timestamp: new Date().toISOString(),
+          },
+        },
+      };
+    } catch (error) {
+      console.error("Intent recognition failed:", error);
+      return {
+        success: false,
+        output: {
+          intent: "general_chat",
+          confidence: 0.0,
+          error: (error as Error).message,
+        },
+      };
+    }
   }
 
-  private async handleLegacyA2aOptimization(payload: any, context: any) {
-    // TODO: Integrate with existing A2A workflow
-    return {
-      success: true,
-      content: { quality: 8.0, iterations: 1 },
-    };
+  /**
+   * Handle A2A optimization using chatbot's a2a_optimization workflow
+   */
+  private async handleLegacyA2aOptimization(request: WorkflowRequest) {
+    try {
+      const { payload, context, conversationHistory = [], requestContext = {} } = request;
+
+      // For A2A optimization, we use the general chat with a2a_optimization intent
+      const message = payload.message || payload.content || "Perform A2A optimization";
+
+      console.log(`LangGraph Adapter: Starting A2A optimization`);
+
+      // Set the context to indicate A2A optimization
+      const enhancedRequestContext = {
+        ...requestContext,
+        workflowType: "a2a_optimization",
+      };
+
+      const result = await chatbot.processMessage(
+        message,
+        context.conversationId,
+        context.userRole,
+        context.userId,
+        conversationHistory,
+        enhancedRequestContext
+      );
+
+      return {
+        success: true,
+        output: {
+          content: result.data,
+          metadata: {
+            source: "langgraph_a2a_optimization",
+            workflowName: "a2a_optimization",
+            intent: result.metadata?.intent,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      };
+    } catch (error) {
+      console.error("A2A optimization failed:", error);
+      return {
+        success: false,
+        output: {
+          error: (error as Error).message,
+          content: null,
+        },
+      };
+    }
   }
 
-  private async handleLegacyGeneralChat(payload: any, context: any) {
-    // TODO: Integrate with existing general chat workflow
-    return {
-      response: `Response to: ${payload.message}`,
-      metadata: { source: "legacy_langgraph" },
-    };
+  /**
+   * Handle general chat using chatbot's processMessage
+   */
+  private async handleLegacyGeneralChat(request: WorkflowRequest) {
+    try {
+      const { payload, context, conversationHistory = [], requestContext = {} } = request;
+      const message = payload.message || payload.text || "";
+
+      if (!message) {
+        throw new Error("General chat requires a message in payload");
+      }
+
+      console.log(`LangGraph Adapter: Processing general chat message: ${message}`);
+
+      // Call the actual chatbot to process the message
+      const result = await chatbot.processMessage(
+        message,
+        context.conversationId,
+        context.userRole,
+        context.userId,
+        conversationHistory,
+        requestContext
+      );
+
+      // Convert chatbot response to expected format
+      return {
+        success: result.success,
+        output: {
+          response: result.data,
+          metadata: {
+            ...result.metadata,
+            source: "langgraph_general_chat",
+            workflowName: "general_chat",
+          },
+          error: result.error,
+        },
+      };
+    } catch (error) {
+      console.error("General chat failed:", error);
+      return {
+        success: false,
+        output: {
+          response: null,
+          error: (error as Error).message,
+          metadata: {
+            source: "langgraph_general_chat",
+            workflowName: "general_chat",
+            timestamp: new Date().toISOString(),
+          },
+        },
+      };
+    }
   }
 
   /**
