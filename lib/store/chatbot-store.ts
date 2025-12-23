@@ -491,7 +491,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               const timeoutMs = isToolExecution ? 30_000 : 60_000;
               const timer = setTimeout(() => controller.abort(), timeoutMs);
               try {
-                return await fetch("/api/ai/chat", {
+                return await fetch("/api/trigger/chat", {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -645,7 +645,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               },
             });
 
-            const asyncResponse = await fetch("/api/ai/chat-async", {
+            const asyncResponse = await fetch("/api/trigger/chat", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -714,7 +714,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               );
 
               const statusResponse = await fetch(
-                `/api/ai/chat-status/${asyncData.data.jobId}`,
+                `/api/trigger/chat`,
               );
 
               if (!statusResponse.ok) {
@@ -936,7 +936,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           let lastError: any = null;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              response = await fetch("/api/ai/chat-stream", {
+              response = await fetch("/api/trigger/chat", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",

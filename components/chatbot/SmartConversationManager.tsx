@@ -70,7 +70,7 @@ export default function SmartConversationManager({ className = '' }: SmartConver
       console.log('📊 [API] 会话ID:', sessionId);
       console.log('📝 [API] 消息历史:', messages.length, '条');
 
-      const response = await fetch('/api/ai/chat', {
+      const response = await fetch('/api/trigger/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

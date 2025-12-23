@@ -394,7 +394,7 @@ export const selfLearnerAPI = {
 export const aiAPI = {
   // 统一AI对话
   async chat(message: string, context: any) {
-    const response = await fetch('/api/ai/chat', {
+    const response = await fetch('/api/trigger/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, context })

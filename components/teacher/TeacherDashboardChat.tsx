@@ -465,7 +465,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
   const handleConfirmToolCall = async (pendingToolCall: any) => {
     setIsTyping(true);
     try {
-      const res = await fetch('/api/ai/chat', {
+      const res = await fetch('/api/trigger/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -828,7 +828,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     try {
       // 使用重试机制发送API请求
       const response = await retryApiCall(async () => {
-        const res = await fetch('/api/ai/chat', {
+        const res = await fetch('/api/trigger/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -918,7 +918,7 @@ export function TeacherDashboardChat({ classes, sessions, assignments }: Teacher
     try {
       // 使用重试机制发送API请求
       const response = await retryApiCall(async () => {
-        const res = await fetch('/api/ai/chat', {
+        const res = await fetch('/api/trigger/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
