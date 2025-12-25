@@ -289,9 +289,27 @@ export default function SidebarChatbot({
     }
   };
 
+  const normalizeMessageContent = (content: unknown) => {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((item) =>
+          typeof item === "string" ? item : JSON.stringify(item),
+        )
+        .join("\n");
+    }
+    if (content === null || content === undefined) return "";
+    try {
+      return JSON.stringify(content);
+    } catch (error) {
+      return String(content);
+    }
+  };
+
   // 渲染消息内容，支持Markdown格式
-  const renderMessageContent = (content: string) => {
-    return content.split("\n").map((line, index) => {
+  const renderMessageContent = (content: unknown) => {
+    const text = normalizeMessageContent(content);
+    return text.split("\n").map((line, index) => {
       // 处理标题 (# ## ###)
       if (line.startsWith("### ")) {
         return (

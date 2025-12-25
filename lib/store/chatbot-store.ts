@@ -77,6 +77,22 @@ export interface WorkflowState {
   endTime?: Date;
 }
 
+function isApprovalMessage(message: string) {
+  return /^(approve|approved|yes|ok|okay|confirm|confirmed|确认|同意|好的|可以)$/i.test(
+    message.trim(),
+  );
+}
+
+function findLastPendingToolCall(messages: ChatMessage[]) {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const meta = messages[i]?.metadata;
+    if (meta?.pendingToolCall?.id && meta.pendingToolCall.toolName) {
+      return meta.pendingToolCall;
+    }
+  }
+  return null;
+}
+
 // AI工具类型定义
 export interface AITool {
   id: string;
@@ -427,12 +443,21 @@ export const useChatbotStore = create<ChatbotStore>()(
             setError(null);
             setStreamingMessage(null);
 
-            if (!metadata.silentUserMessage) {
+            const approvalPendingToolCall =
+              typeof content === "string" && isApprovalMessage(content)
+                ? findLastPendingToolCall(get().messages || [])
+                : null;
+            const effectiveMetadata =
+              approvalPendingToolCall && !metadata.confirmToolCall
+                ? { ...metadata, confirmToolCall: approvalPendingToolCall }
+                : metadata;
+
+            if (!effectiveMetadata.silentUserMessage) {
               // Add user message
               addMessage({
                 role: "user",
                 content,
-                metadata,
+                metadata: effectiveMetadata,
               });
             }
 
@@ -445,7 +470,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               role: "assistant",
               content: "",
               timestamp: new Date(),
-              metadata: { ...metadata, isStreaming: false },
+              metadata: { ...effectiveMetadata, isStreaming: false },
             });
 
             const conversationHistory = (get().messages || [])
@@ -463,7 +488,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               }));
 
             const normalizedUserRole = (
-              metadata.userRole ||
+              effectiveMetadata.userRole ||
               get().userRole ||
               "teacher"
             ).replace("self-learner", "self_learner");
@@ -471,15 +496,15 @@ export const useChatbotStore = create<ChatbotStore>()(
             const postBody = JSON.stringify({
               message: content,
               context: {
-                courseId: metadata.courseId,
-                classId: metadata.classId,
-                organizationId: metadata.organizationId,
+                courseId: effectiveMetadata.courseId,
+                classId: effectiveMetadata.classId,
+                organizationId: effectiveMetadata.organizationId,
                 userRole: normalizedUserRole as any,
-                selectedClassId: metadata.selectedClassId,
-                selectedSessionId: metadata.selectedSessionId,
-                selectedAssignmentId: metadata.selectedAssignmentId,
-                selectedContexts: metadata.selectedContexts,
-                confirmToolCall: metadata.confirmToolCall,
+                selectedClassId: effectiveMetadata.selectedClassId,
+                selectedSessionId: effectiveMetadata.selectedSessionId,
+                selectedAssignmentId: effectiveMetadata.selectedAssignmentId,
+                selectedContexts: effectiveMetadata.selectedContexts,
+                confirmToolCall: effectiveMetadata.confirmToolCall,
                 conversationHistory,
               },
               stream: false,
@@ -489,7 +514,7 @@ export const useChatbotStore = create<ChatbotStore>()(
 
             // All requests must retry on disconnect/errors:
             // wait 5s, retry up to 5 attempts.
-            const isToolExecution = Boolean(metadata.confirmToolCall?.id);
+            const isToolExecution = Boolean(effectiveMetadata.confirmToolCall?.id);
             const runFetch = async () => {
               const controller = new AbortController();
               const timeoutMs = isToolExecution ? 30_000 : 60_000;
@@ -570,6 +595,19 @@ export const useChatbotStore = create<ChatbotStore>()(
               parsed?.pending_tool_call ||
               data?.data?.metadata?.pendingToolCall ||
               null;
+            const actionData = data?.data?.metadata?.actionData;
+            const derivedPendingToolCall =
+              pendingToolCall ||
+              (actionData?.action && actionData?.entity
+                ? {
+                    id:
+                      data?.data?.metadata?.pendingToolCallId ||
+                      `pending_${Date.now()}`,
+                    toolName:
+                      data?.data?.metadata?.actionType || "entity_management",
+                    input: actionData,
+                  }
+                : null);
 
             set((state) => ({
               messages: state.messages.map((msg) =>
@@ -580,14 +618,14 @@ export const useChatbotStore = create<ChatbotStore>()(
                       metadata: {
                         ...(msg.metadata || {}),
                         ...(data?.data?.metadata || {}),
-                        pendingToolCall,
+                        pendingToolCall: derivedPendingToolCall,
                         pendingToolCallId:
                           data?.data?.metadata?.pendingToolCallId ||
-                          pendingToolCall?.id ||
+                          derivedPendingToolCall?.id ||
                           null,
                         confirmationRequired:
                           Boolean(data?.data?.metadata?.confirmationRequired) ||
-                          Boolean(pendingToolCall),
+                          Boolean(derivedPendingToolCall),
                       },
                     }
                   : msg,

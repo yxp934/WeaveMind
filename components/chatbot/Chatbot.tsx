@@ -110,11 +110,25 @@ export default function Chatbot({ className = '' }: ChatbotProps) {
     }
   }
 
-  const formatMessage = (content: string) => {
-    return content.split('\n').map((line, index) => (
+  const normalizeMessageContent = (content: unknown) => {
+    if (typeof content === 'string') return content
+    if (Array.isArray(content)) {
+      return content.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('\n')
+    }
+    if (content === null || content === undefined) return ''
+    try {
+      return JSON.stringify(content)
+    } catch (error) {
+      return String(content)
+    }
+  }
+
+  const formatMessage = (content: unknown) => {
+    const text = normalizeMessageContent(content)
+    return text.split('\n').map((line, index) => (
       <React.Fragment key={index}>
         {line}
-        {index < content.split('\n').length - 1 && <br />}
+        {index < text.split('\n').length - 1 && <br />}
       </React.Fragment>
     ))
   }

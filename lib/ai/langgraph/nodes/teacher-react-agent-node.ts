@@ -94,6 +94,46 @@ function inferEntityType(text: string): EntityType | null {
   return null;
 }
 
+function describeEntity(entity: EntityType, lang: "zh" | "en"): string {
+  if (lang === "en") {
+    if (entity === "class") return "class";
+    if (entity === "session") return "session";
+    return "assignment";
+  }
+  if (entity === "class") return "班级";
+  if (entity === "session") return "课次";
+  return "作业";
+}
+
+function describeCrudAction(action: CrudAction, lang: "zh" | "en"): string {
+  if (lang === "en") {
+    switch (action) {
+      case "create":
+        return "create";
+      case "update":
+        return "update";
+      case "delete":
+        return "delete";
+      case "list":
+        return "list";
+      case "read":
+        return "view";
+    }
+  }
+  switch (action) {
+    case "create":
+      return "创建";
+    case "update":
+      return "更新";
+    case "delete":
+      return "删除";
+    case "list":
+      return "列出";
+    case "read":
+      return "查看";
+  }
+}
+
 function extractUuid(text: string): string | null {
   const match = text.match(
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
@@ -1711,8 +1751,45 @@ export async function teacherReactAgentNode(
   } catch (err: any) {
     console.warn("模型输出解析失败:", err?.message);
 
-    // 简化fallback逻辑 - 不使用预设回复，直接抛出错误暴露问题
-    throw new Error(`模型输出解析失败: ${err?.message || String(err)}。请检查提示词和模型设置。`);
+    const fallbackAction = inferCrudAction(userText);
+    const fallbackEntity = inferEntityType(userText);
+    if (fallbackAction && fallbackEntity) {
+      const normalizedInput = normalizeEntityManagementInput(
+        userText,
+        { action: fallbackAction, entity: fallbackEntity },
+        {
+          classId: state.metadata?.classId || null,
+          selectedClassId: state.metadata?.selectedClassId || null,
+          selectedSessionId: state.metadata?.selectedSessionId || null,
+          selectedAssignmentId: state.metadata?.selectedAssignmentId || null,
+        },
+      );
+      parsed = {
+        message:
+          preferredLanguage === "zh"
+            ? `我可以帮你${describeCrudAction(fallbackAction, "zh")}${describeEntity(fallbackEntity, "zh")}，需要确认后执行。`
+            : `I can ${describeCrudAction(fallbackAction, "en")} the ${describeEntity(fallbackEntity, "en")} after your confirmation.`,
+        next_action: "propose_tool",
+        proposed_tool: {
+          toolName: "entity_management",
+          input: normalizedInput,
+        },
+        agent_state: existingAgentState,
+        reasoning: "fallback_parse",
+      };
+    } else {
+      const cleaned = text.trim();
+      parsed = {
+        message:
+          cleaned ||
+          (preferredLanguage === "zh"
+            ? "我需要更多信息才能继续，请再描述一下。"
+            : "I need a bit more detail to continue. Please clarify."),
+        next_action: "ask_user",
+        agent_state: existingAgentState,
+        reasoning: "fallback_parse",
+      };
+    }
   }
 
   let proposedTool = parsed.proposed_tool || null;

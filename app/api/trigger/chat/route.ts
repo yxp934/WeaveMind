@@ -22,7 +22,7 @@ function isApprovalMessage(message: string) {
   );
 }
 
-function inferEntityOverride(message: string) {
+function inferEntityFromMessage(message: string) {
   if (!message) return null;
   if (/(课次|课节|第\s*\d+\s*(节|课)|session|sessions|lesson)/i.test(message)) {
     return "session";
@@ -30,18 +30,109 @@ function inferEntityOverride(message: string) {
   if (/(作业|assignment|assignments|任务)/i.test(message)) {
     return "assignment";
   }
+  if (/(班级|class|课程|course)/i.test(message)) {
+    return "class";
+  }
   return null;
 }
 
-function applyEntityOverride(actionData: any, message?: string) {
-  const override = message ? inferEntityOverride(message) : null;
-  if (!override) return actionData;
+function inferCrudAction(message: string) {
+  if (!message) return null;
+  if (/(删除|移除|delete|remove)/i.test(message)) {
+    return "delete";
+  }
+  if (/(更新|修改|改回|改成|更名|rename|update|edit|change)/i.test(message)) {
+    return "update";
+  }
+  if (/(创建|新建|新增|添加|create|add|生成)/i.test(message)) {
+    return "create";
+  }
+  if (/(列出|列表|查看|查询|显示|有哪些|read|list|show|query)/i.test(message)) {
+    return "list";
+  }
+  return null;
+}
+
+function extractUuid(message: string) {
+  if (!message) return null;
+  const match = message.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
+  return match?.[0] || null;
+}
+
+function getLastNonApprovalUserText(context: any, fallback?: string) {
+  const history = Array.isArray(context?.conversationHistory)
+    ? context.conversationHistory
+    : [];
+  let lastUserText: string | undefined;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const msg = history[i];
+    if (msg?.role === "user" && typeof msg?.content === "string") {
+      if (!isApprovalMessage(msg.content)) {
+        return msg.content;
+      }
+      if (!lastUserText) lastUserText = msg.content;
+    }
+  }
+  return lastUserText || fallback;
+}
+
+function normalizeActionData(actionData: any, message?: string) {
   const next =
     actionData && typeof actionData === "object" && !Array.isArray(actionData)
       ? { ...actionData }
       : {};
-  if (!next.entity || next.entity === "class") {
-    next.entity = override;
+  const entityFromMessage = message ? inferEntityFromMessage(message) : null;
+  const actionFromMessage = message ? inferCrudAction(message) : null;
+  const inferredId = message ? extractUuid(message) : null;
+  const mentionsClass = message
+    ? /(班级|class|课程|course)/i.test(message)
+    : false;
+  const entityFromIds = next.sessionId
+    ? "session"
+    : next.assignmentId
+      ? "assignment"
+      : next.classId
+        ? "class"
+        : null;
+
+  if (!next.entity) {
+    next.entity = entityFromMessage || entityFromIds || next.entity;
+  } else if (entityFromMessage && next.entity === "class") {
+    next.entity = entityFromMessage;
+  }
+
+  if (!next.action && actionFromMessage) {
+    next.action = actionFromMessage;
+  }
+
+  if (next.entity === "session" && next.details?.name && !next.details?.title) {
+    next.entity = "class";
+  }
+
+  if (inferredId) {
+    if (
+      next.entity === "assignment" &&
+      !next.assignmentId &&
+      ["update", "delete", "read"].includes(next.action)
+    ) {
+      next.assignmentId = inferredId;
+    }
+    if (
+      next.entity === "session" &&
+      !next.sessionId &&
+      ["update", "delete", "read"].includes(next.action)
+    ) {
+      next.sessionId = inferredId;
+    }
+    if (
+      next.entity === "class" &&
+      !next.classId &&
+      ["update", "delete", "read"].includes(next.action)
+    ) {
+      next.classId = inferredId;
+    }
   }
   return next;
 }
@@ -50,24 +141,14 @@ function findPendingToolCall(context: any, userText?: string) {
   const history = Array.isArray(context?.conversationHistory)
     ? context.conversationHistory
     : [];
-  let lastUserText: string | undefined;
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    const msg = history[i];
-    if (msg?.role === "user" && typeof msg?.content === "string") {
-      lastUserText = msg.content;
-      break;
-    }
-  }
-  if (!lastUserText && userText) {
-    lastUserText = userText;
-  }
+  const lastUserText = getLastNonApprovalUserText(context, userText);
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const meta = history[i]?.metadata || {};
     const pending = meta.pendingToolCall;
     if (pending?.id && pending.toolName) {
       return {
         ...pending,
-        input: applyEntityOverride(pending.input, lastUserText),
+        input: normalizeActionData(pending.input, lastUserText),
       };
     }
     const actionType = meta.actionType;
@@ -75,7 +156,7 @@ function findPendingToolCall(context: any, userText?: string) {
       return {
         id: meta.pendingToolCallId || crypto.randomUUID(),
         toolName: actionType,
-        input: applyEntityOverride(meta.actionData || {}, lastUserText),
+        input: normalizeActionData(meta.actionData || {}, lastUserText),
       };
     }
   }
@@ -87,15 +168,20 @@ function ensureConfirmationMetadata(
   userText?: string,
 ) {
   const base = metadata ? { ...metadata } : {};
-  const actionType = base.actionType;
-  const adjustedActionData = applyEntityOverride(base.actionData, userText);
+  const actionType =
+    base.actionType ||
+    (base.actionData?.action && base.actionData?.entity
+      ? "entity_management"
+      : undefined);
+  const adjustedActionData = normalizeActionData(base.actionData, userText);
   const requiresDatabaseAction = Boolean(
-    base.requiresDatabaseAction && actionType
+    (base.requiresDatabaseAction || actionType) && actionType
   );
 
   if (!requiresDatabaseAction) {
     return {
       ...base,
+      actionType,
       actionData: adjustedActionData ?? base.actionData,
     };
   }
@@ -113,7 +199,7 @@ function ensureConfirmationMetadata(
     !Array.isArray(pendingToolCallBase.input)
       ? pendingToolCallBase.input
       : adjustedActionData || {};
-  const normalizedInput = applyEntityOverride(input, userText);
+  const normalizedInput = normalizeActionData(input, userText);
   const pendingToolCall = {
     ...pendingToolCallBase,
     id: pendingToolCallBase.id || pendingToolCallId,
@@ -129,6 +215,26 @@ function ensureConfirmationMetadata(
     requiresDatabaseAction: true,
     confirmationRequired: true,
   };
+}
+
+function normalizeResponseText(value: unknown) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        typeof item === "string" ? item : JSON.stringify(item),
+      )
+      .join("\n");
+  }
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
+  }
+  return String(value);
 }
 
 async function forwardConfirmToolCall(
@@ -195,6 +301,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (context?.confirmToolCall?.id && context.confirmToolCall.toolName) {
+      const lastUserText = getLastNonApprovalUserText(context, message);
+      context.confirmToolCall = {
+        ...context.confirmToolCall,
+        input: normalizeActionData(context.confirmToolCall.input, lastUserText),
+      };
       return await forwardConfirmToolCall(request, message, context);
     }
 
@@ -278,12 +389,13 @@ async function triggerAndWaitForResult(payload: any, executionMode: string) {
     responseData.metadata,
     payload.message,
   );
-  const responseText =
+  const responseText = normalizeResponseText(
     responseData.message ||
-    output.response ||
-    output.content ||
-    output.message ||
-    "";
+      output.response ||
+      output.content ||
+      output.message ||
+      "",
+  );
 
   return {
     success: true,
@@ -365,11 +477,12 @@ async function createTriggerStreamingResponse(
               payloadChunk?.type === "complete") &&
             !payloadChunk.data
           ) {
-            const responseContent =
+            const responseContent = normalizeResponseText(
               payloadChunk.response?.content ||
-              payloadChunk.response ||
-              payloadChunk.message ||
-              "";
+                payloadChunk.response ||
+                payloadChunk.message ||
+                "",
+            );
             payloadChunk.data = {
               message: responseContent,
               response: responseContent,
@@ -382,6 +495,19 @@ async function createTriggerStreamingResponse(
               payloadChunk.data.metadata,
               payload.message,
             );
+          }
+
+          if (payloadChunk?.data) {
+            if ("message" in payloadChunk.data) {
+              payloadChunk.data.message = normalizeResponseText(
+                payloadChunk.data.message,
+              );
+            }
+            if ("response" in payloadChunk.data) {
+              payloadChunk.data.response = normalizeResponseText(
+                payloadChunk.data.response,
+              );
+            }
           }
 
           controller.enqueue(

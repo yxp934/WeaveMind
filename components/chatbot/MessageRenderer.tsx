@@ -29,43 +29,49 @@ interface MessageRendererProps {
 export default function MessageRenderer({ message }: MessageRendererProps) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
+  const rawContent =
+    typeof message.content === 'string'
+      ? message.content
+      : message.content === null || message.content === undefined
+        ? ''
+        : JSON.stringify(message.content);
 
   console.log('🎯 [RENDERER] 渲染消息:', {
     id: message.id,
     role: message.role,
-    contentLength: message.content.length,
+    contentLength: rawContent.length,
     contentType: typeof message.content,
-    contentPreview: message.content.substring(0, 100)
+    contentPreview: rawContent.substring(0, 100)
   });
 
   // 安全检查消息内容 - 移除过于严格的安全检查，直接显示API响应
   const safeContent = React.useMemo(() => {
-    if (!message.content || typeof message.content !== 'string') {
+    if (!rawContent) {
       console.warn('⚠️ 消息内容无效:', message.content);
       return '消息内容为空或无效';
     }
 
     // 只检测真正的Next.js代码特征，而不是所有包含script的文本
     const isRealNextJSCode = (
-      message.content.startsWith('self.__next_f=') &&
-      message.content.includes('push([0])') &&
-      !message.content.includes('🎯') && // AI响应通常包含emoji和特殊字符
-      !message.content.includes('**') && // AI响应通常包含markdown格式
-      message.content.length < 500 // Next.js代码通常较短
+      rawContent.startsWith('self.__next_f=') &&
+      rawContent.includes('push([0])') &&
+      !rawContent.includes('🎯') && // AI响应通常包含emoji和特殊字符
+      !rawContent.includes('**') && // AI响应通常包含markdown格式
+      rawContent.length < 500 // Next.js代码通常较短
     );
 
     if (isRealNextJSCode) {
-      console.error('❌ 检测到真正的Next.js代码:', message.content.substring(0, 100));
+      console.error('❌ 检测到真正的Next.js代码:', rawContent.substring(0, 100));
       return '⚠️ 系统响应异常，请刷新页面重试';
     }
 
     console.log('✅ [RENDERER] safeContent检查通过:', {
-      contentLength: message.content.length,
-      firstChars: message.content.substring(0, 50)
+      contentLength: rawContent.length,
+      firstChars: rawContent.substring(0, 50)
     });
 
-    return message.content;
-  }, [message.content]);
+    return rawContent;
+  }, [rawContent, message.content]);
 
   // 格式化消息内容
   const formatContent = (content: string) => {

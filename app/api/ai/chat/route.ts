@@ -69,7 +69,7 @@ function isApprovalMessage(message: string) {
   );
 }
 
-function inferEntityOverride(message: string) {
+function inferEntityFromMessage(message: string) {
   if (!message) return null;
   if (/(课次|课节|第\s*\d+\s*(节|课)|session|sessions|lesson)/i.test(message)) {
     return "session";
@@ -77,18 +77,109 @@ function inferEntityOverride(message: string) {
   if (/(作业|assignment|assignments|任务)/i.test(message)) {
     return "assignment";
   }
+  if (/(班级|class|课程|course)/i.test(message)) {
+    return "class";
+  }
   return null;
 }
 
-function applyEntityOverride(actionData: any, message?: string) {
-  const override = message ? inferEntityOverride(message) : null;
-  if (!override) return actionData;
+function inferCrudAction(message: string) {
+  if (!message) return null;
+  if (/(删除|移除|delete|remove)/i.test(message)) {
+    return "delete";
+  }
+  if (/(更新|修改|改回|改成|更名|rename|update|edit|change)/i.test(message)) {
+    return "update";
+  }
+  if (/(创建|新建|新增|添加|create|add|生成)/i.test(message)) {
+    return "create";
+  }
+  if (/(列出|列表|查看|查询|显示|有哪些|read|list|show|query)/i.test(message)) {
+    return "list";
+  }
+  return null;
+}
+
+function extractUuid(message: string) {
+  if (!message) return null;
+  const match = message.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
+  return match?.[0] || null;
+}
+
+function getLastNonApprovalUserText(context: any, fallback?: string) {
+  const history = Array.isArray(context?.conversationHistory)
+    ? context.conversationHistory
+    : [];
+  let lastUserText: string | undefined;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const msg = history[i];
+    if (msg?.role === "user" && typeof msg?.content === "string") {
+      if (!isApprovalMessage(msg.content)) {
+        return msg.content;
+      }
+      if (!lastUserText) lastUserText = msg.content;
+    }
+  }
+  return lastUserText || fallback;
+}
+
+function normalizeActionData(actionData: any, message?: string) {
   const next =
     actionData && typeof actionData === "object" && !Array.isArray(actionData)
       ? { ...actionData }
       : {};
-  if (!next.entity || next.entity === "class") {
-    next.entity = override;
+  const entityFromMessage = message ? inferEntityFromMessage(message) : null;
+  const actionFromMessage = message ? inferCrudAction(message) : null;
+  const inferredId = message ? extractUuid(message) : null;
+  const mentionsClass = message
+    ? /(班级|class|课程|course)/i.test(message)
+    : false;
+  const entityFromIds = next.sessionId
+    ? "session"
+    : next.assignmentId
+      ? "assignment"
+      : next.classId
+        ? "class"
+        : null;
+
+  if (!next.entity) {
+    next.entity = entityFromMessage || entityFromIds || next.entity;
+  } else if (entityFromMessage && next.entity === "class") {
+    next.entity = entityFromMessage;
+  }
+
+  if (!next.action && actionFromMessage) {
+    next.action = actionFromMessage;
+  }
+
+  if (next.entity === "session" && next.details?.name && !next.details?.title) {
+    next.entity = "class";
+  }
+
+  if (inferredId) {
+    if (
+      next.entity === "assignment" &&
+      !next.assignmentId &&
+      ["update", "delete", "read"].includes(next.action)
+    ) {
+      next.assignmentId = inferredId;
+    }
+    if (
+      next.entity === "session" &&
+      !next.sessionId &&
+      ["update", "delete", "read"].includes(next.action)
+    ) {
+      next.sessionId = inferredId;
+    }
+    if (
+      next.entity === "class" &&
+      !next.classId &&
+      ["update", "delete", "read"].includes(next.action)
+    ) {
+      next.classId = inferredId;
+    }
   }
   return next;
 }
@@ -97,24 +188,14 @@ function findPendingToolCall(context: any, userText?: string) {
   const history = Array.isArray(context?.conversationHistory)
     ? context.conversationHistory
     : [];
-  let lastUserText: string | undefined;
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    const msg = history[i];
-    if (msg?.role === "user" && typeof msg?.content === "string") {
-      lastUserText = msg.content;
-      break;
-    }
-  }
-  if (!lastUserText && userText) {
-    lastUserText = userText;
-  }
+  const lastUserText = getLastNonApprovalUserText(context, userText);
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const meta = history[i]?.metadata || {};
     const pending = meta.pendingToolCall;
     if (pending?.id && pending.toolName) {
       return {
         ...pending,
-        input: applyEntityOverride(pending.input, lastUserText),
+        input: normalizeActionData(pending.input, lastUserText),
       };
     }
     const actionType = meta.actionType;
@@ -122,11 +203,39 @@ function findPendingToolCall(context: any, userText?: string) {
       return {
         id: meta.pendingToolCallId || crypto.randomUUID(),
         toolName: actionType,
-        input: applyEntityOverride(meta.actionData || {}, lastUserText),
+        input: normalizeActionData(meta.actionData || {}, lastUserText),
       };
     }
   }
   return null;
+}
+
+function normalizeResponseText(value: unknown) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        typeof item === "string" ? item : JSON.stringify(item),
+      )
+      .join("\n");
+  }
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function normalizeChatData(data: any) {
+  if (!data || typeof data !== "object") return data;
+  return {
+    ...data,
+    message: normalizeResponseText(data.message),
+  };
 }
 
 // AI聊天请求验证模式
@@ -330,9 +439,13 @@ export async function POST(
       }
 
       const toolName = context.confirmToolCall.toolName;
-      const actionData = {
-        ...(context.confirmToolCall.input || {}),
-      };
+      const sourceText = getLastNonApprovalUserText(context, message);
+      let actionData = normalizeActionData(
+        {
+          ...(context.confirmToolCall.input || {}),
+        },
+        sourceText,
+      );
       if (!actionData.classId && (context?.classId || context?.selectedClassId)) {
         actionData.classId = context.classId || context.selectedClassId;
       }
@@ -342,6 +455,7 @@ export async function POST(
       if (!actionData.assignmentId && context?.selectedAssignmentId) {
         actionData.assignmentId = context.selectedAssignmentId;
       }
+      actionData = normalizeActionData(actionData, sourceText);
       const meta = {
         requiresDatabaseAction: true,
         actionType: toolName,
@@ -414,7 +528,7 @@ export async function POST(
         ...priorHistory,
         {
           role: "assistant",
-          content: dbOperationResult.message || "",
+          content: normalizeResponseText(dbOperationResult.message || ""),
           timestamp: new Date().toISOString(),
           toolsUsed: dbOperationResult.toolsUsed || [],
           metadata: toolExecutionMeta,
@@ -459,13 +573,20 @@ export async function POST(
         // If the follow-up proposes another DB/tool action, mark it as pending.
         let finalFollowup = followup;
         const actionType = followup.data?.metadata?.actionType;
+        const inferredActionType =
+          actionType ||
+          (followup.data?.metadata?.actionData?.action &&
+          followup.data?.metadata?.actionData?.entity
+            ? "entity_management"
+            : undefined);
         const requiresDatabaseAction = Boolean(
           followup.success &&
-            followup.data?.metadata?.requiresDatabaseAction &&
-            actionType,
+            (followup.data?.metadata?.requiresDatabaseAction ||
+              inferredActionType) &&
+            inferredActionType,
         );
         if (requiresDatabaseAction && followup.data?.metadata) {
-          const adjustedActionData = applyEntityOverride(
+          const adjustedActionData = normalizeActionData(
             followup.data.metadata.actionData || {},
             lastUserMessage?.content || message,
           );
@@ -479,9 +600,10 @@ export async function POST(
                 ...followup.data.metadata,
                 pendingToolCall: {
                   id: pendingToolCallId,
-                  toolName: actionType,
+                  toolName: inferredActionType,
                   input: adjustedActionData,
                 },
+                actionType: inferredActionType,
                 actionData: adjustedActionData,
                 pendingToolCallId,
                 requiresDatabaseAction: true,
@@ -491,18 +613,19 @@ export async function POST(
           };
         }
 
+        const normalizedFollowupData = normalizeChatData(finalFollowup.data);
         return NextResponse.json({
           success: true,
           data: {
-            ...(finalFollowup.data as any),
+            ...(normalizedFollowupData as any),
             toolsUsed: [
               ...new Set([
                 ...(dbOperationResult.toolsUsed || []),
-                ...(finalFollowup.data?.toolsUsed || []),
+                ...(normalizedFollowupData?.toolsUsed || []),
               ]),
             ],
             metadata: {
-              ...(finalFollowup.data?.metadata || {}),
+              ...(normalizedFollowupData?.metadata || {}),
               ...toolExecutionMeta,
             },
           } as any,
@@ -675,14 +798,20 @@ export async function POST(
 
     // 6.5 Any DB/tool action must be confirmed by the user (separate request).
     const actionType = result.data?.metadata?.actionType;
+    const inferredActionType =
+      actionType ||
+      (result.data?.metadata?.actionData?.action &&
+      result.data?.metadata?.actionData?.entity
+        ? "entity_management"
+        : undefined);
     const requiresDatabaseAction = Boolean(
       result.success &&
-        result.data?.metadata?.requiresDatabaseAction &&
-        actionType,
+        (result.data?.metadata?.requiresDatabaseAction || inferredActionType) &&
+        inferredActionType,
     );
 
     if (requiresDatabaseAction && result.data?.metadata) {
-      const adjustedActionData = applyEntityOverride(
+      const adjustedActionData = normalizeActionData(
         result.data.metadata.actionData || {},
         message,
       );
@@ -693,15 +822,16 @@ export async function POST(
         data: {
           ...result.data,
           message:
-            result.data.message ||
-            `Pending tool call ${actionType}, awaiting confirmation.`,
+            normalizeResponseText(result.data.message) ||
+            `Pending tool call ${inferredActionType}, awaiting confirmation.`,
           metadata: {
             ...result.data.metadata,
             pendingToolCall: {
               id: pendingToolCallId,
-              toolName: actionType,
+              toolName: inferredActionType,
               input: adjustedActionData,
             },
+            actionType: inferredActionType,
             actionData: adjustedActionData,
             pendingToolCallId,
             requiresDatabaseAction: true,
@@ -713,9 +843,10 @@ export async function POST(
 
     // 7. 返回JSON响应
     if (finalResult.success) {
+      const normalizedData = normalizeChatData(finalResult.data);
       return NextResponse.json({
         success: true,
-        data: finalResult.data,
+        data: normalizedData,
         metadata: {
           timestamp: new Date().toISOString(),
           requestId,
@@ -975,22 +1106,29 @@ async function handleStreamResponse(
         // 处理数据库/工具调用请求（流式模式下仅返回待确认信息，不自动执行）
         let finalResult = result;
         const actionType = result.data?.metadata?.actionType;
+        const inferredActionType =
+          actionType ||
+          (result.data?.metadata?.actionData?.action &&
+          result.data?.metadata?.actionData?.entity
+            ? "entity_management"
+            : undefined);
         const requiresDatabaseAction = Boolean(
           result.success &&
-            result.data?.metadata?.requiresDatabaseAction &&
-            actionType,
+            (result.data?.metadata?.requiresDatabaseAction ||
+              inferredActionType) &&
+            inferredActionType,
         );
 
         if (requiresDatabaseAction) {
           const pendingToolCallId =
             result.data.metadata.pendingToolCallId || crypto.randomUUID();
-          const adjustedActionData = applyEntityOverride(
+          const adjustedActionData = normalizeActionData(
             result.data.metadata.actionData || {},
             message,
           );
           const pendingToolCall = {
             id: pendingToolCallId,
-            toolName: actionType,
+            toolName: inferredActionType,
             input: adjustedActionData,
           };
 
@@ -999,11 +1137,12 @@ async function handleStreamResponse(
             data: {
               ...result.data,
               message:
-                result.data.message ||
+                normalizeResponseText(result.data.message) ||
                 `Pending tool call ${pendingToolCall.toolName}, awaiting confirmation.`,
               metadata: {
                 ...result.data.metadata,
                 pendingToolCall,
+                actionType: inferredActionType,
                 actionData: adjustedActionData,
                 pendingToolCallId,
                 requiresDatabaseAction: true,
@@ -1044,8 +1183,9 @@ async function handleStreamResponse(
         await new Promise((resolve) => setTimeout(resolve, 300));
 
         // 字符级流式输出AI响应
-        const aiResponse =
-          finalResult.data?.message || "抱歉，我现在无法处理您的请求。";
+        const aiResponse = normalizeResponseText(
+          finalResult.data?.message || "抱歉，我现在无法处理您的请求。",
+        );
         const characters = aiResponse.split("");
         let currentText = "";
 
@@ -1078,7 +1218,7 @@ async function handleStreamResponse(
           encoder.encode(
             `data: ${JSON.stringify({
               type: "complete",
-              data: finalResult.data,
+              data: normalizeChatData(finalResult.data),
               metadata: {
                 timestamp: new Date().toISOString(),
                 requestId,
