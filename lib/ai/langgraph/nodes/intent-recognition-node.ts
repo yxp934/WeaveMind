@@ -47,7 +47,7 @@ export async function intentRecognitionNode(
   const fastHasListVerb = /(有哪些|有什么|哪几个|列出|查看|show|list|lookat|look at|what|which)/i.test(
     rawUserText,
   );
-  const fastMentionsClass = /(班级|class|classes)/i.test(normalizedUserText);
+  const fastMentionsClass = /(班级|课程|class|classes)/i.test(normalizedUserText);
   const fastMentionsSession = /(课次|课程节|session|sessions|lesson)/i.test(
     normalizedUserText,
   );
@@ -59,11 +59,11 @@ export async function intentRecognitionNode(
     fastHasListVerb &&
     (fastMentionsClass || fastMentionsSession || fastMentionsAssignment)
   ) {
-    const entity = fastMentionsClass
-      ? "class"
-      : fastMentionsSession
-        ? "session"
-        : "assignment";
+    const entity = fastMentionsSession
+      ? "session"
+      : fastMentionsAssignment
+        ? "assignment"
+        : "class";
     return {
       ...state,
       intent: {
@@ -197,7 +197,7 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
     const hasListVerb = /(有哪些|有什么|哪几个|列出|查看|show|list|lookat|what|which)/i.test(
       lastMessage.content.toString(),
     );
-    const mentionsClass = /(班级|class|classes)/i.test(normalizedUserText);
+    const mentionsClass = /(班级|课程|class|classes)/i.test(normalizedUserText);
     const mentionsSession = /(课次|课程节|session|sessions|lesson)/i.test(
       normalizedUserText,
     );
@@ -218,21 +218,21 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
       intentResult.parameters = {
         ...intentResult.parameters,
         action: "list",
-        entity: mentionsClass
-          ? "class"
-          : mentionsSession
-            ? "session"
-            : "assignment",
+        entity: mentionsSession
+          ? "session"
+          : mentionsAssignment
+            ? "assignment"
+            : "class",
         classId: resolvedClassId,
       };
       intentResult.reasoning = `${
         intentResult.reasoning || ""
       } 识别到用户在查询已有的 ${
-        mentionsClass
-          ? "班级"
-          : mentionsSession
-            ? "课次"
-            : "作业"
+        mentionsSession
+          ? "课次"
+          : mentionsAssignment
+            ? "作业"
+            : "班级"
       }，强制使用 entity_management + list，并清除旧的工作流上下文以避免误路由。`;
     }
 
@@ -304,7 +304,7 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
     const hasListVerb = /(有哪些|有什么|哪几个|列出|查看|show|list|look at|what|which)/i.test(
       fallbackText,
     );
-    const mentionsClass = /(班级|class|classes)/i.test(fallbackText);
+    const mentionsClass = /(班级|课程|class|classes)/i.test(fallbackText);
     const mentionsSession = /(课次|课程节|session|sessions|lesson)/i.test(
       fallbackText,
     );
@@ -319,11 +319,11 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
           confidence: 0.3,
           parameters: {
             action: "list",
-            entity: mentionsClass
-              ? "class"
-              : mentionsSession
-                ? "session"
-                : "assignment",
+            entity: mentionsSession
+              ? "session"
+              : mentionsAssignment
+                ? "assignment"
+                : "class",
           },
         },
         currentWorkflow: undefined,

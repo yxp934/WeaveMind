@@ -22,37 +22,82 @@ function isApprovalMessage(message: string) {
   );
 }
 
-function findPendingToolCall(context: any) {
+function inferEntityOverride(message: string) {
+  if (!message) return null;
+  if (/(课次|课节|第\s*\d+\s*(节|课)|session|sessions|lesson)/i.test(message)) {
+    return "session";
+  }
+  if (/(作业|assignment|assignments|任务)/i.test(message)) {
+    return "assignment";
+  }
+  return null;
+}
+
+function applyEntityOverride(actionData: any, message?: string) {
+  const override = message ? inferEntityOverride(message) : null;
+  if (!override) return actionData;
+  const next =
+    actionData && typeof actionData === "object" && !Array.isArray(actionData)
+      ? { ...actionData }
+      : {};
+  if (!next.entity || next.entity === "class") {
+    next.entity = override;
+  }
+  return next;
+}
+
+function findPendingToolCall(context: any, userText?: string) {
   const history = Array.isArray(context?.conversationHistory)
     ? context.conversationHistory
     : [];
+  let lastUserText: string | undefined;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const msg = history[i];
+    if (msg?.role === "user" && typeof msg?.content === "string") {
+      lastUserText = msg.content;
+      break;
+    }
+  }
+  if (!lastUserText && userText) {
+    lastUserText = userText;
+  }
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const meta = history[i]?.metadata || {};
     const pending = meta.pendingToolCall;
     if (pending?.id && pending.toolName) {
-      return pending;
+      return {
+        ...pending,
+        input: applyEntityOverride(pending.input, lastUserText),
+      };
     }
     const actionType = meta.actionType;
     if (meta.requiresDatabaseAction && actionType) {
       return {
         id: meta.pendingToolCallId || crypto.randomUUID(),
         toolName: actionType,
-        input: meta.actionData || {},
+        input: applyEntityOverride(meta.actionData || {}, lastUserText),
       };
     }
   }
   return null;
 }
 
-function ensureConfirmationMetadata(metadata: Record<string, any> | undefined) {
+function ensureConfirmationMetadata(
+  metadata: Record<string, any> | undefined,
+  userText?: string,
+) {
   const base = metadata ? { ...metadata } : {};
   const actionType = base.actionType;
+  const adjustedActionData = applyEntityOverride(base.actionData, userText);
   const requiresDatabaseAction = Boolean(
     base.requiresDatabaseAction && actionType
   );
 
   if (!requiresDatabaseAction) {
-    return base;
+    return {
+      ...base,
+      actionData: adjustedActionData ?? base.actionData,
+    };
   }
 
   const pendingToolCallId =
@@ -60,23 +105,25 @@ function ensureConfirmationMetadata(metadata: Record<string, any> | undefined) {
   const pendingToolCallBase = base.pendingToolCall || {
     id: pendingToolCallId,
     toolName: actionType,
-    input: base.actionData || {},
+    input: adjustedActionData || {},
   };
   const input =
     pendingToolCallBase?.input &&
     typeof pendingToolCallBase.input === "object" &&
     !Array.isArray(pendingToolCallBase.input)
       ? pendingToolCallBase.input
-      : base.actionData || {};
+      : adjustedActionData || {};
+  const normalizedInput = applyEntityOverride(input, userText);
   const pendingToolCall = {
     ...pendingToolCallBase,
     id: pendingToolCallBase.id || pendingToolCallId,
     toolName: pendingToolCallBase.toolName || actionType,
-    input,
+    input: normalizedInput,
   };
 
   return {
     ...base,
+    actionData: adjustedActionData ?? base.actionData,
     pendingToolCall,
     pendingToolCallId,
     requiresDatabaseAction: true,
@@ -141,7 +188,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!context?.confirmToolCall && isApprovalMessage(message)) {
-      const pendingToolCall = findPendingToolCall(context);
+      const pendingToolCall = findPendingToolCall(context, message);
       if (pendingToolCall) {
         context.confirmToolCall = pendingToolCall;
       }
@@ -227,7 +274,10 @@ async function triggerAndWaitForResult(payload: any, executionMode: string) {
     output.langgraphResult?.data ||
     output.metadata?.langgraphResult?.data ||
     {};
-  const responseMetadata = ensureConfirmationMetadata(responseData.metadata);
+  const responseMetadata = ensureConfirmationMetadata(
+    responseData.metadata,
+    payload.message,
+  );
   const responseText =
     responseData.message ||
     output.response ||
@@ -329,7 +379,8 @@ async function createTriggerStreamingResponse(
 
           if (payloadChunk?.data?.metadata) {
             payloadChunk.data.metadata = ensureConfirmationMetadata(
-              payloadChunk.data.metadata
+              payloadChunk.data.metadata,
+              payload.message,
             );
           }
 

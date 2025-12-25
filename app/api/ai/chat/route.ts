@@ -69,22 +69,60 @@ function isApprovalMessage(message: string) {
   );
 }
 
-function findPendingToolCall(context: any) {
+function inferEntityOverride(message: string) {
+  if (!message) return null;
+  if (/(课次|课节|第\s*\d+\s*(节|课)|session|sessions|lesson)/i.test(message)) {
+    return "session";
+  }
+  if (/(作业|assignment|assignments|任务)/i.test(message)) {
+    return "assignment";
+  }
+  return null;
+}
+
+function applyEntityOverride(actionData: any, message?: string) {
+  const override = message ? inferEntityOverride(message) : null;
+  if (!override) return actionData;
+  const next =
+    actionData && typeof actionData === "object" && !Array.isArray(actionData)
+      ? { ...actionData }
+      : {};
+  if (!next.entity || next.entity === "class") {
+    next.entity = override;
+  }
+  return next;
+}
+
+function findPendingToolCall(context: any, userText?: string) {
   const history = Array.isArray(context?.conversationHistory)
     ? context.conversationHistory
     : [];
+  let lastUserText: string | undefined;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const msg = history[i];
+    if (msg?.role === "user" && typeof msg?.content === "string") {
+      lastUserText = msg.content;
+      break;
+    }
+  }
+  if (!lastUserText && userText) {
+    lastUserText = userText;
+  }
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const meta = history[i]?.metadata || {};
     const pending = meta.pendingToolCall;
     if (pending?.id && pending.toolName) {
-      return pending;
+      return {
+        ...pending,
+        input: applyEntityOverride(pending.input, lastUserText),
+      };
     }
     const actionType = meta.actionType;
     if (meta.requiresDatabaseAction && actionType) {
       return {
         id: meta.pendingToolCallId || crypto.randomUUID(),
         toolName: actionType,
-        input: meta.actionData || {},
+        input: applyEntityOverride(meta.actionData || {}, lastUserText),
       };
     }
   }
@@ -188,7 +226,7 @@ export async function POST(
     const enableStream = isStreamMode || false;
 
     if (context && !context.confirmToolCall && isApprovalMessage(message)) {
-      const pendingToolCall = findPendingToolCall(context);
+      const pendingToolCall = findPendingToolCall(context, message);
       if (pendingToolCall) {
         context.confirmToolCall = pendingToolCall;
       }
@@ -427,6 +465,10 @@ export async function POST(
             actionType,
         );
         if (requiresDatabaseAction && followup.data?.metadata) {
+          const adjustedActionData = applyEntityOverride(
+            followup.data.metadata.actionData || {},
+            lastUserMessage?.content || message,
+          );
           const pendingToolCallId =
             followup.data.metadata.pendingToolCallId || crypto.randomUUID();
           finalFollowup = {
@@ -438,8 +480,9 @@ export async function POST(
                 pendingToolCall: {
                   id: pendingToolCallId,
                   toolName: actionType,
-                  input: followup.data.metadata.actionData || {},
+                  input: adjustedActionData,
                 },
+                actionData: adjustedActionData,
                 pendingToolCallId,
                 requiresDatabaseAction: true,
                 confirmationRequired: true,
@@ -639,6 +682,10 @@ export async function POST(
     );
 
     if (requiresDatabaseAction && result.data?.metadata) {
+      const adjustedActionData = applyEntityOverride(
+        result.data.metadata.actionData || {},
+        message,
+      );
       const pendingToolCallId =
         result.data.metadata.pendingToolCallId || crypto.randomUUID();
       finalResult = {
@@ -653,8 +700,9 @@ export async function POST(
             pendingToolCall: {
               id: pendingToolCallId,
               toolName: actionType,
-              input: result.data.metadata.actionData || {},
+              input: adjustedActionData,
             },
+            actionData: adjustedActionData,
             pendingToolCallId,
             requiresDatabaseAction: true,
             confirmationRequired: true,
@@ -936,10 +984,14 @@ async function handleStreamResponse(
         if (requiresDatabaseAction) {
           const pendingToolCallId =
             result.data.metadata.pendingToolCallId || crypto.randomUUID();
+          const adjustedActionData = applyEntityOverride(
+            result.data.metadata.actionData || {},
+            message,
+          );
           const pendingToolCall = {
             id: pendingToolCallId,
             toolName: actionType,
-            input: result.data.metadata.actionData || {},
+            input: adjustedActionData,
           };
 
           finalResult = {
@@ -952,6 +1004,7 @@ async function handleStreamResponse(
               metadata: {
                 ...result.data.metadata,
                 pendingToolCall,
+                actionData: adjustedActionData,
                 pendingToolCallId,
                 requiresDatabaseAction: true,
                 confirmationRequired: true,

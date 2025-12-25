@@ -82,9 +82,15 @@ function inferCrudAction(text: string): CrudAction | null {
 }
 
 function inferEntityType(text: string): EntityType | null {
-  if (/(班级|class|classes)/i.test(text)) return "class";
-  if (/(课次|课|session|sessions)/i.test(text)) return "session";
-  if (/(作业|assignment|assignments|任务)/i.test(text)) return "assignment";
+  const hasSession = /(课次|课节|第\s*\d+\s*(节|课)|session|sessions|lesson)/i.test(
+    text,
+  );
+  const hasAssignment = /(作业|assignment|assignments|任务)/i.test(text);
+  const hasClass = /(班级|课程|class|classes)/i.test(text);
+
+  if (hasSession) return "session";
+  if (hasAssignment) return "assignment";
+  if (hasClass) return "class";
   return null;
 }
 
@@ -149,10 +155,17 @@ function normalizeEntityManagementInput(
   const normalized =
     input && typeof input === "object" ? { ...input } : ({} as any);
   const inferredAction = normalized.action || inferCrudAction(userText);
-  const inferredEntity = normalized.entity || inferEntityType(userText);
+  const inferredEntity = inferEntityType(userText);
+  const proposedEntity = normalized.entity;
 
   if (inferredAction) normalized.action = inferredAction;
-  if (inferredEntity) normalized.entity = inferredEntity;
+  if (inferredEntity) {
+    if (!proposedEntity || (proposedEntity === "class" && inferredEntity !== "class")) {
+      normalized.entity = inferredEntity;
+    }
+  } else if (proposedEntity) {
+    normalized.entity = proposedEntity;
+  }
 
   const action = normalized.action;
   const inferredId = extractUuid(userText);
