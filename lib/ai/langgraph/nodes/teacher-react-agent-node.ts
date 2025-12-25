@@ -7,6 +7,8 @@ import { parseModelResponse } from "../utils/model-response";
 const openai = createGatewayOpenAI();
 
 type NextAction = "ask_user" | "propose_tool" | "done";
+type CrudAction = "create" | "read" | "update" | "delete" | "list";
+type EntityType = "class" | "session" | "assignment";
 
 function detectLanguage(text: string): "zh" | "en" {
   // Very lightweight heuristic: presence of CJK characters -> zh, else en.
@@ -66,6 +68,182 @@ function extractSessionCount(text: string): number | null {
   const n = Number(m[1]);
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.min(32, Math.max(1, Math.floor(n)));
+}
+
+function inferCrudAction(text: string): CrudAction | null {
+  if (/(删除|移除|清除|delete|remove)/i.test(text)) return "delete";
+  if (/(更新|修改|更改|编辑|update|edit)/i.test(text)) return "update";
+  if (/(创建|新建|新增|添加|建立|create|add)/i.test(text)) return "create";
+  if (/(列出|查看|显示|list|show|有哪些|what|which)/i.test(text)) {
+    return "list";
+  }
+  if (/(查询|读取|read)/i.test(text)) return "read";
+  return null;
+}
+
+function inferEntityType(text: string): EntityType | null {
+  if (/(班级|class|classes)/i.test(text)) return "class";
+  if (/(课次|课|session|sessions)/i.test(text)) return "session";
+  if (/(作业|assignment|assignments|任务)/i.test(text)) return "assignment";
+  return null;
+}
+
+function extractUuid(text: string): string | null {
+  const match = text.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
+  return match?.[0] || null;
+}
+
+function extractTitle(text: string): string | null {
+  const patterns: RegExp[] = [
+    /标题(?:为|是)?[:：]?\s*[“"]?([^”"\n，,。;；]+)[”"]?/i,
+    /(名称|名为|name|title)[:：]?\s*[“"]?([^”"\n，,。;；]+)[”"]?/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    const raw = m?.[2] || m?.[1];
+    if (raw) {
+      const value = raw.trim();
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function extractDescription(text: string): string | null {
+  const patterns: RegExp[] = [
+    /描述[:：]?\s*[“"]?([^”"\n]+)[”"]?/i,
+    /说明[:：]?\s*[“"]?([^”"\n]+)[”"]?/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) {
+      const value = m[1].trim();
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function extractDate(text: string): string | null {
+  const match = text.match(/\d{4}-\d{1,2}-\d{1,2}/);
+  return match?.[0] || null;
+}
+
+function extractTime(text: string): string | null {
+  const match = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/);
+  return match?.[0] || null;
+}
+
+function normalizeEntityManagementInput(
+  userText: string,
+  input: Record<string, any> | null | undefined,
+  contextIds: {
+    classId?: string | null;
+    selectedClassId?: string | null;
+    selectedSessionId?: string | null;
+    selectedAssignmentId?: string | null;
+  },
+): Record<string, any> {
+  const normalized =
+    input && typeof input === "object" ? { ...input } : ({} as any);
+  const inferredAction = normalized.action || inferCrudAction(userText);
+  const inferredEntity = normalized.entity || inferEntityType(userText);
+
+  if (inferredAction) normalized.action = inferredAction;
+  if (inferredEntity) normalized.entity = inferredEntity;
+
+  const action = normalized.action;
+  const inferredId = extractUuid(userText);
+  const fallbackClassId = contextIds.selectedClassId || contextIds.classId;
+
+  if (!normalized.classId && fallbackClassId) {
+    normalized.classId = fallbackClassId;
+  }
+
+  if (normalized.entity === "session") {
+    if (!normalized.sessionId) {
+      if (action === "update" || action === "delete") {
+        normalized.sessionId =
+          contextIds.selectedSessionId || inferredId || null;
+      } else {
+        normalized.sessionId = contextIds.selectedSessionId || null;
+      }
+    }
+    if (
+      !normalized.classId &&
+      inferredId &&
+      (action === "list" || action === "read" || action === "create")
+    ) {
+      normalized.classId = inferredId;
+    }
+  }
+
+  if (normalized.entity === "assignment") {
+    if (!normalized.assignmentId) {
+      if (action === "update" || action === "delete") {
+        normalized.assignmentId =
+          contextIds.selectedAssignmentId || inferredId || null;
+      } else {
+        normalized.assignmentId = contextIds.selectedAssignmentId || null;
+      }
+    }
+    if (
+      !normalized.classId &&
+      inferredId &&
+      (action === "list" || action === "read" || action === "create")
+    ) {
+      normalized.classId = inferredId;
+    }
+  }
+
+  if (normalized.entity === "class" && !normalized.classId && inferredId) {
+    normalized.classId = inferredId;
+  }
+
+  if (action === "create" || action === "update") {
+    const details =
+      normalized.details && typeof normalized.details === "object"
+        ? { ...normalized.details }
+        : ({} as any);
+    const title = extractTitle(userText);
+    if (title) {
+      if (normalized.entity === "class") {
+        details.name = details.name || title;
+      } else {
+        details.title = details.title || title;
+      }
+    }
+    const description = extractDescription(userText);
+    if (description && !details.description) {
+      details.description = description;
+    }
+
+    if (normalized.entity === "session") {
+      const date = extractDate(userText);
+      if (date && !details.scheduledDate) {
+        details.scheduledDate = date;
+      }
+      const time = extractTime(userText);
+      if (time && !details.startTime) {
+        details.startTime = time;
+      }
+    }
+
+    if (normalized.entity === "assignment") {
+      const dueDate = extractDate(userText);
+      if (dueDate && !details.dueDate) {
+        details.dueDate = dueDate;
+      }
+    }
+
+    if (Object.keys(details).length > 0) {
+      normalized.details = details;
+    }
+  }
+
+  return normalized;
 }
 
 function parseSessionDrafts(
@@ -1524,6 +1702,22 @@ export async function teacherReactAgentNode(
     throw new Error(`模型输出解析失败: ${err?.message || String(err)}。请检查提示词和模型设置。`);
   }
 
+  let proposedTool = parsed.proposed_tool || null;
+  if (
+    parsed.next_action === "propose_tool" &&
+    proposedTool?.toolName === "entity_management"
+  ) {
+    proposedTool = {
+      ...proposedTool,
+      input: normalizeEntityManagementInput(userText, proposedTool.input, {
+        classId: state.metadata?.classId || null,
+        selectedClassId: state.metadata?.selectedClassId || null,
+        selectedSessionId: state.metadata?.selectedSessionId || null,
+        selectedAssignmentId: state.metadata?.selectedAssignmentId || null,
+      }),
+    };
+  }
+
   const assistantMessage = new AIMessage({
     content: parsed.message,
     additional_kwargs: {
@@ -1533,9 +1727,10 @@ export async function teacherReactAgentNode(
         reasoning: parsed.reasoning,
         agentState: parsed.agent_state || state.metadata?.agentState || {},
         // Tool proposal payload for API confirmation gate
-        requiresDatabaseAction: parsed.next_action === "propose_tool" && Boolean(parsed.proposed_tool?.toolName),
-        actionType: parsed.proposed_tool?.toolName || null,
-        actionData: parsed.proposed_tool?.input || null,
+        requiresDatabaseAction:
+          parsed.next_action === "propose_tool" && Boolean(proposedTool?.toolName),
+        actionType: proposedTool?.toolName || null,
+        actionData: proposedTool?.input || null,
       },
     },
   });
@@ -1547,9 +1742,9 @@ export async function teacherReactAgentNode(
     agentState: parsed.agent_state || state.metadata?.agentState || {},
     requiresDatabaseAction:
       parsed.next_action === "propose_tool" &&
-      Boolean(parsed.proposed_tool?.toolName),
-    actionType: parsed.proposed_tool?.toolName || null,
-    actionData: parsed.proposed_tool?.input || null,
+      Boolean(proposedTool?.toolName),
+    actionType: proposedTool?.toolName || null,
+    actionData: proposedTool?.input || null,
     toolsUsed: state.metadata?.toolsUsed || [],
     timestamp: new Date().toISOString(),
   };

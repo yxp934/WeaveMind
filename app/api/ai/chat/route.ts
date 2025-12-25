@@ -63,6 +63,34 @@ async function withTimeout<T>(
 
 const TOOL_EXECUTION_TIMEOUT_MS = 25_000;
 
+function isApprovalMessage(message: string) {
+  return /^(approve|approved|yes|ok|okay|confirm|confirmed|确认|同意|好的|可以)$/i.test(
+    message.trim(),
+  );
+}
+
+function findPendingToolCall(context: any) {
+  const history = Array.isArray(context?.conversationHistory)
+    ? context.conversationHistory
+    : [];
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const meta = history[i]?.metadata || {};
+    const pending = meta.pendingToolCall;
+    if (pending?.id && pending.toolName) {
+      return pending;
+    }
+    const actionType = meta.actionType;
+    if (meta.requiresDatabaseAction && actionType) {
+      return {
+        id: meta.pendingToolCallId || crypto.randomUUID(),
+        toolName: actionType,
+        input: meta.actionData || {},
+      };
+    }
+  }
+  return null;
+}
+
 // AI聊天请求验证模式
 const chatRequestSchema = z.object({
   message: z.string().min(1).max(4000),
@@ -158,6 +186,13 @@ export async function POST(
     const message = msg;
     const context = ctx;
     const enableStream = isStreamMode || false;
+
+    if (context && !context.confirmToolCall && isApprovalMessage(message)) {
+      const pendingToolCall = findPendingToolCall(context);
+      if (pendingToolCall) {
+        context.confirmToolCall = pendingToolCall;
+      }
+    }
 
     // 2. 检查认证状态
     const supabase = await createClient();
@@ -257,12 +292,35 @@ export async function POST(
       }
 
       const toolName = context.confirmToolCall.toolName;
-      const actionData = context.confirmToolCall.input || {};
+      const actionData = {
+        ...(context.confirmToolCall.input || {}),
+      };
+      if (!actionData.classId && (context?.classId || context?.selectedClassId)) {
+        actionData.classId = context.classId || context.selectedClassId;
+      }
+      if (!actionData.sessionId && context?.selectedSessionId) {
+        actionData.sessionId = context.selectedSessionId;
+      }
+      if (!actionData.assignmentId && context?.selectedAssignmentId) {
+        actionData.assignmentId = context.selectedAssignmentId;
+      }
       const meta = {
         requiresDatabaseAction: true,
         actionType: toolName,
         actionData,
         toolsUsed: [],
+        classId: context?.classId,
+        sessionId: context?.sessionId,
+        assignmentId: context?.assignmentId,
+        selectedClassId: context?.selectedClassId,
+        selectedSessionId: context?.selectedSessionId,
+        selectedAssignmentId: context?.selectedAssignmentId,
+        requestContext: {
+          classId: context?.classId,
+          selectedClassId: context?.selectedClassId,
+          selectedSessionId: context?.selectedSessionId,
+          selectedAssignmentId: context?.selectedAssignmentId,
+        },
       };
 
       const dbOperationResult = await runWithRetry(

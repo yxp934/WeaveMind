@@ -17,13 +17,34 @@ const ChatMessageSchema = z.object({
 });
 
 const ConversationContextSchema = z.object({
-  conversationId: z.string(),
-  userId: z.string(),
+  conversationId: z.string().optional(),
+  sessionId: z.string().optional(),
+  userId: z.string().optional(),
   userRole: z.enum(["teacher", "student", "self_learner"]),
   courseId: z.string().optional(),
   classId: z.string().optional(),
+  organizationId: z.string().optional(),
   selectedEntityId: z.string().optional(),
+  selectedClassId: z.string().optional(),
+  selectedSessionId: z.string().optional(),
+  selectedAssignmentId: z.string().optional(),
+  selectedContexts: z
+    .array(
+      z.object({
+        type: z.enum(["class", "session", "assignment"]),
+        id: z.string(),
+        title: z.string().optional(),
+      })
+    )
+    .optional(),
   conversationHistory: z.array(ChatMessageSchema).optional(),
+  confirmToolCall: z
+    .object({
+      id: z.string(),
+      toolName: z.string(),
+      input: z.object({}).catchall(z.any()),
+    })
+    .optional(),
 });
 
 /**
@@ -51,140 +72,162 @@ export const enhancedChatStreamTask = task({
     console.log(`Enhanced Chat Stream: Processing message for ${payload.context.userRole} via LangGraph`);
 
     const { message, context, options } = payload;
-    const { conversationId, userRole, userId, conversationHistory = [] } = context;
+    const { conversationId, sessionId, userRole, userId, conversationHistory = [] } = context;
+    const resolvedConversationId = conversationId || sessionId || `conv_${Date.now()}`;
 
-    // Initialize stream for real-time updates
-    const stream = await streams.create();
+    let responseContent = "";
+    let responseMetadata: Record<string, any> = {};
+    let responseChoices: any[] | undefined = undefined;
+    let responseToolsUsed: string[] = [];
+    let langgraphResult: any = null;
+    let streamError: Error | null = null;
+    const streamId = `stream_${Date.now()}`;
 
     try {
-      // Send initial stream event
-      await streams.write(
-        stream,
-        {
-          type: "start",
-          timestamp: new Date().toISOString(),
-          conversationId,
-          userRole,
-          workflowType: options?.workflowType || "general_chat",
-        }
-      );
+      const { waitUntilComplete } = streams.writer({
+        execute: async ({ write }) => {
+          try {
+            write({
+              type: "start",
+              timestamp: new Date().toISOString(),
+              conversationId: resolvedConversationId,
+              userRole,
+              workflowType: options?.workflowType || "general_chat",
+            });
 
-      // Stream processing stages
-      const stages = [
-        { name: "Intent recognition", progress: 15, delay: 200 },
-        { name: "Context analysis", progress: 35, delay: 300 },
-        { name: "LangGraph processing", progress: 65, delay: 500 },
-        { name: "Response generation", progress: 85, delay: 300 },
-        { name: "Finalizing", progress: 100, delay: 100 },
-      ];
+            const stages = [
+              { name: "Intent recognition", progress: 15, delay: 200 },
+              { name: "Context analysis", progress: 35, delay: 300 },
+              { name: "LangGraph processing", progress: 65, delay: 500 },
+              { name: "Response generation", progress: 85, delay: 300 },
+              { name: "Finalizing", progress: 100, delay: 100 },
+            ];
 
-      for (const stage of stages) {
-        await wait.for({ milliseconds: stage.delay });
+            for (const stage of stages) {
+              await wait.for({ seconds: stage.delay / 1000 });
+              write({
+                type: "progress",
+                stage: stage.name,
+                progress: stage.progress,
+                timestamp: new Date().toISOString(),
+              });
+            }
 
-        await streams.write(
-          stream,
-          {
-            type: "progress",
-            stage: stage.name,
-            progress: stage.progress,
-            timestamp: new Date().toISOString(),
-          }
-        );
-      }
+            const result = await chatbot.processMessage(
+              message,
+              resolvedConversationId,
+              userRole,
+              userId,
+              conversationHistory,
+              {
+                courseId: context.courseId,
+                classId: context.classId,
+                organizationId: context.organizationId,
+                selectedClassId: context.selectedClassId,
+                selectedSessionId: context.selectedSessionId,
+                selectedAssignmentId: context.selectedAssignmentId,
+                selectedContexts: context.selectedContexts,
+              }
+            );
 
-      // Call the LangGraph chatbot
-      const result = await chatbot.processMessage(
-        message,
-        conversationId,
-        userRole,
-        userId,
-        conversationHistory,
-        {
-          courseId: context.courseId,
-          classId: context.classId,
-        }
-      );
+            langgraphResult = result;
 
-      if (!result.success) {
-        throw new Error(`LangGraph chatbot failed: ${result.error?.message || "Unknown error"}`);
-      }
+            if (!result.success) {
+              throw new Error(`LangGraph chatbot failed: ${result.error?.message || "Unknown error"}`);
+            }
 
-      // Extract response content
-      const responseData = result.data;
-      const responseContent = responseData.message || responseData.content || "Processing completed";
-      const metadata = responseData.metadata || {};
+            const responseData = result.data || {};
+            responseContent = responseData.message || responseData.content || responseData.response || "";
+            responseMetadata = responseData.metadata || {};
+            responseChoices = responseData.choices || undefined;
+            responseToolsUsed = responseData.toolsUsed || [];
 
-      // Stream the response character by character
-      for (let i = 0; i < responseContent.length; i++) {
-        await wait.for({ milliseconds: 15 }); // Streaming delay
+            if (!responseContent) {
+              throw new Error("LangGraph chatbot returned an empty response");
+            }
 
-        await streams.write(
-          stream,
-          {
-            type: "token",
-            content: responseContent[i],
-            timestamp: new Date().toISOString(),
-          }
-        );
-      }
+            for (let i = 0; i < responseContent.length; i++) {
+              await wait.for({ seconds: 0.015 });
+              write({
+                type: "token",
+                content: responseContent[i],
+                timestamp: new Date().toISOString(),
+              });
+            }
 
-      // Send completion event with LangGraph metadata
-      await streams.write(
-        stream,
-        {
-          type: "complete",
-          response: {
-            content: responseContent,
-            metadata: {
-              processingTime: `${stages.reduce((acc, s) => acc + s.delay, 0)}ms`,
-              model: options?.aiModel || "LangGraph-Chatbot",
-              tokens: responseContent.length,
-              workflowType: metadata.workflowType,
-              intent: metadata.intent,
-              toolsUsed: metadata.toolsUsed || [],
-              langgraphMetadata: {
-                sessionId: result.metadata?.sessionId,
-                intent: result.metadata?.intent,
-                workflow: result.metadata?.workflow,
-                contextPreserved: result.metadata?.contextPreserved,
+            const responsePayload = {
+              message: responseContent,
+              response: responseContent,
+              choices: responseData.choices || undefined,
+              toolsUsed: responseData.toolsUsed || [],
+              metadata: {
+                ...responseMetadata,
+                processingTime: `${stages.reduce((acc, s) => acc + s.delay, 0)}ms`,
+                model: options?.aiModel || "LangGraph-Chatbot",
+                tokens: responseContent.length,
+                langgraphMetadata: {
+                  sessionId: result.metadata?.sessionId,
+                  intent: result.metadata?.intent,
+                  workflow: result.metadata?.workflow,
+                  contextPreserved: result.metadata?.contextPreserved,
+                },
               },
-            },
-          },
-          timestamp: new Date().toISOString(),
-        }
-      );
+            };
 
-      await streams.close(stream);
+            write({
+              type: "response",
+              data: responsePayload,
+              timestamp: new Date().toISOString(),
+            });
+
+            write({
+              type: "complete",
+              data: responsePayload,
+              timestamp: new Date().toISOString(),
+            });
+          } catch (error) {
+            const err = error as Error;
+            streamError = err;
+            write({
+              type: "error",
+              error: {
+                message: err.message,
+                code: "STREAM_ERROR",
+                langgraphError: true,
+              },
+              timestamp: new Date().toISOString(),
+            });
+          }
+        },
+      });
+
+      await waitUntilComplete();
+
+      if (streamError) {
+        throw streamError;
+      }
 
       return {
         success: true,
-        conversationId,
+        conversationId: resolvedConversationId,
         response: responseContent,
+        data: {
+          message: responseContent,
+          response: responseContent,
+          choices: responseChoices,
+          toolsUsed: responseToolsUsed,
+          metadata: responseMetadata,
+        },
         metadata: {
-          streamId: stream.id,
+          streamId,
           processedAt: new Date().toISOString(),
           userRole,
-          langgraphResult: result,
+          langgraphResult,
         },
       };
 
     } catch (error) {
       console.error("Enhanced Chat Stream error:", error);
-
-      await streams.write(
-        stream,
-        {
-          type: "error",
-          error: {
-            message: error.message,
-            code: "STREAM_ERROR",
-            langgraphError: true,
-          },
-          timestamp: new Date().toISOString(),
-        }
-      );
-
-      await streams.close(stream);
       throw error;
     }
   },
@@ -345,7 +388,7 @@ export const toolCallStreamTask = task({
       ];
 
       for (const step of steps) {
-        await wait.for({ milliseconds: step.delay });
+        await wait.for({ seconds: step.delay / 1000 });
 
         await streams.write(
           stream,
