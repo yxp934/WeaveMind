@@ -13,6 +13,18 @@ export default async function TeacherDashboard() {
     redirect('/auth/login');
   }
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url, organization')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const displayName = profile?.full_name || user.user_metadata?.full_name || 'Teacher';
+  const avatarUrl = profile?.avatar_url
+    || user.user_metadata?.avatar_url
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'Teacher')}&background=B882B1&color=fff`;
+  const organizationName = profile?.organization || user.user_metadata?.organization || 'Your Organization';
+
   // Fetch classes where user is a teacher
   const { data: classesData, error: classesError } = await supabase
     .from('classes')
@@ -46,7 +58,7 @@ export default async function TeacherDashboard() {
       return {
         id: classItem.id,
         title: classItem.name,
-        instructor: user.user_metadata?.full_name || 'Teacher',
+        instructor: displayName,
         progress: progress,
         totalSessions: 20, // Default value
         completedSessions: Math.round((progress / 100) * 20),
@@ -129,9 +141,9 @@ export default async function TeacherDashboard() {
 
   // Teacher data for display
   const teacherData = {
-    avatar: user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'Teacher')}&background=B882B1&color=fff`,
-    name: user.user_metadata?.full_name || 'Teacher',
-    organization: user.user_metadata?.organization || 'Your Organization'
+    avatar: avatarUrl,
+    name: displayName,
+    organization: organizationName
   };
 
   // Pass data to client component

@@ -21,7 +21,7 @@ export default async function StudentDashboard() {
   // Get user's profile to check role
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, full_name, avatar_url, organization")
     .eq("id", user.id)
     .maybeSingle()
 
@@ -132,6 +132,9 @@ export default async function StudentDashboard() {
           title="Dashboard"
           subtitle="Welcome back! Here's your learning overview"
           userEmail={user.email || ""}
+          userName={profile?.full_name || undefined}
+          userOrganization={profile?.organization || undefined}
+          userAvatar={profile?.avatar_url || undefined}
         />
 
         {/* Main Content Area */}

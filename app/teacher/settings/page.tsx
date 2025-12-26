@@ -44,6 +44,77 @@ type SettingsCategory = 'profile' | 'account' | 'teaching' | 'ai' | 'notificatio
 
 interface SettingsProps {}
 
+type ToggleSwitchProps = {
+  enabled: boolean;
+  onChange: () => void;
+  color: string;
+};
+
+type InputFieldProps = {
+  label: string;
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  placeholder?: string;
+  color: string;
+};
+
+type SelectFieldProps = {
+  label: string;
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  options: Array<{ value: string; label: string }>;
+  color: string;
+};
+
+const ToggleSwitch = ({ enabled, onChange, color }: ToggleSwitchProps) => (
+  <motion.button
+    whileTap={{ scale: 0.95 }}
+    onClick={onChange}
+    className="relative w-14 h-7 rounded-full transition-colors"
+    style={{ backgroundColor: enabled ? color : '#d1d5db' }}
+  >
+    <motion.div
+      className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md"
+      animate={{ x: enabled ? 28 : 0 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+    />
+  </motion.button>
+);
+
+const InputField = ({ label, value, onChange, type = 'text', placeholder, color }: InputFieldProps) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all"
+      style={{ '--tw-border-opacity': '1' } as any}
+      onFocus={(e) => e.target.style.borderColor = color}
+      onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
+    />
+  </div>
+);
+
+const SelectField = ({ label, value, onChange, options, color }: SelectFieldProps) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+    <select
+      value={value}
+      onChange={onChange}
+      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all cursor-pointer"
+      onFocus={(e) => e.target.style.borderColor = color}
+      onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  </div>
+);
+
 export default function TeacherSettingsPage({}: SettingsProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -549,54 +620,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
     setHasUnsavedChanges(false);
     setProfileFile(null);
   };
-
-  const ToggleSwitch = ({ enabled, onChange, color }: { enabled: boolean; onChange: () => void; color: string }) => (
-    <motion.button
-      whileTap={{ scale: 0.95 }}
-      onClick={onChange}
-      className="relative w-14 h-7 rounded-full transition-colors"
-      style={{ backgroundColor: enabled ? color : '#d1d5db' }}
-    >
-      <motion.div
-        className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md"
-        animate={{ x: enabled ? 28 : 0 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-      />
-    </motion.button>
-  );
-
-  const InputField = ({ label, value, onChange, type = 'text', placeholder, color }: any) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all"
-        style={{ '--tw-border-opacity': '1' } as any}
-        onFocus={(e) => e.target.style.borderColor = color}
-        onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
-      />
-    </div>
-  );
-
-  const SelectField = ({ label, value, onChange, options, color }: any) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <select
-        value={value}
-        onChange={onChange}
-        className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:border-2 transition-all cursor-pointer"
-        onFocus={(e) => e.target.style.borderColor = color}
-        onBlur={(e) => e.target.style.borderColor = 'rgb(229 231 235)'}
-      >
-        {options.map((option: any) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </div>
-  );
 
   if (isPageLoading) {
     return (

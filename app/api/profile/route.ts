@@ -102,19 +102,34 @@ export async function PUT(request: NextRequest) {
       return createErrorResponse(profileError.message, 500);
     }
 
-    if (updates.email && updates.email !== user.email) {
-      const { error: emailError } = await supabase.auth.updateUser({
-        email: updates.email,
+    const metadataUpdates: Record<string, any> = {};
+    if (updates.full_name !== undefined) {
+      metadataUpdates.full_name = updates.full_name;
+    }
+    if (updates.organization !== undefined) {
+      metadataUpdates.organization = updates.organization;
+    }
+    if (updates.avatar_url !== undefined) {
+      metadataUpdates.avatar_url = updates.avatar_url;
+    }
+
+    const shouldUpdateEmail = updates.email && updates.email !== user.email;
+    const shouldUpdateMetadata = Object.keys(metadataUpdates).length > 0;
+
+    if (shouldUpdateEmail || shouldUpdateMetadata) {
+      const { error: authError } = await supabase.auth.updateUser({
+        ...(shouldUpdateEmail ? { email: updates.email } : {}),
+        ...(shouldUpdateMetadata ? { data: { ...user.user_metadata, ...metadataUpdates } } : {}),
       });
 
-      if (emailError) {
-        return createErrorResponse(emailError.message, 400);
+      if (authError) {
+        return createErrorResponse(authError.message, 400);
       }
     }
 
     return createSuccessResponse({
       profile,
-      email: updates.email || user.email || null,
+      email: (shouldUpdateEmail ? updates.email : user.email) || null,
       user_id: user.id,
     });
   } catch (error) {

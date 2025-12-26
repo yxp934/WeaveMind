@@ -5,13 +5,22 @@ interface DashboardHeaderProps {
   title: string
   subtitle?: string
   userEmail?: string
+  userName?: string
+  userOrganization?: string
+  userAvatar?: string
 }
 
 export function DashboardHeader({
   title,
   subtitle,
   userEmail,
+  userName,
+  userOrganization,
+  userAvatar,
 }: DashboardHeaderProps) {
+  const primaryLabel = userName || userEmail || "User"
+  const secondaryLabel = userOrganization || (userName ? userEmail : undefined)
+
   return (
     <div className="border-b border-gray-200 bg-white">
       <div className="flex h-16 items-center justify-between px-8">
@@ -36,11 +45,22 @@ export function DashboardHeader({
 
           <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">{userEmail}</p>
+              <p className="text-sm font-medium text-gray-900">{primaryLabel}</p>
+              {secondaryLabel && (
+                <p className="text-xs text-gray-500">{secondaryLabel}</p>
+              )}
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100">
-              <User className="h-5 w-5 text-indigo-600" />
-            </div>
+            {userAvatar ? (
+              <img
+                src={userAvatar}
+                alt={primaryLabel}
+                className="h-9 w-9 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100">
+                <User className="h-5 w-5 text-indigo-600" />
+              </div>
+            )}
           </div>
 
           <form action="/auth/signout" method="post">
@@ -61,4 +81,3 @@ export function DashboardHeader({
     </div>
   )
 }
-
