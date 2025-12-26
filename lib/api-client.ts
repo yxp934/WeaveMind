@@ -273,7 +273,11 @@ export const settingsAPI = {
       .from('user_settings')
       .upsert({
         user_id: userId,
+        scope: 'user',
+        data_type: settingData.data_type || 'json',
         ...settingData
+      }, {
+        onConflict: 'user_id,scope,setting_category,setting_key'
       })
       .select()
       .single()

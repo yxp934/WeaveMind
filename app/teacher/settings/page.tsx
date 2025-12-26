@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings,
@@ -37,7 +37,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { RetroTitle } from '@/components/teacher/RetroTitle';
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 type SettingsCategory = 'profile' | 'account' | 'teaching' | 'ai' | 'notifications' | 'appearance';
@@ -46,30 +46,50 @@ interface SettingsProps {}
 
 export default function TeacherSettingsPage({}: SettingsProps) {
   const router = useRouter();
+  const supabase = createClient();
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('profile');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPasswordFields, setShowPasswordFields] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPageLoading, setIsPageLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Profile Settings State
   const [profileData, setProfileData] = useState({
-    fullName: 'Dr. Sarah Chen',
-    email: 'sarah.chen@university.edu',
-    phone: '+1 (555) 123-4567',
-    organization: 'Stanford University',
-    department: 'Computer Science',
-    title: 'Professor',
-    bio: 'Passionate about AI and Machine Learning education. 10+ years of teaching experience.'
+    fullName: '',
+    email: '',
+    phone: '',
+    organization: '',
+    department: '',
+    title: '',
+    bio: ''
   });
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [profileFile, setProfileFile] = useState<File | null>(null);
 
   // Account Settings State
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [showMfaDialog, setShowMfaDialog] = useState(false);
+  const [isPasswordUpdating, setIsPasswordUpdating] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
   const [connectedAccounts, setConnectedAccounts] = useState({
-    google: true,
+    google: false,
     microsoft: false
   });
+  const [connectedIdentities, setConnectedIdentities] = useState<{
+    google?: any;
+    microsoft?: any;
+  }>({});
 
   // Teaching Preferences State
   const [teachingPrefs, setTeachingPrefs] = useState({
@@ -118,6 +138,12 @@ export default function TeacherSettingsPage({}: SettingsProps) {
   ];
 
   const currentCategory = categories.find(c => c.id === activeCategory)!;
+  const googleIdentityLabel = connectedIdentities.google?.identity_data?.email
+    || connectedIdentities.google?.identity_data?.preferred_username
+    || (connectedAccounts.google ? 'Connected' : 'Not connected');
+  const microsoftIdentityLabel = connectedIdentities.microsoft?.identity_data?.email
+    || connectedIdentities.microsoft?.identity_data?.preferred_username
+    || (connectedAccounts.microsoft ? 'Connected' : 'Not connected');
 
   const handleCategoryChange = (newCategory: SettingsCategory) => {
     if (hasUnsavedChanges) {
@@ -128,6 +154,85 @@ export default function TeacherSettingsPage({}: SettingsProps) {
     setActiveCategory(newCategory);
   };
 
+  const loadSettings = async () => {
+    try {
+      setIsPageLoading(true);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        router.push('/auth/login');
+        return;
+      }
+
+      setUserId(user.id);
+
+      const profileResponse = await fetch('/api/profile');
+      if (profileResponse.ok) {
+        const profilePayload = await profileResponse.json();
+        const profile = profilePayload.data?.profile;
+        setProfileData({
+          fullName: profile?.full_name || '',
+          email: profilePayload.data?.email || user.email || '',
+          phone: profile?.phone || '',
+          organization: profile?.organization || '',
+          department: profile?.department || '',
+          title: profile?.title || '',
+          bio: profile?.bio || '',
+        });
+        setProfileImage(profile?.avatar_url || null);
+      }
+
+      const { data: interfaceSettings } = await supabase
+        .from('user_settings')
+        .select('setting_key, setting_value')
+        .eq('user_id', user.id)
+        .eq('scope', 'user')
+        .eq('setting_category', 'interface')
+        .eq('is_active', true)
+        .eq('is_deleted', false);
+
+      if (interfaceSettings) {
+        const settingsMap = interfaceSettings.reduce<Record<string, any>>((acc, item) => {
+          acc[item.setting_key] = item.setting_value;
+          return acc;
+        }, {});
+
+        setAppearancePrefs(prev => ({
+          ...prev,
+          language: settingsMap.language ?? prev.language,
+          timezone: settingsMap.timezone ?? prev.timezone,
+          dateFormat: settingsMap.date_format ?? prev.dateFormat,
+          timeFormat: settingsMap.time_format ?? prev.timeFormat,
+          weekStart: settingsMap.week_start ?? prev.weekStart,
+        }));
+      }
+
+      const identities = user.identities || [];
+      const googleIdentity = identities.find(identity => identity.provider === 'google');
+      const microsoftIdentity = identities.find(identity => identity.provider === 'azure');
+      setConnectedIdentities({ google: googleIdentity, microsoft: microsoftIdentity });
+      setConnectedAccounts({
+        google: Boolean(googleIdentity),
+        microsoft: Boolean(microsoftIdentity),
+      });
+
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      const totpFactor = factors?.totp?.[0];
+      setTwoFactorEnabled(Boolean(totpFactor));
+      setMfaFactorId(totpFactor?.id || null);
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    } finally {
+      setIsPageLoading(false);
+      setHasUnsavedChanges(false);
+      setProfileFile(null);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -137,26 +242,312 @@ export default function TeacherSettingsPage({}: SettingsProps) {
         setHasUnsavedChanges(true);
       };
       reader.readAsDataURL(file);
+      setProfileFile(file);
     }
   };
 
   const handleSave = async () => {
+    if (!userId) return;
+
     setIsLoading(true);
     try {
-      // Simulate save
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      let avatarUrl = profileFile ? null : profileImage;
+
+      if (profileFile) {
+        const formData = new FormData();
+        formData.append('file', profileFile);
+        const avatarResponse = await fetch('/api/profile/avatar', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!avatarResponse.ok) {
+          const errorPayload = await avatarResponse.json();
+          throw new Error(errorPayload.error || 'Avatar upload failed');
+        }
+
+        const avatarPayload = await avatarResponse.json();
+        avatarUrl = avatarPayload.data?.avatar_url || null;
+        setProfileImage(avatarUrl);
+      }
+
+      const profilePayload = {
+        full_name: profileData.fullName || null,
+        email: profileData.email || undefined,
+        phone: profileData.phone || null,
+        organization: profileData.organization || null,
+        department: profileData.department || null,
+        title: profileData.title || null,
+        bio: profileData.bio || null,
+        avatar_url: avatarUrl || null,
+      };
+
+      const profileResponse = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profilePayload),
+      });
+
+      if (!profileResponse.ok) {
+        const errorPayload = await profileResponse.json();
+        throw new Error(errorPayload.error || 'Profile update failed');
+      }
+
+      const appearanceSettings = [
+        { key: 'language', value: appearancePrefs.language, dataType: 'string' },
+        { key: 'timezone', value: appearancePrefs.timezone, dataType: 'string' },
+        { key: 'date_format', value: appearancePrefs.dateFormat, dataType: 'string' },
+        { key: 'time_format', value: appearancePrefs.timeFormat, dataType: 'string' },
+        { key: 'week_start', value: appearancePrefs.weekStart, dataType: 'string' },
+      ];
+
+      const { error: settingsError } = await supabase
+        .from('user_settings')
+        .upsert(appearanceSettings.map(setting => ({
+          user_id: userId,
+          scope: 'user',
+          setting_category: 'interface',
+          setting_key: setting.key,
+          setting_value: setting.value,
+          data_type: setting.dataType,
+        })), {
+          onConflict: 'user_id,scope,setting_category,setting_key',
+        });
+
+      if (settingsError) {
+        throw settingsError;
+      }
+
       setHasUnsavedChanges(false);
+      setProfileFile(null);
       alert('Settings saved successfully!');
     } catch (error) {
+      console.error('Failed to save settings:', error);
       alert('Failed to save settings');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDeleteAccount = () => {
-    setShowDeleteDialog(false);
-    alert('Account deletion cancelled');
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      const response = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+
+      if (!response.ok) {
+        const errorPayload = await response.json();
+        throw new Error(errorPayload.error || 'Account deletion failed');
+      }
+
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      alert('Failed to delete account');
+    } finally {
+      setIsDeletingAccount(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
+  const handlePasswordUpdate = async () => {
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      alert('Please fill out all password fields.');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New passwords do not match.');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      alert('Password must be at least 6 characters.');
+      return;
+    }
+
+    setIsPasswordUpdating(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) {
+        throw new Error('Missing user email.');
+      }
+
+      if (!twoFactorEnabled) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password: passwordData.currentPassword,
+        });
+
+        if (signInError) {
+          throw signInError;
+        }
+      }
+
+      if (twoFactorEnabled && mfaFactorId) {
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.currentLevel !== 'aal2') {
+          const code = window.prompt('Enter your 2FA code to continue.');
+          if (!code) {
+            return;
+          }
+          const { error: mfaError } = await supabase.auth.mfa.challengeAndVerify({
+            factorId: mfaFactorId,
+            code,
+          });
+          if (mfaError) {
+            throw mfaError;
+          }
+        }
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: passwordData.newPassword,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setShowPasswordFields(false);
+      alert('Password updated successfully.');
+    } catch (error) {
+      console.error('Failed to update password:', error);
+      alert('Failed to update password.');
+    } finally {
+      setIsPasswordUpdating(false);
+    }
+  };
+
+  const startMfaEnrollment = async () => {
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'WeaveMind',
+      });
+
+      if (error || !data) {
+        throw error || new Error('MFA enrollment failed');
+      }
+
+      setMfaFactorId(data.id);
+      setMfaQrCode(data.totp.qr_code);
+      setMfaSecret(data.totp.secret);
+      setMfaCode('');
+      setShowMfaDialog(true);
+    } catch (error) {
+      console.error('Failed to enroll MFA:', error);
+      alert('Failed to start two-factor setup.');
+    }
+  };
+
+  const verifyMfaEnrollment = async () => {
+    if (!mfaFactorId) return;
+    try {
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: mfaFactorId,
+      });
+
+      if (challengeError || !challenge) {
+        throw challengeError || new Error('Challenge failed');
+      }
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challenge.id,
+        code: mfaCode,
+      });
+
+      if (verifyError) {
+        throw verifyError;
+      }
+
+      setTwoFactorEnabled(true);
+      setShowMfaDialog(false);
+      setMfaCode('');
+      await loadSettings();
+      alert('Two-factor authentication enabled.');
+    } catch (error) {
+      console.error('Failed to verify MFA:', error);
+      alert('Verification failed. Check the code and try again.');
+    }
+  };
+
+  const handleTwoFactorToggle = async () => {
+    if (twoFactorEnabled) {
+      if (!mfaFactorId) {
+        alert('Missing MFA factor.');
+        return;
+      }
+
+      const confirmed = window.confirm('Disable two-factor authentication?');
+      if (!confirmed) return;
+
+      try {
+        const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+        if (error) throw error;
+        setTwoFactorEnabled(false);
+        setMfaFactorId(null);
+        alert('Two-factor authentication disabled.');
+      } catch (error) {
+        console.error('Failed to disable MFA:', error);
+        alert('Failed to disable two-factor authentication.');
+      }
+      return;
+    }
+
+    await startMfaEnrollment();
+  };
+
+  const handleConnectAccount = async (provider: 'google' | 'microsoft') => {
+    try {
+      const providerId = provider === 'google' ? 'google' : 'azure';
+      const { data, error } = await supabase.auth.linkIdentity({
+        provider: providerId,
+        options: { redirectTo: `${window.location.origin}/teacher/settings` },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      console.error('Failed to connect account:', error);
+      alert('Failed to connect account.');
+    }
+  };
+
+  const handleDisconnectAccount = async (provider: 'google' | 'microsoft') => {
+    try {
+      const identity = provider === 'google' ? connectedIdentities.google : connectedIdentities.microsoft;
+      if (!identity) return;
+      const { error } = await supabase.auth.unlinkIdentity(identity);
+      if (error) {
+        throw error;
+      }
+      await loadSettings();
+    } catch (error) {
+      console.error('Failed to disconnect account:', error);
+      alert('Failed to disconnect account.');
+    }
+  };
+
+  const handleReset = () => {
+    loadSettings();
+    setHasUnsavedChanges(false);
+    setProfileFile(null);
   };
 
   const ToggleSwitch = ({ enabled, onChange, color }: { enabled: boolean; onChange: () => void; color: string }) => (
@@ -206,6 +597,14 @@ export default function TeacherSettingsPage({}: SettingsProps) {
       </select>
     </div>
   );
+
+  if (isPageLoading) {
+    return (
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+        <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
@@ -471,17 +870,39 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                           label="Current Password"
                           type="password"
                           color={currentCategory.color}
+                          value={passwordData.currentPassword}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setPasswordData({ ...passwordData, currentPassword: e.target.value });
+                          }}
                         />
                         <InputField
                           label="New Password"
                           type="password"
                           color={currentCategory.color}
+                          value={passwordData.newPassword}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setPasswordData({ ...passwordData, newPassword: e.target.value });
+                          }}
                         />
                         <InputField
                           label="Confirm Password"
                           type="password"
                           color={currentCategory.color}
+                          value={passwordData.confirmPassword}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setPasswordData({ ...passwordData, confirmPassword: e.target.value });
+                          }}
                         />
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={handlePasswordUpdate}
+                          disabled={isPasswordUpdating}
+                          className="px-6 py-3 rounded-xl font-medium text-white disabled:opacity-60"
+                          style={{ backgroundColor: currentCategory.color }}
+                        >
+                          {isPasswordUpdating ? 'Updating...' : 'Update Password'}
+                        </motion.button>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -496,10 +917,7 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                     </div>
                     <ToggleSwitch
                       enabled={twoFactorEnabled}
-                      onChange={() => {
-                        setTwoFactorEnabled(!twoFactorEnabled);
-                        setHasUnsavedChanges(true);
-                      }}
+                      onChange={handleTwoFactorToggle}
                       color={currentCategory.color}
                     />
                   </div>
@@ -521,14 +939,17 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         </div>
                         <div>
                           <p className="font-medium text-gray-800">Google</p>
-                          <p className="text-sm text-gray-500">sarah.chen@gmail.com</p>
+                          <p className="text-sm text-gray-500">{googleIdentityLabel}</p>
                         </div>
                       </div>
                       <ToggleSwitch
                         enabled={connectedAccounts.google}
                         onChange={() => {
-                          setConnectedAccounts({ ...connectedAccounts, google: !connectedAccounts.google });
-                          setHasUnsavedChanges(true);
+                          if (connectedAccounts.google) {
+                            handleDisconnectAccount('google');
+                          } else {
+                            handleConnectAccount('google');
+                          }
                         }}
                         color={currentCategory.color}
                       />
@@ -545,14 +966,17 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         </div>
                         <div>
                           <p className="font-medium text-gray-800">Microsoft</p>
-                          <p className="text-sm text-gray-500">Not connected</p>
+                          <p className="text-sm text-gray-500">{microsoftIdentityLabel}</p>
                         </div>
                       </div>
                       <ToggleSwitch
                         enabled={connectedAccounts.microsoft}
                         onChange={() => {
-                          setConnectedAccounts({ ...connectedAccounts, microsoft: !connectedAccounts.microsoft });
-                          setHasUnsavedChanges(true);
+                          if (connectedAccounts.microsoft) {
+                            handleDisconnectAccount('microsoft');
+                          } else {
+                            handleConnectAccount('microsoft');
+                          }
                         }}
                         color={currentCategory.color}
                       />
@@ -593,7 +1017,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                       value={teachingPrefs.defaultDuration}
                       onChange={(e) => {
                         setTeachingPrefs({ ...teachingPrefs, defaultDuration: e.target.value });
-                        setHasUnsavedChanges(true);
                       }}
                       options={[
                         { value: '30min', label: '30 minutes' },
@@ -608,7 +1031,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                       value={teachingPrefs.classCapacity}
                       onChange={(e) => {
                         setTeachingPrefs({ ...teachingPrefs, classCapacity: e.target.value });
-                        setHasUnsavedChanges(true);
                       }}
                       color={currentCategory.color}
                     />
@@ -623,7 +1045,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                       value={teachingPrefs.gradingScale}
                       onChange={(e) => {
                         setTeachingPrefs({ ...teachingPrefs, gradingScale: e.target.value });
-                        setHasUnsavedChanges(true);
                       }}
                       options={[
                         { value: 'percentage', label: 'Percentage (0-100%)' },
@@ -637,7 +1058,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                       value={teachingPrefs.lateSubmission}
                       onChange={(e) => {
                         setTeachingPrefs({ ...teachingPrefs, lateSubmission: e.target.value });
-                        setHasUnsavedChanges(true);
                       }}
                       options={[
                         { value: 'accept', label: 'Accept (No penalty)' },
@@ -666,7 +1086,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={aiPrefs.enableSuggestions}
                         onChange={() => {
                           setAiPrefs({ ...aiPrefs, enableSuggestions: !aiPrefs.enableSuggestions });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -680,7 +1099,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={aiPrefs.autoGenerateContent}
                         onChange={() => {
                           setAiPrefs({ ...aiPrefs, autoGenerateContent: !aiPrefs.autoGenerateContent });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -694,7 +1112,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={aiPrefs.autoOutline}
                         onChange={() => {
                           setAiPrefs({ ...aiPrefs, autoOutline: !aiPrefs.autoOutline });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -710,7 +1127,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                       value={aiPrefs.responseStyle}
                       onChange={(e) => {
                         setAiPrefs({ ...aiPrefs, responseStyle: e.target.value });
-                        setHasUnsavedChanges(true);
                       }}
                       options={[
                         { value: 'professional', label: 'Professional' },
@@ -724,7 +1140,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                       value={aiPrefs.contextMemory}
                       onChange={(e) => {
                         setAiPrefs({ ...aiPrefs, contextMemory: e.target.value });
-                        setHasUnsavedChanges(true);
                       }}
                       options={[
                         { value: '1day', label: '1 day' },
@@ -754,7 +1169,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={notifPrefs.emailNotifications}
                         onChange={() => {
                           setNotifPrefs({ ...notifPrefs, emailNotifications: !notifPrefs.emailNotifications });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -768,7 +1182,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={notifPrefs.pushNotifications}
                         onChange={() => {
                           setNotifPrefs({ ...notifPrefs, pushNotifications: !notifPrefs.pushNotifications });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -783,7 +1196,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                     value={notifPrefs.sessionReminder}
                     onChange={(e) => {
                       setNotifPrefs({ ...notifPrefs, sessionReminder: e.target.value });
-                      setHasUnsavedChanges(true);
                     }}
                     options={[
                       { value: '15min', label: '15 minutes' },
@@ -807,7 +1219,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={notifPrefs.assignmentDue}
                         onChange={() => {
                           setNotifPrefs({ ...notifPrefs, assignmentDue: !notifPrefs.assignmentDue });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -821,7 +1232,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={notifPrefs.studentSubmission}
                         onChange={() => {
                           setNotifPrefs({ ...notifPrefs, studentSubmission: !notifPrefs.studentSubmission });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -835,7 +1245,6 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                         enabled={notifPrefs.lateSubmission}
                         onChange={() => {
                           setNotifPrefs({ ...notifPrefs, lateSubmission: !notifPrefs.lateSubmission });
-                          setHasUnsavedChanges(true);
                         }}
                         color={currentCategory.color}
                       />
@@ -936,47 +1345,119 @@ export default function TeacherSettingsPage({}: SettingsProps) {
               </div>
             )}
 
-            {/* Save Button */}
-            <motion.div
-              className="flex items-center gap-4 mt-8"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleSave}
-                disabled={!hasUnsavedChanges || isLoading}
-                className="px-8 py-4 rounded-2xl font-semibold text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                style={{
-                  background: hasUnsavedChanges
-                    ? currentCategory.color
-                    : '#d1d5db'
-                }}
+            {(activeCategory === 'profile' || activeCategory === 'appearance') && (
+              <motion.div
+                className="flex items-center gap-4 mt-8"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
               >
-                {isLoading ? (
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Save className="w-5 h-5" />
-                )}
-                {isLoading ? 'Saving...' : 'Save Changes'}
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  setHasUnsavedChanges(false);
-                  alert('Changes discarded');
-                }}
-                className="px-6 py-4 rounded-2xl font-medium text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                Reset
-              </motion.button>
-            </motion.div>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleSave}
+                  disabled={!hasUnsavedChanges || isLoading}
+                  className="px-8 py-4 rounded-2xl font-semibold text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                  style={{
+                    background: hasUnsavedChanges
+                      ? currentCategory.color
+                      : '#d1d5db'
+                  }}
+                >
+                  {isLoading ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Save className="w-5 h-5" />
+                  )}
+                  {isLoading ? 'Saving...' : 'Save Changes'}
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleReset}
+                  className="px-6 py-4 rounded-2xl font-medium text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Reset
+                </motion.button>
+              </motion.div>
+            )}
           </motion.div>
         </div>
       </div>
+
+      {/* MFA Setup Dialog */}
+      <AnimatePresence>
+        {showMfaDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => setShowMfaDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/95 backdrop-blur-xl rounded-3xl p-8 max-w-lg shadow-2xl border border-gray-200"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <Shield size={24} className="text-green-600" />
+                </div>
+                <h3 className="text-[24px] font-semibold text-gray-800">Enable Two-Factor Authentication</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Scan the QR code with your authenticator app, then enter the 6-digit code to verify.
+              </p>
+              {mfaQrCode && (
+                <div className="flex items-center justify-center mb-6">
+                  <img
+                    src={`data:image/svg+xml;utf-8,${encodeURIComponent(mfaQrCode)}`}
+                    alt="MFA QR Code"
+                    className="h-40 w-40"
+                  />
+                </div>
+              )}
+              {mfaSecret && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6">
+                  <p className="text-sm text-gray-500 mb-2">Manual setup code</p>
+                  <p className="font-mono text-gray-800">{mfaSecret}</p>
+                </div>
+              )}
+              <div className="space-y-4">
+                <InputField
+                  label="Verification Code"
+                  value={mfaCode}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMfaCode(e.target.value)}
+                  placeholder="123456"
+                  color={currentCategory.color}
+                />
+                <div className="flex gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={verifyMfaEnrollment}
+                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-white"
+                    style={{ backgroundColor: currentCategory.color }}
+                  >
+                    Verify
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowMfaDialog(false)}
+                    className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Delete Account Dialog */}
       <AnimatePresence>
@@ -1009,9 +1490,10 @@ export default function TeacherSettingsPage({}: SettingsProps) {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleDeleteAccount}
-                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors"
+                  disabled={isDeletingAccount}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors disabled:opacity-60"
                 >
-                  Delete Account
+                  {isDeletingAccount ? 'Deleting...' : 'Delete Account'}
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.02 }}

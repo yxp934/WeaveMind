@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings,
@@ -38,7 +39,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { apiClient } from '@/lib/api-client';
+import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 
 // 设置项类型
@@ -50,6 +51,7 @@ interface UserSettings {
   email_frequency: 'immediate' | 'daily' | 'weekly' | 'never';
   ai_assistance_enabled: boolean;
   auto_save_enabled: boolean;
+  sound_effects_enabled: boolean;
   email_notifications: boolean;
   push_notifications: boolean;
   discussion_notifications: boolean;
@@ -69,6 +71,8 @@ interface LearningPreferences {
 }
 
 export default function StudentSettingsPage() {
+  const router = useRouter();
+  const supabase = createClient();
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [learningPreferences, setLearningPreferences] = useState<LearningPreferences | null>(null);
   const [activeTab, setActiveTab] = useState('profile');
@@ -113,50 +117,66 @@ export default function StudentSettingsPage() {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const userId = 'current-user-id'; // 需要从认证上下文获取
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-      // 并行加载设置
-      const [userData, learningData] = await Promise.all([
-        apiClient.settings.getSettings(userId).catch(() => null),
-        // 这里可以加载学习偏好，暂时用默认值
-        Promise.resolve(null)
-      ]);
-
-      if (userData && userData.length > 0) {
-        setUserSettings(userData[0]);
-      } else {
-        // 默认设置
-        setUserSettings({
-          user_id: userId,
-          theme: 'auto',
-          language: 'zh-CN',
-          timezone: 'Asia/Shanghai',
-          email_frequency: 'daily',
-          ai_assistance_enabled: false,
-          auto_save_enabled: true,
-          email_notifications: true,
-          push_notifications: true,
-          discussion_notifications: true,
-          assignment_notifications: true,
-          grade_notifications: true
-        });
+      if (userError || !user) {
+        router.push('/auth/login');
+        return;
       }
 
-      // 设置默认学习偏好
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('setting_category, setting_key, setting_value')
+        .eq('user_id', user.id)
+        .eq('scope', 'user')
+        .eq('is_active', true)
+        .eq('is_deleted', false);
+
+      const settingsByCategory = (settings || []).reduce<Record<string, Record<string, any>>>((acc, item) => {
+        if (!acc[item.setting_category]) {
+          acc[item.setting_category] = {};
+        }
+        acc[item.setting_category][item.setting_key] = item.setting_value;
+        return acc;
+      }, {});
+
+      const interfaceSettings = settingsByCategory.interface || {};
+      const notificationSettings = settingsByCategory.notifications || {};
+      const aiSettings = settingsByCategory.ai || {};
+
+      setUserSettings({
+        user_id: user.id,
+        theme: interfaceSettings.theme ?? 'auto',
+        language: interfaceSettings.language ?? 'zh-CN',
+        timezone: interfaceSettings.timezone ?? 'Asia/Shanghai',
+        email_frequency: notificationSettings.email_frequency ?? 'daily',
+        ai_assistance_enabled: aiSettings.ai_assistance_enabled ?? false,
+        auto_save_enabled: interfaceSettings.auto_save_enabled ?? true,
+        sound_effects_enabled: interfaceSettings.sound_effects_enabled ?? true,
+        email_notifications: notificationSettings.email_notifications ?? true,
+        push_notifications: notificationSettings.push_notifications ?? true,
+        discussion_notifications: notificationSettings.discussion_notifications ?? true,
+        assignment_notifications: notificationSettings.assignment_notifications ?? true,
+        grade_notifications: notificationSettings.grade_notifications ?? true
+      });
+
+      const learningSettings = settingsByCategory.learning || {};
+
       setLearningPreferences({
-        user_id: userId,
-        preferred_learning_style: 'visual',
-        difficulty_preference: 'adaptive',
-        study_reminder_enabled: false,
-        study_reminder_time: '19:00',
-        progress_sharing_enabled: true,
-        collaborative_learning_enabled: true
+        user_id: user.id,
+        preferred_learning_style: learningSettings.preferred_learning_style ?? 'visual',
+        difficulty_preference: learningSettings.difficulty_preference ?? 'adaptive',
+        study_reminder_enabled: learningSettings.study_reminder_enabled ?? false,
+        study_reminder_time: learningSettings.study_reminder_time ?? '19:00',
+        progress_sharing_enabled: learningSettings.progress_sharing_enabled ?? true,
+        collaborative_learning_enabled: learningSettings.collaborative_learning_enabled ?? true
       });
 
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
       setIsLoading(false);
+      setHasChanges(false);
     }
   };
 
@@ -168,13 +188,48 @@ export default function StudentSettingsPage() {
       setIsSaving(true);
       setSaveStatus('saving');
 
-      // TODO: 实现设置保存功能
-      // await apiClient.settings.updateSetting(userSettings.user_id, {
-      //   setting_category: 'user_preferences',
-      //   setting_key: 'theme',
-      //   setting_value: userSettings.theme,
-      //   data_type: 'string'
-      // });
+      const settingsToSave = [
+        { category: 'interface', key: 'theme', value: userSettings.theme, dataType: 'string' },
+        { category: 'interface', key: 'language', value: userSettings.language, dataType: 'string' },
+        { category: 'interface', key: 'timezone', value: userSettings.timezone, dataType: 'string' },
+        { category: 'interface', key: 'auto_save_enabled', value: userSettings.auto_save_enabled, dataType: 'boolean' },
+        { category: 'interface', key: 'sound_effects_enabled', value: userSettings.sound_effects_enabled, dataType: 'boolean' },
+        { category: 'notifications', key: 'email_frequency', value: userSettings.email_frequency, dataType: 'string' },
+        { category: 'notifications', key: 'email_notifications', value: userSettings.email_notifications, dataType: 'boolean' },
+        { category: 'notifications', key: 'push_notifications', value: userSettings.push_notifications, dataType: 'boolean' },
+        { category: 'notifications', key: 'discussion_notifications', value: userSettings.discussion_notifications, dataType: 'boolean' },
+        { category: 'notifications', key: 'assignment_notifications', value: userSettings.assignment_notifications, dataType: 'boolean' },
+        { category: 'notifications', key: 'grade_notifications', value: userSettings.grade_notifications, dataType: 'boolean' },
+        { category: 'ai', key: 'ai_assistance_enabled', value: userSettings.ai_assistance_enabled, dataType: 'boolean' },
+      ];
+
+      if (learningPreferences) {
+        settingsToSave.push(
+          { category: 'learning', key: 'preferred_learning_style', value: learningPreferences.preferred_learning_style, dataType: 'string' },
+          { category: 'learning', key: 'difficulty_preference', value: learningPreferences.difficulty_preference, dataType: 'string' },
+          { category: 'learning', key: 'study_reminder_enabled', value: learningPreferences.study_reminder_enabled, dataType: 'boolean' },
+          { category: 'learning', key: 'study_reminder_time', value: learningPreferences.study_reminder_time, dataType: 'string' },
+          { category: 'learning', key: 'progress_sharing_enabled', value: learningPreferences.progress_sharing_enabled, dataType: 'boolean' },
+          { category: 'learning', key: 'collaborative_learning_enabled', value: learningPreferences.collaborative_learning_enabled, dataType: 'boolean' },
+        );
+      }
+
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert(settingsToSave.map(setting => ({
+          user_id: userSettings.user_id,
+          scope: 'user',
+          setting_category: setting.category,
+          setting_key: setting.key,
+          setting_value: setting.value,
+          data_type: setting.dataType,
+        })), {
+          onConflict: 'user_id,scope,setting_category,setting_key',
+        });
+
+      if (error) {
+        throw error;
+      }
 
       setSaveStatus('saved');
       setHasChanges(false);
@@ -614,15 +669,18 @@ export default function StudentSettingsPage() {
                           </div>
 
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Volume2 className="w-5 h-5 text-blue-500" />
-                              <div>
-                                <p className="font-medium">声音效果</p>
-                                <p className="text-sm text-gray-500">启用操作声音反馈</p>
-                              </div>
+                          <div className="flex items-center space-x-3">
+                            <Volume2 className="w-5 h-5 text-blue-500" />
+                            <div>
+                              <p className="font-medium">声音效果</p>
+                              <p className="text-sm text-gray-500">启用操作声音反馈</p>
                             </div>
-                            <Switch />
                           </div>
+                          <Switch
+                            checked={userSettings?.sound_effects_enabled}
+                            onCheckedChange={(checked) => updateUserSetting('sound_effects_enabled', checked)}
+                          />
+                        </div>
 
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
