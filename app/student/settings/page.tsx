@@ -73,6 +73,10 @@ interface LearningPreferences {
 export default function StudentSettingsPage() {
   const router = useRouter();
   const supabase = createClient();
+  const [profileData, setProfileData] = useState({
+    fullName: '',
+    organization: ''
+  });
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [learningPreferences, setLearningPreferences] = useState<LearningPreferences | null>(null);
   const [activeTab, setActiveTab] = useState('profile');
@@ -122,6 +126,16 @@ export default function StudentSettingsPage() {
       if (userError || !user) {
         router.push('/auth/login');
         return;
+      }
+
+      const profileResponse = await fetch('/api/profile');
+      if (profileResponse.ok) {
+        const profilePayload = await profileResponse.json();
+        const profile = profilePayload.data?.profile;
+        setProfileData({
+          fullName: profile?.full_name || '',
+          organization: profile?.organization || ''
+        });
       }
 
       const { data: settings } = await supabase
@@ -187,6 +201,20 @@ export default function StudentSettingsPage() {
     try {
       setIsSaving(true);
       setSaveStatus('saving');
+
+      const profileResponse = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: profileData.fullName || null,
+          organization: profileData.organization || null
+        })
+      });
+
+      if (!profileResponse.ok) {
+        const errorPayload = await profileResponse.json().catch(() => null);
+        throw new Error(errorPayload?.error || 'Profile update failed');
+      }
 
       const settingsToSave = [
         { category: 'interface', key: 'theme', value: userSettings.theme, dataType: 'string' },
@@ -419,6 +447,32 @@ export default function StudentSettingsPage() {
                     <div className="space-y-6">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">个人资料</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                          <div>
+                            <Label htmlFor="full-name">姓名</Label>
+                            <Input
+                              id="full-name"
+                              value={profileData.fullName}
+                              onChange={(e) => {
+                                setProfileData(prev => ({ ...prev, fullName: e.target.value }));
+                                setHasChanges(true);
+                              }}
+                              placeholder="请输入姓名"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="organization">组织</Label>
+                            <Input
+                              id="organization"
+                              value={profileData.organization}
+                              onChange={(e) => {
+                                setProfileData(prev => ({ ...prev, organization: e.target.value }));
+                                setHasChanges(true);
+                              }}
+                              placeholder="学校/机构名称"
+                            />
+                          </div>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label htmlFor="language">语言</Label>
