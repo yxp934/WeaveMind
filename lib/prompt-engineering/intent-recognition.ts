@@ -57,9 +57,9 @@ export const INTENT_RECOGNITION_SYSTEM_PROMPT = `
   - 写作作业 (writing)
   - 研究作业 (research)
 
-### 5. A2A内容优化 (a2a_optimization)
+### 5. 协作内容优化 (a2a_optimization)
 - 关键词：优化内容、改进课程、内容完善、质量提升、A2A
-- 用户想要通过AI对AI的方式优化课程内容质量
+- 用户想要通过双角色协作的方式优化课程内容质量
 
 ### 6. 内容生成 (content_generation)
 - 关键词：生成内容、创建材料、制作内容、教学材料
@@ -112,7 +112,7 @@ export const WORKFLOW_GUIDANCE_PROMPTS = {
   },
 
   a2a_optimization: {
-    welcome: "我将使用A2A（AI对AI）方式帮你优化课程内容质量。",
+    welcome: "我将通过协作评审的方式帮你优化课程内容质量。",
     first_question: "请提供：\n\n1. 要优化的课程内容\n2. 优化目标（更生动/更清晰/更深入等）\n3. 目标受众"
   },
 
@@ -172,7 +172,7 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
     }
   }
 
-  // 4. A2A优化意图 - 只匹配很长的特定词汇
+  // 4. 协作优化意图 - 只匹配很长的特定词汇
   if (matchIntent(message, [
     'optimize content', 'improve course', '内容完善', '质量提升',
     '内容优化', '课程优化', '提升质量', '质量改进', '内容改进', '课程改进',
@@ -184,7 +184,7 @@ export function recognizeIntent(userMessage: string, conversationHistory: any[] 
       intent: 'a2a_optimization',
       workflowType: 'a2a_optimization',
       confidence: 0.8,
-      suggestedResponse: "好的！我将使用A2A（AI对AI）方式帮你优化课程内容质量。"
+      suggestedResponse: "好的！我将通过协作评审的方式帮你优化课程内容质量。"
     }
   }
 

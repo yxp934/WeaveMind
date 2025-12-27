@@ -365,7 +365,7 @@ async function executeA2ASessionGeneration(params: any, userId: string, supabase
     throw new Error('Access denied: Session not found or not owned by user')
   }
 
-  // Create A2A generation record
+  // Create generation record
   const { data: generation, error } = await supabase
     .from('a2a_session_generations')
     .insert({
@@ -378,7 +378,7 @@ async function executeA2ASessionGeneration(params: any, userId: string, supabase
     .single()
 
   if (error) {
-    throw new Error(`Failed to start A2A generation: ${error.message}`)
+    throw new Error(`Failed to start session content generation: ${error.message}`)
   }
 
   return { generation }

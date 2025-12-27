@@ -581,6 +581,23 @@ export async function POST(
       if (outlineDraftFromTool)
         toolExecutionMeta.outlineDraft = outlineDraftFromTool;
 
+      if (toolName === "a2a_session_generate_and_save") {
+        return NextResponse.json({
+          success: true,
+          data: {
+            message: normalizeResponseText(dbOperationResult.message || ""),
+            toolsUsed: dbOperationResult.toolsUsed || [],
+            metadata: toolExecutionMeta,
+          } as any,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            requestId,
+            mode: "production",
+            processingTime: Date.now() - startTime,
+          },
+        });
+      }
+
       // Continue the LangGraph agent after the tool executes so multi-step goals
       // can propose the next tool (still requiring user confirmation).
       const priorHistory = context.conversationHistory || [];
@@ -669,6 +686,12 @@ export async function POST(
         }
 
         const normalizedFollowupData = normalizeChatData(finalFollowup.data);
+        const followupMetadata = normalizedFollowupData?.metadata || {};
+        const mergedMetadata = {
+          ...toolExecutionMeta,
+          ...followupMetadata,
+          agentState: followupMetadata.agentState || toolExecutionMeta.agentState,
+        };
         return NextResponse.json({
           success: true,
           data: {
@@ -679,10 +702,7 @@ export async function POST(
                 ...(normalizedFollowupData?.toolsUsed || []),
               ]),
             ],
-            metadata: {
-              ...(normalizedFollowupData?.metadata || {}),
-              ...toolExecutionMeta,
-            },
+            metadata: mergedMetadata,
           } as any,
           metadata: {
             timestamp: new Date().toISOString(),
@@ -2122,11 +2142,10 @@ Course info library (if available):
           .select("*")
           .eq("class_id", classId)
           .maybeSingle();
-
         const { data: compressionContext } = await dbClient
           .from("course_compression_context")
           .select(
-            "compressed_summary,key_concepts,learning_objectives,teaching_method,target_audience,difficulty_level,session_contexts",
+            "id,compressed_summary,key_concepts,learning_objectives,teaching_method,target_audience,difficulty_level,session_contexts,version",
           )
           .eq("class_id", classId)
           .maybeSingle();
@@ -2264,7 +2283,7 @@ ${actionData?.teacherNotes || ""}`;
           metadata.selectedSessionId;
 
         if (!classId || !sessionId) {
-          throw new Error("Missing classId or sessionId for A2A session generation");
+          throw new Error("Missing classId or sessionId for session generation");
         }
 
         const { data: cls } = await dbClient
@@ -2304,6 +2323,13 @@ ${actionData?.teacherNotes || ""}`;
         const { data: scheduleContext } = await dbClient
           .from("schedule_generation_context")
           .select("*")
+          .eq("class_id", classId)
+          .maybeSingle();
+        const { data: compressionContext } = await dbClient
+          .from("course_compression_context")
+          .select(
+            "id,compressed_summary,key_concepts,learning_objectives,teaching_method,target_audience,difficulty_level,session_contexts,version",
+          )
           .eq("class_id", classId)
           .maybeSingle();
 
@@ -2347,6 +2373,27 @@ ${actionData?.teacherNotes || ""}`;
           previousSessionsSummary: previousSummary,
           conversationContext,
           scheduleContext: scheduleContext || null,
+          courseInfo: compressionContext
+            ? {
+                summary: compressionContext.compressed_summary || "",
+                keyConcepts: Array.isArray(compressionContext.key_concepts)
+                  ? compressionContext.key_concepts
+                  : [],
+                learningObjectives: Array.isArray(
+                  compressionContext.learning_objectives,
+                )
+                  ? compressionContext.learning_objectives
+                  : [],
+                teachingMethod: compressionContext.teaching_method || "",
+                targetAudience: compressionContext.target_audience || "",
+                difficultyLevel: compressionContext.difficulty_level || "",
+                sessionContexts: Array.isArray(
+                  compressionContext.session_contexts,
+                )
+                  ? compressionContext.session_contexts
+                  : [],
+              }
+            : undefined,
         };
 
         const { data: generation, error: generationError } = await dbClient
@@ -2391,7 +2438,7 @@ ${actionData?.teacherNotes || ""}`;
               teacherResult.text,
             );
             if (!components || components.length === 0) {
-              throw new Error("A2A teacher output did not include components");
+              throw new Error("Teacher output did not include components");
             }
 
             builderFeedback.push({
@@ -2433,7 +2480,7 @@ ${actionData?.teacherNotes || ""}`;
               current_iteration: builderFeedback.length,
               builder_feedback: builderFeedback,
               critic_feedback: criticFeedback,
-              error_message: error?.message || "A2A generation failed",
+              error_message: error?.message || "Session content generation failed",
             })
             .eq("id", generation.id);
           throw error;
@@ -2482,12 +2529,6 @@ ${actionData?.teacherNotes || ""}`;
           .eq("id", sessionId);
 
         const conceptList = extractConceptsFromComponents(finalComponents);
-        const { data: compressionContext } = await dbClient
-          .from("course_compression_context")
-          .select("id,key_concepts,session_contexts,version")
-          .eq("class_id", classId)
-          .maybeSingle();
-
         if (compressionContext?.id) {
           const existingConcepts = Array.isArray(compressionContext.key_concepts)
             ? compressionContext.key_concepts
@@ -2548,7 +2589,7 @@ ${actionData?.teacherNotes || ""}`;
         return {
           success: true,
           message:
-            "✅ A2A 生成完成，已写入数据库。现在可以在该课次中查看完整组件内容。",
+            "✅ 课次内容已生成并写入数据库。现在可以在该课次中查看完整组件内容。",
           classId,
           sessionId,
           chapterId: chapter.id,
@@ -2637,31 +2678,73 @@ ${actionData?.teacherNotes || ""}`;
           .eq("class_id", classId)
           .order("session_number", { ascending: true });
 
+        const outlineLabel = language === "en" ? "Session Outline" : "课程大纲";
+        const objectivesLabel =
+          language === "en" ? "Learning objectives" : "学习目标";
+        const componentsLabel =
+          language === "en" ? "Components plan" : "组件规划";
+        const formatBullets = (items: string[]) =>
+          items
+            .filter(Boolean)
+            .map((item) => `- ${item}`)
+            .join("\n");
+
+        const chapterByNumber = new Map<number, any>();
+        (chapters || []).forEach((chapter: any) => {
+          const number = Number(chapter.session_number);
+          if (!Number.isNaN(number)) chapterByNumber.set(number, chapter);
+        });
+
         if (classSessions && classSessions.length > 0) {
           for (const session of classSessions) {
-            const chapter = chapters.find(
-              (c: any) => c.session_number === session.session_number,
-            );
+            const chapter = chapterByNumber.get(session.session_number);
             if (!chapter) continue;
 
-            const objectives = (chapter.learning_objectives || [])
-              .filter(Boolean)
-              .join(language === "en" ? "; " : "；");
-            const outlineLines = (chapter.outline || [])
-              .filter(Boolean)
-              .join(language === "en" ? "; " : "；");
-            const componentsPlan = (chapter.components_plan || [])
-              .map((item: any) => `${item.type}: ${item.description}`)
-              .join(language === "en" ? "; " : "；");
+            const objectives = formatBullets(
+              Array.isArray(chapter.learning_objectives)
+                ? chapter.learning_objectives
+                : [],
+            );
+            const outlineLines = formatBullets(
+              Array.isArray(chapter.outline) ? chapter.outline : [],
+            );
+            const componentsPlan = formatBullets(
+              Array.isArray(chapter.components_plan)
+                ? chapter.components_plan.map(
+                    (item: any) => `${item.type}: ${item.description}`,
+                  )
+                : [],
+            );
 
-            const description =
-              language === "en"
-                ? `Learning objectives: ${objectives}\nOutline: ${outlineLines}\nComponents plan: ${componentsPlan}`
-                : `学习目标：${objectives}\n大纲：${outlineLines}\n组件规划：${componentsPlan}`;
+            const outlineBlock = [
+              `${outlineLabel}:`,
+              outlineLines,
+              "",
+              `${objectivesLabel}:`,
+              objectives,
+              "",
+              `${componentsLabel}:`,
+              componentsPlan,
+            ]
+              .filter((line) => line !== "")
+              .join("\n");
+
+            const baseDescription =
+              typeof session.description === "string"
+                ? session.description.trim()
+                : "";
+            const splitIndex = baseDescription.indexOf(outlineLabel);
+            const prefix =
+              splitIndex === -1
+                ? baseDescription
+                : baseDescription.slice(0, splitIndex).trim();
+            const description = prefix
+              ? `${prefix}\n\n${outlineBlock}`
+              : outlineBlock;
 
             await dbClient
               .from("course_sessions")
-              .update({ description })
+              .update({ description, updated_at: new Date().toISOString() })
               .eq("id", session.id);
           }
         }
@@ -2679,13 +2762,29 @@ ${actionData?.teacherNotes || ""}`;
           outline: chapter.outline || [],
           learning_objectives: chapter.learning_objectives || [],
           components_plan: chapter.components_plan || [],
+          updated_at: new Date().toISOString(),
         }));
 
         if (existingContext?.id) {
+          const existingSessionContexts = Array.isArray(
+            existingContext.session_contexts,
+          )
+            ? existingContext.session_contexts
+            : [];
+          const outlineSessionNumbers = new Set(
+            outlineContexts.map((context: any) => context.session_number),
+          );
+          const mergedSessionContexts = [
+            ...existingSessionContexts.filter(
+              (context: any) =>
+                !outlineSessionNumbers.has(context.session_number),
+            ),
+            ...outlineContexts,
+          ];
           await dbClient
             .from("course_compression_context")
             .update({
-              session_contexts: outlineContexts,
+              session_contexts: mergedSessionContexts,
               last_updated: new Date().toISOString(),
               version: existingContext.version ? existingContext.version + 1 : 1,
             })
@@ -2799,10 +2898,60 @@ ${actionData?.teacherNotes || ""}`;
                 .eq("user_id", user.id)
                 .order("created_at", { ascending: true })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
-              if (orgError || !orgMember) {
-                throw new Error("您还没有加入任何组织，无法创建班级");
+              let organizationId = orgMember?.organization_id || null;
+
+              if (orgError) {
+                throw orgError;
+              }
+
+              if (!organizationId) {
+                const rawName =
+                  (user.user_metadata?.full_name as string) ||
+                  (user.user_metadata?.name as string) ||
+                  (user.email ? user.email.split("@")[0] : "") ||
+                  "老师";
+                const orgName = `${rawName} 的组织`;
+                const slugBase = rawName
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "-")
+                  .replace(/^-|-$/g, "") || "teacher";
+
+                let slug = slugBase;
+                for (let attempt = 0; attempt < 3; attempt += 1) {
+                  const { data: existing } = await db
+                    .from("organizations")
+                    .select("id")
+                    .eq("slug", slug)
+                    .maybeSingle();
+                  if (!existing) break;
+                  slug = `${slugBase}-${Math.random().toString(36).slice(2, 6)}`;
+                }
+
+                const { data: org, error: createOrgError } = await db
+                  .from("organizations")
+                  .insert({ name: orgName, slug })
+                  .select()
+                  .single();
+
+                if (createOrgError || !org?.id) {
+                  throw createOrgError || new Error("无法创建默认组织");
+                }
+
+                const { error: memberError } = await db
+                  .from("organization_members")
+                  .insert({
+                    organization_id: org.id,
+                    user_id: user.id,
+                    role: "owner",
+                  });
+
+                if (memberError) {
+                  throw memberError;
+                }
+
+                organizationId = org.id;
               }
 
               const { data: classData, error: classError } = await db
@@ -2810,7 +2959,7 @@ ${actionData?.teacherNotes || ""}`;
                 .insert({
                   name,
                   description,
-                  organization_id: orgMember.organization_id,
+                  organization_id: organizationId,
                   join_code: joinCode,
                   created_by: user.id,
                 })
@@ -3236,7 +3385,7 @@ ${actionData?.teacherNotes || ""}`;
     const isConnectionError = errorMessage.includes("connection") || errorMessage.includes("network") || errorMessage.includes("连接");
     const isValidationError = errorMessage.includes("validation") || errorMessage.includes("validate") || errorMessage.includes("验证");
 
-    let userFriendlyMessage = `❌ 数据库操作失败: ${errorMessage}`;
+    let userFriendlyMessage = "❌ 数据库操作失败，请稍后重试";
 
     if (isPermissionError) {
       userFriendlyMessage = "❌ 权限不足，请检查您的账户权限或联系管理员";

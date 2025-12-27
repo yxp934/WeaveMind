@@ -46,6 +46,8 @@ function extractClassName(text: string): string | null {
   const patterns: RegExp[] = [
     /班级[:：]\s*([^\n，。,。;；]+)\s*/i,
     /(班级名|班级名称|班级名字|班名)[:：]\s*([^\n，。,。;；]+)\s*/i,
+    /(名称是|名字是|名称为|名字为|名为)\s*([^\n，。,。;；]+)\s*/i,
+    /(?:创建|新建|建立|开设|开班)\s*(?:一个|一门|一堂|一节)?\s*([^\n，。,。;；]+?(?:班级|班|课程|class))/i,
     /叫(?:做)?\s*([^\n，。,。;；]+)\s*/i,
     /名为[“"]([^”"]+)[”"]/i,
     /named\s+[“"]([^”"]+)[”"]/i,
@@ -67,11 +69,23 @@ function sanitizeClassName(value: string | null | undefined): string | null {
   if (!value) return null;
   const name = String(value).trim();
   if (!name) return null;
+  if (/^(班级|班|课程|课|class|classes)$/i.test(name)) return null;
+  if (/^(一个|一门|一堂|一节)\s*(班级|班|课程|课|class|classes)$/i.test(name)) {
+    return null;
+  }
   const cut = name.match(
     /^(.*?)(?:(?:\s+一共|\s+共有|\s+共|\s+第\s*\d+\s*节|\s+session\s*\d+|\s+\d+\s*sessions?|\s+-\s+第\s*\d+\s*节|\s+-\s+session\s*\d+).*?)?$/i,
   );
   const cleaned = (cut?.[1] || name).replace(/[-–—:：]+$/g, "").trim();
   return cleaned || null;
+}
+
+function trimTrailingSessionInfo(value: string): string {
+  const cut = value.match(
+    /^(.*?)(?:(?:[。.;；、]?\s*(?:一共|共有|共)\s*\d+\s*(节|课|sessions?))|(?:[。.;；、]?\s*第\s*\d+\s*(节|课))|(?:\s*session\s*\d+)|(?:\s*\d+\s*sessions?)).*$/i,
+  );
+  const cleaned = (cut?.[1] || value).replace(/[-–—:：]+$/g, "").trim();
+  return cleaned || value.trim();
 }
 
 function extractSessionCount(text: string): number | null {
@@ -98,7 +112,7 @@ function inferEntityType(text: string): EntityType | null {
     text,
   );
   const hasAssignment = /(作业|assignment|assignments|任务)/i.test(text);
-  const hasClass = /(班级|课程|class|classes)/i.test(text);
+  const hasClass = /(班级|课程|班|class|classes)/i.test(text);
 
   if (hasSession) return "session";
   if (hasAssignment) return "assignment";
@@ -196,14 +210,26 @@ function extractTime(text: string): string | null {
 
 function extractLabeledValue(text: string, labels: string[]): string | null {
   for (const label of labels) {
-    const re = new RegExp(`${label}\\s*[:：]\\s*([^\\n]+)`, "i");
+    const re = new RegExp(`${escapeRegExp(label)}\\s*[:：]\\s*([^\\n]+)`, "i");
     const match = text.match(re);
     if (match?.[1]) {
-      const value = match[1].trim();
+      const value = match[1].trim().replace(/[;；。,.]+$/g, "").trim();
       if (value) return value;
     }
   }
   return null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeCourseInfoInput(text: string, labels: string[]): string {
+  if (!text || !labels.length) return text;
+  const pattern = labels.map(escapeRegExp).join("|");
+  if (!pattern) return text;
+  const re = new RegExp(`(${pattern})\\s*[:：]`, "gi");
+  return text.replace(re, "\n$1:");
 }
 
 function extractCourseInfoFields(text: string): {
@@ -216,9 +242,47 @@ function extractCourseInfoFields(text: string): {
   };
 } {
   if (!text) return {};
+  const allLabels = [
+    "课程简介",
+    "课程描述",
+    "课程说明",
+    "课程概述",
+    "班级描述",
+    "description",
+    "summary",
+    "overview",
+    "目标学员",
+    "目标受众",
+    "受众",
+    "面向人群",
+    "面向对象",
+    "target audience",
+    "audience",
+    "学习目标",
+    "课程目标",
+    "教学目标",
+    "目标",
+    "learning objectives",
+    "learning goals",
+    "goals",
+    "教学方法",
+    "教学方式",
+    "授课方式",
+    "教学形式",
+    "教学模式",
+    "teaching method",
+    "teaching approach",
+    "delivery method",
+    "难度级别",
+    "难度",
+    "水平",
+    "difficulty",
+    "level",
+  ];
+  const normalizedText = normalizeCourseInfoInput(text, allLabels);
 
   const classDescription =
-    extractLabeledValue(text, [
+    extractLabeledValue(normalizedText, [
       "课程简介",
       "课程描述",
       "课程说明",
@@ -230,7 +294,7 @@ function extractCourseInfoFields(text: string): {
     ]) || undefined;
 
   let targetAudience =
-    extractLabeledValue(text, [
+    extractLabeledValue(normalizedText, [
       "目标学员",
       "目标受众",
       "受众",
@@ -240,12 +304,12 @@ function extractCourseInfoFields(text: string): {
       "audience",
     ]) || undefined;
   if (!targetAudience) {
-    const match = text.match(/(?:面向|适合|针对)\s*([^\n，。,。;；]+)/);
+    const match = normalizedText.match(/(?:面向|适合|针对)\s*([^\n，。,。;；]+)/);
     if (match?.[1]) targetAudience = match[1].trim();
   }
 
   let learningObjectives =
-    extractLabeledValue(text, [
+    extractLabeledValue(normalizedText, [
       "学习目标",
       "课程目标",
       "教学目标",
@@ -256,7 +320,7 @@ function extractCourseInfoFields(text: string): {
     ]) || undefined;
 
   let teachingMethod =
-    extractLabeledValue(text, [
+    extractLabeledValue(normalizedText, [
       "教学方法",
       "教学方式",
       "授课方式",
@@ -267,12 +331,14 @@ function extractCourseInfoFields(text: string): {
       "delivery method",
     ]) || undefined;
   if (!teachingMethod) {
-    const match = text.match(/(?:采用|以|使用)\s*([^\n，。,。;；]+)(?:教学|授课|方式)/);
+    const match = normalizedText.match(
+      /(?:采用|以|使用)\s*([^\n，。,。;；]+)(?:教学|授课|方式)/,
+    );
     if (match?.[1]) teachingMethod = match[1].trim();
   }
 
   let difficultyLevel =
-    extractLabeledValue(text, [
+    extractLabeledValue(normalizedText, [
       "难度级别",
       "难度",
       "水平",
@@ -280,9 +346,18 @@ function extractCourseInfoFields(text: string): {
       "level",
     ]) || undefined;
   if (!difficultyLevel) {
-    if (/(入门|初级|beginner)/i.test(text)) difficultyLevel = "beginner";
-    if (/(中级|进阶|intermediate)/i.test(text)) difficultyLevel = "intermediate";
-    if (/(高级|高阶|advanced|expert)/i.test(text)) difficultyLevel = "advanced";
+    if (/(入门|初级|beginner)/i.test(normalizedText)) {
+      difficultyLevel = "beginner";
+    }
+    if (/(中级|进阶|intermediate)/i.test(normalizedText)) {
+      difficultyLevel = "intermediate";
+    }
+    if (/(高级|高阶|advanced|expert)/i.test(normalizedText)) {
+      difficultyLevel = "advanced";
+    }
+  }
+  if (difficultyLevel) {
+    difficultyLevel = trimTrailingSessionInfo(difficultyLevel);
   }
 
   if (
@@ -292,7 +367,7 @@ function extractCourseInfoFields(text: string): {
     !teachingMethod &&
     !difficultyLevel
   ) {
-    const cleaned = text.trim();
+    const cleaned = normalizedText.trim();
     const looksLikeSessions =
       /第\s*\d+\s*节|session\s*\d+/i.test(cleaned) ||
       /(^|\n)\s*[-*•]\s+/.test(cleaned) ||
@@ -337,9 +412,58 @@ function hasCourseInfo(creation: {
   return Boolean(
     info.targetAudience ||
       info.learningObjectives ||
-      info.teachingMethod ||
-      info.difficultyLevel,
+      info.teachingMethod,
   );
+}
+
+function buildCourseInfoSummary(
+  creation: {
+    classDescription?: string | null;
+    courseInfo?: Record<string, any> | null;
+  },
+  preferredLanguage: "zh" | "en",
+) {
+  const courseInfo = creation.courseInfo || {};
+  const summaryLines: string[] = [];
+  if (creation.classDescription) {
+    summaryLines.push(
+      preferredLanguage === "zh"
+        ? `课程简介：${creation.classDescription}`
+        : `Summary: ${creation.classDescription}`,
+    );
+  }
+  if (courseInfo.targetAudience) {
+    summaryLines.push(
+      preferredLanguage === "zh"
+        ? `目标学员：${courseInfo.targetAudience}`
+        : `Target audience: ${courseInfo.targetAudience}`,
+    );
+  }
+  if (courseInfo.learningObjectives) {
+    summaryLines.push(
+      preferredLanguage === "zh"
+        ? `学习目标：${courseInfo.learningObjectives}`
+        : `Learning objectives: ${courseInfo.learningObjectives}`,
+    );
+  }
+  if (courseInfo.teachingMethod) {
+    summaryLines.push(
+      preferredLanguage === "zh"
+        ? `教学方法：${courseInfo.teachingMethod}`
+        : `Teaching method: ${courseInfo.teachingMethod}`,
+    );
+  }
+  if (courseInfo.difficultyLevel) {
+    summaryLines.push(
+      preferredLanguage === "zh"
+        ? `难度：${courseInfo.difficultyLevel}`
+        : `Difficulty: ${courseInfo.difficultyLevel}`,
+    );
+  }
+  if (summaryLines.length === 0) return "";
+  const heading =
+    preferredLanguage === "zh" ? "课程信息库：" : "Course info library:";
+  return `\n\n${heading}\n- ${summaryLines.join("\n- ")}`;
 }
 
 function normalizeEntityManagementInput(
@@ -513,7 +637,8 @@ function parseSessionDrafts(
     };
   };
 
-  const cnRe = /第\s*(\d+)\s*节\s*[:：-]?\s*([^\n；;]+)(?:[；;\n]|$)/g;
+  const cnRe =
+    /第\s*(\d+)\s*节\s*[:：-]?\s*([^\n；;。]+)(?:[；;\n。]|$)/g;
   for (const match of normalizedText.matchAll(cnRe)) {
     const idx = Number(match[1]);
     const raw = (match[2] || "").trim();
@@ -522,7 +647,8 @@ function parseSessionDrafts(
     if (draft) drafts.push(draft);
   }
 
-  const enRe = /session\s*(\d+)\s*[:：-]?\s*([^\n；;]+)(?:[；;\n]|$)/gi;
+  const enRe =
+    /session\s*(\d+)\s*[:：-]?\s*([^\n；;。]+)(?:[；;\n。]|$)/gi;
   for (const match of normalizedText.matchAll(enRe)) {
     const idx = Number(match[1]);
     const raw = (match[2] || "").trim();
@@ -542,7 +668,7 @@ function parseSessionDrafts(
 
   if (drafts.length === 0) {
     const parts = normalizedText
-      .split(/[；;\n]+/)
+      .split(/[；;\n。]+/)
       .map((p) => p.trim())
       .filter(Boolean);
     for (const p of parts) {
@@ -726,7 +852,7 @@ AVAILABLE TOOLS:
 3. generate_class_outline_draft - Generate AI outlines for sessions
 4. save_class_outline - Save confirmed outlines to database
 5. generate_session_outline_draft - Generate outline for one session
-6. a2a_session_generate_and_save - Run A2A to generate session content and save
+6. a2a_session_generate_and_save - Run collaborative generation and save session content
 
 RULES:
 - You can only propose ONE tool per turn
@@ -765,7 +891,6 @@ export async function teacherReactAgentNode(
   }
 
   const userText = lastMessage.content.toString();
-  const preferredLanguage = detectLanguage(userText);
   const lastToolExecution = getLastToolExecution(state.messages);
   const toolCallsExecuted = countExecutedToolCallsFromHistory(state.messages);
   const toolAgentState =
@@ -776,22 +901,30 @@ export async function teacherReactAgentNode(
   let existingAgentState: any = state.metadata?.agentState || {};
   if (toolAgentState && typeof toolAgentState === "object") {
     existingAgentState = {
-      ...toolAgentState,
       ...existingAgentState,
+      ...toolAgentState,
       sessionOutlineStatus:
-        existingAgentState.sessionOutlineStatus ||
-        toolAgentState.sessionOutlineStatus,
+        toolAgentState.sessionOutlineStatus ||
+        existingAgentState.sessionOutlineStatus,
       sessionOutlineDraft:
-        existingAgentState.sessionOutlineDraft ||
-        toolAgentState.sessionOutlineDraft,
+        toolAgentState.sessionOutlineDraft ||
+        existingAgentState.sessionOutlineDraft,
       sessionOutlineSessionId:
-        existingAgentState.sessionOutlineSessionId ||
-        toolAgentState.sessionOutlineSessionId,
+        toolAgentState.sessionOutlineSessionId ||
+        existingAgentState.sessionOutlineSessionId,
       sessionOutlineClassId:
-        existingAgentState.sessionOutlineClassId ||
-        toolAgentState.sessionOutlineClassId,
+        toolAgentState.sessionOutlineClassId ||
+        existingAgentState.sessionOutlineClassId,
     };
   }
+  const preferredLanguage =
+    existingAgentState?.preferredLanguage ||
+    (state.metadata as any)?.preferredLanguage ||
+    detectLanguage(userText);
+  existingAgentState = {
+    ...existingAgentState,
+    preferredLanguage,
+  };
 
   // After a confirmed tool execution, the server sends a synthetic "continue/继续" message.
   // Show the tool's human-readable result and ask what to do next, unless we're in a
@@ -982,7 +1115,7 @@ export async function teacherReactAgentNode(
   // Deterministic fast-path: list queries should reliably propose a read tool.
   const normalized = userText.toLowerCase();
   const wantsList = /(有哪些|列出|查看|show|list|what|which)/i.test(userText);
-  const mentionsClass = /(班级|class|classes)/i.test(userText);
+  const mentionsClass = /(班级|班|课程|class|classes)/i.test(userText);
   const mentionsSession = /(课次|课|session|sessions)/i.test(userText);
   const mentionsAssignment = /(作业|assignment|assignments)/i.test(userText);
   const listEntity = mentionsClass
@@ -996,8 +1129,8 @@ export async function teacherReactAgentNode(
   // Deterministic class creation workflow (class -> sessions -> outline -> save).
   if (existingAgentState?.outlineStatus !== "reviewing") {
     const wantsCreateClass =
-      /(创建|新建|建立).*(班级)/.test(userText) ||
-      /(create).*(class)/i.test(userText);
+      /(创建|新建|建立|开设|开班).*(班级|班|课程)/.test(userText) ||
+      /(create|start).*(class|course)/i.test(userText);
     const activeCreation = existingAgentState?.classCreation;
     const isActive =
       activeCreation?.status && activeCreation.status !== "done";
@@ -1124,20 +1257,68 @@ export async function teacherReactAgentNode(
         }
       }
 
-      if (updated.status === "ask_course_info") {
-        const skipCourseInfo = /(跳过|暂时不|以后再说|不需要|不知道|skip)/i.test(
-          userText,
-        );
-        if (isApproval(userText) || skipCourseInfo || hasCourseInfo(updated)) {
-          updated.courseInfoConfirmed = true;
-        }
-        updated.status = "collecting";
-      }
-
       const nextAgentState = {
         ...existingAgentState,
         classCreation: updated,
       };
+
+      if (updated.status === "ask_course_info") {
+        const skipCourseInfo = /(跳过|暂时不|以后再说|不需要|不知道|skip)/i.test(
+          userText,
+        );
+        if (isApproval(userText) || skipCourseInfo) {
+          updated.courseInfoConfirmed = true;
+          updated.status = "collecting";
+        } else {
+          const courseInfoBlock = buildCourseInfoSummary(
+            updated,
+            preferredLanguage,
+          );
+          const msg = hasCourseInfo(updated)
+            ? preferredLanguage === "zh"
+              ? `我已经记录课程信息。${courseInfoBlock}\n\n如需补充请继续输入；确认继续请回复“确认”。`
+              : `I've captured the course info.${courseInfoBlock}\n\nAdd more details, or reply "approve" to continue.`
+            : preferredLanguage === "zh"
+              ? "在创建前，请补充课程信息库（课程简介/目标学员/学习目标/教学方法/难度，可一次性给出）。如果暂时不需要，请回复“确认”跳过。"
+              : "Before creating the class, please provide the course info library (summary, target audience, learning objectives, teaching method, difficulty). Reply \"approve\" to skip for now.";
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: { ...updated, status: "ask_course_info" },
+          };
+          const aiMessage = new AIMessage({
+            content: msg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "ask_course_info" },
+            },
+          };
+        }
+      }
 
       if (updated.status === "collecting") {
         if (!updated.className) {
@@ -1261,18 +1442,44 @@ export async function teacherReactAgentNode(
           };
         }
 
-        if (!updated.courseInfoConfirmed && !hasCourseInfo(updated)) {
-          const ask =
-            preferredLanguage === "zh"
-              ? "在创建前，请补充课程信息库（课程简介/目标学员/学习目标/教学方法/难度，可一次性给出）。如果暂时不需要，请回复“确认”跳过。"
-              : "Before creating the class, please provide the course info library (summary, target audience, learning objectives, teaching method, difficulty). Reply \"approve\" to skip for now.";
-          const withStatus = {
-            ...nextAgentState,
-            classCreation: { ...updated, status: "ask_course_info" },
-          };
-          const aiMessage = new AIMessage({
-            content: ask,
-            additional_kwargs: {
+        if (!updated.courseInfoConfirmed) {
+          const skipCourseInfo = /(跳过|暂时不|以后再说|不需要|不知道|skip)/i.test(
+            userText,
+          );
+          if (isApproval(userText) || skipCourseInfo) {
+            updated.courseInfoConfirmed = true;
+          } else {
+            const courseInfoBlock = buildCourseInfoSummary(
+              updated,
+              preferredLanguage,
+            );
+            const ask = hasCourseInfo(updated)
+              ? preferredLanguage === "zh"
+                ? `我已经记录课程信息。${courseInfoBlock}\n\n如需补充请继续输入；确认继续请回复“确认”。`
+                : `I've captured the course info.${courseInfoBlock}\n\nAdd more details, or reply "approve" to continue.`
+              : preferredLanguage === "zh"
+                ? "在创建前，请补充课程信息库（课程简介/目标学员/学习目标/教学方法/难度，可一次性给出）。如果暂时不需要，请回复“确认”跳过。"
+                : "Before creating the class, please provide the course info library (summary, target audience, learning objectives, teaching method, difficulty). Reply \"approve\" to skip for now.";
+            const withStatus = {
+              ...nextAgentState,
+              classCreation: { ...updated, status: "ask_course_info" },
+            };
+            const aiMessage = new AIMessage({
+              content: ask,
+              additional_kwargs: {
+                metadata: {
+                  ...(state.metadata || {}),
+                  intent: "react_agent",
+                  agentState: withStatus,
+                  requiresDatabaseAction: false,
+                  actionType: null,
+                  actionData: null,
+                },
+              },
+            });
+            return {
+              ...state,
+              messages: [...state.messages, aiMessage],
               metadata: {
                 ...(state.metadata || {}),
                 intent: "react_agent",
@@ -1280,73 +1487,22 @@ export async function teacherReactAgentNode(
                 requiresDatabaseAction: false,
                 actionType: null,
                 actionData: null,
+                timestamp: new Date().toISOString(),
               },
-            },
-          });
-          return {
-            ...state,
-            messages: [...state.messages, aiMessage],
-            metadata: {
-              ...(state.metadata || {}),
-              intent: "react_agent",
-              agentState: withStatus,
-              requiresDatabaseAction: false,
-              actionType: null,
-              actionData: null,
-              timestamp: new Date().toISOString(),
-            },
-            currentWorkflow: {
-              type: "react_agent",
-              status: "active",
-              step: "ask_user",
-              data: { phase: "ask_course_info" },
-            },
-          };
+              currentWorkflow: {
+                type: "react_agent",
+                status: "active",
+                step: "ask_user",
+                data: { phase: "ask_course_info" },
+              },
+            };
+          }
         }
 
-        const courseInfo = updated.courseInfo || {};
-        const summaryLines: string[] = [];
-        if (updated.classDescription) {
-          summaryLines.push(
-            preferredLanguage === "zh"
-              ? `课程简介：${updated.classDescription}`
-              : `Summary: ${updated.classDescription}`,
-          );
-        }
-        if (courseInfo.targetAudience) {
-          summaryLines.push(
-            preferredLanguage === "zh"
-              ? `目标学员：${courseInfo.targetAudience}`
-              : `Target audience: ${courseInfo.targetAudience}`,
-          );
-        }
-        if (courseInfo.learningObjectives) {
-          summaryLines.push(
-            preferredLanguage === "zh"
-              ? `学习目标：${courseInfo.learningObjectives}`
-              : `Learning objectives: ${courseInfo.learningObjectives}`,
-          );
-        }
-        if (courseInfo.teachingMethod) {
-          summaryLines.push(
-            preferredLanguage === "zh"
-              ? `教学方法：${courseInfo.teachingMethod}`
-              : `Teaching method: ${courseInfo.teachingMethod}`,
-          );
-        }
-        if (courseInfo.difficultyLevel) {
-          summaryLines.push(
-            preferredLanguage === "zh"
-              ? `难度：${courseInfo.difficultyLevel}`
-              : `Difficulty: ${courseInfo.difficultyLevel}`,
-          );
-        }
-        const courseInfoBlock =
-          summaryLines.length > 0
-            ? `\n\n${preferredLanguage === "zh" ? "课程信息库：" : "Course info library:"}\n- ${summaryLines.join(
-                "\n- ",
-              )}`
-            : "";
+        const courseInfoBlock = buildCourseInfoSummary(
+          updated,
+          preferredLanguage,
+        );
 
         const msg =
           preferredLanguage === "zh"
@@ -1408,13 +1564,104 @@ export async function teacherReactAgentNode(
       if (updated.status === "await_class_created") {
         const classId =
           state.metadata?.lastCreatedClassId ||
+          state.metadata?.selectedClassId ||
           lastToolExecution.toolResult?.classId ||
           null;
-        if (
+        const classCreateAttempted =
           lastToolExecution.toolName === "entity_management" &&
-          lastToolExecution.success === true &&
-          classId
-        ) {
+          typeof lastToolExecution.success === "boolean";
+        const classCreateSucceeded = classCreateAttempted && lastToolExecution.success;
+        const classCreateFailed = classCreateAttempted && !lastToolExecution.success;
+
+        if (classCreateFailed) {
+          const toolMessage =
+            (lastToolExecution.toolResult &&
+              typeof lastToolExecution.toolResult.message === "string" &&
+              lastToolExecution.toolResult.message.trim()) ||
+            (preferredLanguage === "zh"
+              ? "❌ 创建班级失败。"
+              : "❌ Failed to create class.");
+          const msg =
+            preferredLanguage === "zh"
+              ? `${toolMessage}\n\n请修改班级名称/描述后重试，或回复“确认”让我重新尝试创建。`
+              : `${toolMessage}\n\nPlease revise the class name/description and try again, or reply "approve" to retry.`;
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: { ...updated, status: "collecting" },
+          };
+          const aiMessage = new AIMessage({
+            content: msg,
+            additional_kwargs: {
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+              },
+            },
+          });
+          return {
+            ...state,
+            messages: [...state.messages, aiMessage],
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: withStatus,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+              timestamp: new Date().toISOString(),
+            },
+            currentWorkflow: {
+              type: "react_agent",
+              status: "active",
+              step: "ask_user",
+              data: { phase: "class_creation_failed" },
+            },
+          };
+        }
+
+        if (classCreateSucceeded || classId) {
+          if (!classId) {
+            const ask =
+              preferredLanguage === "zh"
+                ? "班级创建已完成，但我没有拿到班级ID。请在右侧上下文中选择该班级，或告诉我班级ID。"
+                : "The class is created, but I can't find its ID. Please select the class in the context panel or share the class ID.";
+            const aiMessage = new AIMessage({
+              content: ask,
+              additional_kwargs: {
+                metadata: {
+                  ...(state.metadata || {}),
+                  intent: "react_agent",
+                  agentState: nextAgentState,
+                  requiresDatabaseAction: false,
+                  actionType: null,
+                  actionData: null,
+                },
+              },
+            });
+            return {
+              ...state,
+              messages: [...state.messages, aiMessage],
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+                timestamp: new Date().toISOString(),
+              },
+              currentWorkflow: {
+                type: "react_agent",
+                status: "active",
+                step: "ask_user",
+                data: { phase: "missing_class_after_create" },
+              },
+            };
+          }
           const sessions = (updated.sessionsDraft || [])
             .slice(0, updated.sessionCount || 0)
             .map((s: any) => ({
@@ -1526,12 +1773,59 @@ export async function teacherReactAgentNode(
 
       if (updated.status === "await_sessions_created") {
         const classId =
-          updated.classId || state.metadata?.lastCreatedClassId || null;
-        if (
+          updated.classId ||
+          state.metadata?.lastCreatedClassId ||
+          state.metadata?.selectedClassId ||
+          lastToolExecution.toolResult?.classId ||
+          null;
+        const sessionsAttempted =
           lastToolExecution.toolName === "create_sessions_batch" &&
-          lastToolExecution.success === false &&
-          classId
-        ) {
+          typeof lastToolExecution.success === "boolean";
+        const sessionsSucceeded = sessionsAttempted && lastToolExecution.success;
+        const sessionsFailed = sessionsAttempted && !lastToolExecution.success;
+        const hasSessionIds = Array.isArray(
+          (lastToolExecution.toolResult as any)?.sessionIds,
+        );
+
+        if (sessionsFailed) {
+          if (!classId) {
+            const ask =
+              preferredLanguage === "zh"
+                ? "课次创建失败且未找到班级ID。请在右侧上下文中选择班级，或告诉我班级ID后重试。"
+                : "Session creation failed and I can't find the class ID. Please select the class in the context panel or share the class ID to retry.";
+            const aiMessage = new AIMessage({
+              content: ask,
+              additional_kwargs: {
+                metadata: {
+                  ...(state.metadata || {}),
+                  intent: "react_agent",
+                  agentState: nextAgentState,
+                  requiresDatabaseAction: false,
+                  actionType: null,
+                  actionData: null,
+                },
+              },
+            });
+            return {
+              ...state,
+              messages: [...state.messages, aiMessage],
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+                timestamp: new Date().toISOString(),
+              },
+              currentWorkflow: {
+                type: "react_agent",
+                status: "active",
+                step: "ask_user",
+                data: { phase: "missing_class_for_retry" },
+              },
+            };
+          }
           const toolMessage =
             (lastToolExecution.toolResult &&
               typeof lastToolExecution.toolResult.message === "string" &&
@@ -1607,11 +1901,106 @@ export async function teacherReactAgentNode(
           };
         }
 
-        if (
-          lastToolExecution.toolName === "create_sessions_batch" &&
-          lastToolExecution.success === true &&
-          classId
-        ) {
+        if (sessionsSucceeded || hasSessionIds) {
+          if (!classId) {
+            const ask =
+              preferredLanguage === "zh"
+                ? "课次已创建，但我没有找到班级ID。请在右侧上下文中选择班级，或告诉我班级ID。"
+                : "Sessions were created, but I can't find the class ID. Please select the class in the context panel or share the class ID.";
+            const aiMessage = new AIMessage({
+              content: ask,
+              additional_kwargs: {
+                metadata: {
+                  ...(state.metadata || {}),
+                  intent: "react_agent",
+                  agentState: nextAgentState,
+                  requiresDatabaseAction: false,
+                  actionType: null,
+                  actionData: null,
+                },
+              },
+            });
+            return {
+              ...state,
+              messages: [...state.messages, aiMessage],
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: nextAgentState,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+                timestamp: new Date().toISOString(),
+              },
+              currentWorkflow: {
+                type: "react_agent",
+                status: "active",
+                step: "ask_user",
+                data: { phase: "missing_class_after_sessions" },
+              },
+            };
+          }
+          let chosen: "zh" | "en" | null = null;
+          if (!isApproval(userText)) {
+            if (/(英文|english)/i.test(userText)) chosen = "en";
+            if (/(中文|chinese)/i.test(userText)) chosen = "zh";
+          }
+
+          if (chosen) {
+            const msg =
+              preferredLanguage === "zh"
+                ? `好的。我将使用${chosen === "en" ? "英文" : "中文"}为每节课生成大纲草稿。请确认执行生成。`
+                : `Great. I will generate an outline draft in ${chosen === "en" ? "English" : "Chinese"} for each session. Please confirm to run it.`;
+            const withStatus = {
+              ...nextAgentState,
+              classCreation: {
+                ...updated,
+                outlineLanguage: chosen,
+                status: "await_outline_draft",
+                classId,
+              },
+            };
+            const aiMessage = new AIMessage({
+              content: msg,
+              additional_kwargs: {
+                metadata: {
+                  ...(state.metadata || {}),
+                  intent: "react_agent",
+                  agentState: withStatus,
+                  requiresDatabaseAction: true,
+                  actionType: "generate_class_outline_draft",
+                  actionData: {
+                    classId,
+                    language: chosen,
+                    agentState: withStatus,
+                  },
+                },
+              },
+            });
+            return {
+              ...state,
+              messages: [...state.messages, aiMessage],
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: true,
+                actionType: "generate_class_outline_draft",
+                actionData: {
+                  classId,
+                  language: chosen,
+                  agentState: withStatus,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              currentWorkflow: {
+                type: "react_agent",
+                status: "active",
+                step: "propose_tool",
+                data: { phase: "generate_class_outline_draft" },
+              },
+            };
+          }
           const msg =
             preferredLanguage === "zh"
               ? "✅ 课次已创建。接下来我将为每节课生成大纲草稿。你希望大纲用中文还是英文？"
@@ -1960,8 +2349,8 @@ export async function teacherReactAgentNode(
     if (isApproval(userText)) {
       const prompt =
         language === "en"
-          ? "Outline confirmed. I can now run A2A generation and save the session content. Please confirm to proceed."
-          : "大纲已确认。我现在可以运行 A2A 生成并保存课次内容。请确认执行。";
+          ? "Outline confirmed. I can now run collaborative generation and save the session content. Please confirm to proceed."
+          : "大纲已确认。我现在可以开始协作生成并保存课次内容。请确认执行。";
       const awaitingState = {
         ...nextAgentState,
         sessionOutlineStatus: "awaiting_a2a",
@@ -2081,16 +2470,15 @@ export async function teacherReactAgentNode(
       null;
     const classId = existingAgentState.sessionOutlineClassId;
     const sessionId = existingAgentState.sessionOutlineSessionId;
-    const wantsA2A =
+    const wantsGeneration =
       isApproval(userText) ||
-      /a2a/i.test(userText) ||
-      /(开始|运行|生成).*(a2a|内容)/i.test(userText);
+      /(开始|运行|生成|继续|执行).*(内容|课次)?/i.test(userText);
 
     if (!draft || !classId || !sessionId) {
       const fallbackMsg =
         language === "en"
-          ? "I can't locate the outline draft for A2A generation. Please ask me to generate the session outline again."
-          : "我无法找到用于 A2A 的大纲草案，请重新让我生成该课次的大纲。";
+          ? "I can't locate the outline draft for content generation. Please ask me to generate the session outline again."
+          : "我无法找到用于内容生成的大纲草案，请重新让我生成该课次的大纲。";
       const aiMessage = new AIMessage({
         content: fallbackMsg,
         additional_kwargs: {
@@ -2125,11 +2513,11 @@ export async function teacherReactAgentNode(
       };
     }
 
-    if (!wantsA2A) {
+    if (!wantsGeneration) {
       const remind =
         language === "en"
-          ? "I can run A2A generation and save the session content. Please reply \"confirm\" to proceed."
-          : "我可以运行 A2A 生成并保存课次内容。请回复“确认”以继续。";
+          ? "I can start collaborative generation and save the session content. Please reply \"confirm\" to proceed."
+          : "我可以开始协作生成并保存课次内容。请回复“确认”以继续。";
       const aiMessage = new AIMessage({
         content: remind,
         additional_kwargs: {
@@ -2166,8 +2554,8 @@ export async function teacherReactAgentNode(
 
     const prompt =
       language === "en"
-        ? "Outline confirmed. I can now run A2A generation and save the session content. Please confirm to proceed."
-        : "大纲已确认。我现在可以运行 A2A 生成并保存课次内容。请确认执行。";
+        ? "Outline confirmed. I can now run collaborative generation and save the session content. Please confirm to proceed."
+        : "大纲已确认。我现在可以开始协作生成并保存课次内容。请确认执行。";
     const aiMessage = new AIMessage({
       content: prompt,
       additional_kwargs: {
@@ -2223,7 +2611,41 @@ export async function teacherReactAgentNode(
     const chapters = existingAgentState.outlineDraft.chapters as any[];
     const requirements =
       existingAgentState.outlineDraft.requirements || {};
-    const idx = Math.max(0, Number(existingAgentState.outlineReviewIndex || 0));
+    const lastAssistant = [...state.messages]
+      .reverse()
+      .find(
+        (msg) =>
+          msg instanceof AIMessage &&
+          msg.content &&
+          msg.content.toString().trim().length > 0,
+      ) as AIMessage | undefined;
+    const inferIndexFromContent = (content: string) => {
+      if (!content) return null;
+      const zhMatch = content.match(/第(\d+)节/);
+      if (zhMatch?.[1]) {
+        const num = Number(zhMatch[1]);
+        const found = chapters.findIndex(
+          (chapter) => Number(chapter.session_number) === num,
+        );
+        if (found >= 0) return found;
+      }
+      const enMatch = content.match(/Session\s+(\d+)/i);
+      if (enMatch?.[1]) {
+        const num = Number(enMatch[1]);
+        const found = chapters.findIndex(
+          (chapter) => Number(chapter.session_number) === num,
+        );
+        if (found >= 0) return found;
+      }
+      return null;
+    };
+    const inferredIndex = inferIndexFromContent(
+      lastAssistant?.content?.toString() || "",
+    );
+    const idx =
+      typeof inferredIndex === "number"
+        ? inferredIndex
+        : Math.max(0, Number(existingAgentState.outlineReviewIndex || 0));
     const current = chapters[idx];
     const formatChapter = (chapter: any) =>
       language === "en"
@@ -2406,20 +2828,33 @@ export async function teacherReactAgentNode(
 
     const nextChapter = updatedChapters[nextIndex];
     const show = nextChapter ? formatChapter(nextChapter) : "";
-
     const movedToNext = nextIndex !== idx;
-    const reply =
-      !nextChapter
+    const isReadyToSave = !nextChapter;
+
+    const reply = isReadyToSave
+      ? language === "en"
+        ? "All session outlines are confirmed. I can now save the outline to the database. Please confirm to run `save_class_outline`."
+        : "所有课次的大纲都已确认。我现在可以把大纲保存到数据库。请确认执行 `save_class_outline`。"
+      : movedToNext
         ? language === "en"
-          ? "All session outlines are confirmed. I can now save the outline to the database. Please confirm to run `save_class_outline`."
-          : "所有课次的大纲都已确认。我现在可以把大纲保存到数据库。请确认执行 `save_class_outline`。"
-        : movedToNext
-          ? language === "en"
-            ? `Please review the next session:\n\n${show}\n\nReply "approve" to accept, or paste edits as bullets.`
-            : `请继续确认下一节：\n\n${show}\n\n回复“确认”通过，或用项目符号直接贴出修改。`
-          : language === "en"
-            ? `Updated this session. Please approve it or edit again:\n\n${show}\n\nReply "approve" to accept, or paste edits as bullets.`
-            : `已更新本节内容。请确认是否通过，或继续修改：\n\n${show}\n\n回复“确认”通过，或用项目符号直接贴出修改。`;
+          ? `Please review the next session:\n\n${show}\n\nReply "approve" to accept, or paste edits as bullets.`
+          : `请继续确认下一节：\n\n${show}\n\n回复“确认”通过，或用项目符号直接贴出修改。`
+        : language === "en"
+          ? `Updated this session. Please approve it or edit again:\n\n${show}\n\nReply "approve" to accept, or paste edits as bullets.`
+          : `已更新本节内容。请确认是否通过，或继续修改：\n\n${show}\n\n回复“确认”通过，或用项目符号直接贴出修改。`;
+
+    const updatedAgentState = isReadyToSave
+      ? { ...nextAgentState, outlineStatus: "ready_to_save" }
+      : nextAgentState;
+    const actionData = isReadyToSave
+      ? {
+          classId: existingAgentState.outlineClassId,
+          requirements,
+          chapters: updatedChapters,
+          language,
+          agentState: updatedAgentState,
+        }
+      : null;
 
     const aiMessage = new AIMessage({
       content: reply,
@@ -2427,10 +2862,10 @@ export async function teacherReactAgentNode(
         metadata: {
           ...(state.metadata || {}),
           intent: "react_agent",
-          agentState: nextAgentState,
-          requiresDatabaseAction: false,
-          actionType: null,
-          actionData: null,
+          agentState: updatedAgentState,
+          requiresDatabaseAction: isReadyToSave,
+          actionType: isReadyToSave ? "save_class_outline" : null,
+          actionData,
         },
       },
     });
@@ -2441,17 +2876,17 @@ export async function teacherReactAgentNode(
       metadata: {
         ...(state.metadata || {}),
         intent: "react_agent",
-        agentState: nextAgentState,
-        requiresDatabaseAction: false,
-        actionType: null,
-        actionData: null,
+        agentState: updatedAgentState,
+        requiresDatabaseAction: isReadyToSave,
+        actionType: isReadyToSave ? "save_class_outline" : null,
+        actionData,
         timestamp: new Date().toISOString(),
       },
       currentWorkflow: {
         type: "react_agent",
         status: "active",
-        step: "ask_user",
-        data: { phase: "outline_review" },
+        step: isReadyToSave ? "propose_tool" : "ask_user",
+        data: { phase: isReadyToSave ? "save_outline" : "outline_review" },
       },
     };
   }

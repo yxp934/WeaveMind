@@ -263,7 +263,7 @@ Reply in the user's language; keep the system text in English. Do not wrap in co
     课程创建: "course_creation",
     大纲生成: "outline_generation",
     作业创建: "assignment_creation",
-    A2A优化: "a2a_optimization",
+    协作优化: "a2a_optimization",
       内容生成: "content_generation",
       继续工作流: "continue_workflow",
       通用对话: "general_chat",
@@ -397,7 +397,7 @@ export function routeDecisionNode(state: ChatbotState): string {
     case "作业创建":
       return "assignment_creation";
     case "a2a_optimization":
-    case "A2A优化":
+    case "协作优化":
       return "a2a_optimization";
     case "content_generation":
     case "内容生成":

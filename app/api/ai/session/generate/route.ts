@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Session not found or access denied' }, { status: 404 })
     }
 
-    // Check if A2A generation already exists
+    // Check if session generation already exists
     const { data: existingGeneration } = await supabase
       .from('a2a_session_generations')
       .select('*')
@@ -41,12 +41,12 @@ export async function POST(req: Request) {
 
     if (existingGeneration) {
       return NextResponse.json({
-        error: 'A2A generation already in progress',
+        error: 'Session content generation already in progress',
         generation: existingGeneration
       }, { status: 400 })
     }
 
-    // Create A2A generation record
+    // Create generation record
     const { data: generation, error: createError } = await supabase
       .from('a2a_session_generations')
       .insert({
@@ -59,8 +59,8 @@ export async function POST(req: Request) {
       .single()
 
     if (createError) {
-      console.error('Error creating A2A generation:', createError)
-      return NextResponse.json({ error: 'Failed to start A2A generation' }, { status: 500 })
+      console.error('Error creating session generation:', createError)
+      return NextResponse.json({ error: 'Failed to start session content generation' }, { status: 500 })
     }
 
     // Update generation status to running
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       .update({ status: 'running' })
       .eq('id', generation.id)
 
-    // Start A2A generation process
+    // Start session generation process
     const result = await runA2AGeneration({
       session,
       requirements,
@@ -95,11 +95,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: result.success,
       generation: finalGeneration,
-      message: result.success ? 'A2A generation completed' : 'A2A generation failed'
+      message: result.success ? 'Session content generation completed' : 'Session content generation failed'
     })
 
   } catch (error: any) {
-    console.error('A2A session generation error:', error)
+    console.error('Session generation error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to generate session' },
       { status: 500 }
@@ -123,7 +123,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get latest A2A generation for this session
+    // Get latest generation for this session
     const { data: generation, error } = await supabase
       .from('a2a_session_generations')
       .select('*')
@@ -139,7 +139,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ generation })
   } catch (error: any) {
-    console.error('Get A2A generation error:', error)
+    console.error('Get session generation error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to get generation status' },
       { status: 500 }
@@ -265,7 +265,7 @@ let builder_feedback = []
     }
 
   } catch (error: any) {
-    console.error('A2A generation process error:', error)
+    console.error('Session generation process error:', error)
     return {
       success: false,
       current_iteration,

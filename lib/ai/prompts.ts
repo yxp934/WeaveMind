@@ -391,6 +391,15 @@ export interface A2AContext {
   scheduledDate: string
   previousSessionsSummary?: string
   conversationContext?: string
+  courseInfo?: {
+    summary?: string
+    keyConcepts?: string[]
+    learningObjectives?: string[]
+    teachingMethod?: string
+    targetAudience?: string
+    difficultyLevel?: string
+    sessionContexts?: Array<Record<string, any>>
+  }
   scheduleContext?: {
     class_topic?: string | null
     target_audience?: string | null
@@ -419,11 +428,22 @@ export function buildTeacherAgentPrompt(context: A2AContext, iteration: number, 
 ` : ''
 
   // Detect language from context (check if content contains Chinese characters)
-  const contextText = `${context.className} ${context.classDescription} ${context.sessionTitle} ${context.sessionDescription} ${context.conversationContext || ''}`
+  const contextText = `${context.className} ${context.classDescription} ${context.sessionTitle} ${context.sessionDescription} ${context.conversationContext || ''} ${context.courseInfo?.summary || ''} ${(context.courseInfo?.keyConcepts || []).join(' ')} ${(context.courseInfo?.learningObjectives || []).join(' ')} ${context.courseInfo?.teachingMethod || ''} ${context.courseInfo?.targetAudience || ''} ${context.courseInfo?.difficultyLevel || ''}`
   const hasChinese = /[\u4e00-\u9fa5]/.test(contextText)
   const languageInstruction = hasChinese
     ? '**语言要求：** 请使用中文生成所有内容。'
     : '**Language Requirement:** Generate all content in English.'
+
+  const courseInfoBlock = context.courseInfo ? `**COURSE INFO LIBRARY:**
+- Summary: ${context.courseInfo.summary || 'Not specified'}
+- Key Concepts: ${(context.courseInfo.keyConcepts || []).join(', ') || 'Not specified'}
+- Learning Objectives: ${(context.courseInfo.learningObjectives || []).join('; ') || 'Not specified'}
+- Teaching Method: ${context.courseInfo.teachingMethod || 'Not specified'}
+- Target Audience: ${context.courseInfo.targetAudience || 'Not specified'}
+- Difficulty Level: ${context.courseInfo.difficultyLevel || 'Not specified'}
+- Session Contexts: ${context.courseInfo.sessionContexts ? JSON.stringify(context.courseInfo.sessionContexts) : 'Not specified'}
+
+` : ''
 
   const basePrompt = `You are an expert educational content creator designing learning materials for a class session.
 
@@ -435,7 +455,7 @@ ${languageInstruction}
 - Class Name: ${context.className}
 - Class Description: ${context.classDescription}
 
-${scheduleContextInfo}**SESSION CONTEXT:**
+${scheduleContextInfo}${courseInfoBlock}**SESSION CONTEXT:**
 - Session Number: ${context.sessionNumber}
 - Session Title: ${context.sessionTitle}
 - Session Description: ${context.sessionDescription}
@@ -550,11 +570,15 @@ Generate the IMPROVED content incorporating all feedback.`
  */
 export function buildStudentAgentPrompt(context: A2AContext, iteration: number): string {
   // Detect language from context
-  const contextText = `${context.className} ${context.classDescription} ${context.sessionTitle} ${context.sessionDescription} ${context.conversationContext || ''}`
+  const contextText = `${context.className} ${context.classDescription} ${context.sessionTitle} ${context.sessionDescription} ${context.conversationContext || ''} ${context.courseInfo?.summary || ''} ${(context.courseInfo?.keyConcepts || []).join(' ')} ${(context.courseInfo?.learningObjectives || []).join(' ')} ${context.courseInfo?.teachingMethod || ''} ${context.courseInfo?.targetAudience || ''} ${context.courseInfo?.difficultyLevel || ''}`
   const hasChinese = /[\u4e00-\u9fa5]/.test(contextText)
   const languageNote = hasChinese
     ? '(请使用中文提供反馈)'
     : '(Please provide feedback in English)'
+  const targetAudience =
+    context.scheduleContext?.target_audience ||
+    context.courseInfo?.targetAudience ||
+    'general learner'
 
   return `You are a CRITICAL and DEMANDING student quality auditor reviewing learning content for Session ${context.sessionNumber}: "${context.sessionTitle}". ${languageNote}
 
@@ -562,7 +586,7 @@ export function buildStudentAgentPrompt(context: A2AContext, iteration: number):
 You are NOT a friendly reviewer - you are a strict quality auditor whose job is to find problems. Your feedback directly impacts whether students will actually learn effectively. Be HARSH but FAIR.
 
 **YOUR BACKGROUND:**
-You represent a typical student (${context.scheduleContext?.target_audience || 'general learner'}) who:
+You represent a typical student (${targetAudience}) who:
 - Has limited attention span and gets bored with dry content
 - Gets frustrated when explanations assume too much prior knowledge
 - Needs concrete examples, not abstract descriptions
@@ -590,7 +614,7 @@ You represent a typical student (${context.scheduleContext?.target_audience || '
    - Does it assume knowledge that wasn't taught yet?
    - Is it too easy/boring for engaged students?
    - Is it too hard/frustrating for struggling students?
-   - Does the progression match ${context.scheduleContext?.target_audience || 'the target audience'}?
+   - Does the progression match ${targetAudience}?
 
 3. **ENGAGEMENT** (1-10): Score 7+ ONLY if genuinely interesting
    - Would a student stay focused or zone out?

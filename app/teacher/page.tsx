@@ -19,11 +19,23 @@ export default async function TeacherDashboard() {
     .eq('id', user.id)
     .maybeSingle();
 
+  const { data: orgMembership } = await supabase
+    .from('organization_members')
+    .select('organization:organizations(name)')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
   const displayName = profile?.full_name || user.user_metadata?.full_name || 'Teacher';
   const avatarUrl = profile?.avatar_url
     || user.user_metadata?.avatar_url
     || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'Teacher')}&background=B882B1&color=fff`;
-  const organizationName = profile?.organization || user.user_metadata?.organization || 'Your Organization';
+  const organizationName =
+    orgMembership?.organization?.name ||
+    profile?.organization ||
+    user.user_metadata?.organization ||
+    'Your Organization';
 
   // Fetch classes where user is a teacher
   const { data: classesData, error: classesError } = await supabase

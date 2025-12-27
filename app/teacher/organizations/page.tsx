@@ -8,9 +8,8 @@ import { createClient } from "@/lib/supabase/client"
 interface Organization {
   id: string;
   name: string;
-  description: string | null;
+  slug: string;
   created_at: string;
-  updated_at: string;
 }
 
 export default function OrganizationsPage() {
@@ -29,7 +28,7 @@ export default function OrganizationsPage() {
           return
         }
         setUser(user)
-        await loadOrganizations()
+        await loadOrganizations(user.id)
       } catch (err) {
         console.error("Error:", err)
         router.push("/auth/login")
@@ -40,11 +39,22 @@ export default function OrganizationsPage() {
     checkUser()
   }, [router, supabase])
 
-  const loadOrganizations = async () => {
+  const loadOrganizations = async (userId: string) => {
     try {
-      // Load organizations from database
-      // For now, show empty state
-      setOrganizations([])
+      const { data, error } = await supabase
+        .from("organization_members")
+        .select(
+          "organization_id, organization:organizations(id,name,slug,created_at)",
+        )
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true })
+
+      if (error) throw error
+
+      const normalized = (data || [])
+        .map((row: any) => row.organization)
+        .filter(Boolean)
+      setOrganizations(normalized)
     } catch (error) {
       console.error("Error loading organizations:", error)
     }
@@ -117,14 +127,12 @@ export default function OrganizationsPage() {
                       <Building2 className="h-8 w-8 text-green-600" />
                     </div>
                     <div className="ml-4 flex-1">
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {org.name}
-                      </h3>
-                      {org.description && (
-                        <p className="mt-1 text-sm text-gray-500">
-                          {org.description}
-                        </p>
-                      )}
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {org.name}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {org.slug}
+                  </p>
                     </div>
                   </div>
                   <div className="mt-6 flex items-center space-x-4 text-sm text-gray-500">

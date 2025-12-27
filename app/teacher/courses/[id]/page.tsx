@@ -3,7 +3,6 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { AIGenerationPanel } from "@/components/ai/ai-generation-panel"
-import { CourseAIAssistantWrapper } from "@/components/ai/course-ai-assistant-wrapper"
 import { CourseEditorAssistantWrapper } from "@/components/ai/course-editor-assistant-wrapper"
 
 export default async function CourseDetailPage({
@@ -164,4 +163,3 @@ export default async function CourseDetailPage({
     </div>
   )
 }
-

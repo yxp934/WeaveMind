@@ -113,7 +113,7 @@ export default function NewOrganizationPage() {
                 onChange={(e) => setSlug(e.target.value)}
                 required
                 placeholder="my-school"
-                pattern="^[a-z0-9-]+$"
+                pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
               />
               <p className="text-sm text-gray-500 mt-1">
                 Used in URLs. Only lowercase letters, numbers, and hyphens.
@@ -139,4 +139,3 @@ export default function NewOrganizationPage() {
     </div>
   )
 }
-

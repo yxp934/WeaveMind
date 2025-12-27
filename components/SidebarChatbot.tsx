@@ -48,6 +48,61 @@ interface ToolCall {
   error?: string;
 }
 
+const TOOL_DISPLAY_NAMES: Record<
+  string,
+  { zh: string; en: string }
+> = {
+  a2a_session_generate_and_save: {
+    zh: "协作生成并保存课次内容",
+    en: "Collaborative session generation",
+  },
+  a2a_session_generation: {
+    zh: "协作生成课次内容",
+    en: "Collaborative session generation",
+  },
+  save_session_content: {
+    zh: "保存课次内容",
+    en: "Save session content",
+  },
+  generate_session_outline_draft: {
+    zh: "生成课次大纲草稿",
+    en: "Generate session outline draft",
+  },
+  generate_class_outline_draft: {
+    zh: "生成班级大纲草稿",
+    en: "Generate class outline draft",
+  },
+  save_class_outline: {
+    zh: "保存班级大纲",
+    en: "Save class outline",
+  },
+  update_session_descriptions: {
+    zh: "更新课次描述",
+    en: "Update session descriptions",
+  },
+  create_sessions_batch: {
+    zh: "创建课次",
+    en: "Create sessions",
+  },
+  entity_management: {
+    zh: "管理班级/课次",
+    en: "Manage class/session",
+  },
+};
+
+const normalizeToolName = (toolName: string) =>
+  toolName
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-z0-9]+/gi, "_")
+    .toLowerCase();
+
+const getToolDisplayName = (toolName: string, locale: "zh" | "en") => {
+  const normalized = normalizeToolName(toolName);
+  const entry = TOOL_DISPLAY_NAMES[normalized];
+  if (!entry) return toolName;
+  return locale === "zh" ? entry.zh : entry.en;
+};
+
 const getToolBadgeIcon = (toolName: string) => {
   const normalized = toolName.toLowerCase();
   if (normalized.includes("a2a")) return Sparkles;
@@ -125,6 +180,12 @@ export default function SidebarChatbot({
   const [selectedContexts, setSelectedContexts] = useState<ContextItem[]>(
     () => initialSelectedContexts || [],
   );
+  const displayLocale = useMemo<"zh" | "en">(() => {
+    if (typeof navigator !== "undefined" && navigator.language?.startsWith("zh")) {
+      return "zh";
+    }
+    return "en";
+  }, []);
 
   useEffect(() => {
     if (initialSelectedContexts?.length) {
@@ -509,7 +570,7 @@ export default function SidebarChatbot({
                                 );
                               })()}
                               <span className="text-[#101828]">
-                                {toolCall.tool}
+                                {getToolDisplayName(toolCall.tool, displayLocale)}
                               </span>
                             </div>
                           ))}
@@ -525,9 +586,14 @@ export default function SidebarChatbot({
                         message.metadata?.pendingToolCall && (
                           <div className="mt-3 pt-3 border-t border-[rgba(184,130,177,0.25)]">
                             <p className="text-[12px] text-[#6a7282] mb-2">
-                              This action requires confirmation:{" "}
+                              {displayLocale === "zh"
+                                ? "该操作需要确认："
+                                : "This action requires confirmation:"}{" "}
                               <span className="font-medium text-[#101828]">
-                                {message.metadata.pendingToolCall.toolName}
+                                {getToolDisplayName(
+                                  message.metadata.pendingToolCall.toolName,
+                                  displayLocale,
+                                )}
                               </span>
                             </p>
                             <button

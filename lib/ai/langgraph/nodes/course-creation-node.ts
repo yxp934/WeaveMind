@@ -1098,7 +1098,7 @@ ${result.requirements?.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n"
 }
 
 /**
- * A2A优化节点 - 纯AI模型驱动版本
+ * 协作优化节点 - 纯AI模型驱动版本
  * 使用messages格式传递完整对话历史
  */
 export async function a2aOptimizationNode(
@@ -1114,7 +1114,7 @@ export async function a2aOptimizationNode(
       }
     });
 
-    const systemPrompt = `你是一个专业的A2A（AI对AI）内容优化助手。你需要基于完整的对话历史和用户的需求，使用A2A方式优化课程内容质量。
+    const systemPrompt = `你是一个专业的协作评审内容优化助手。你需要基于完整的对话历史和用户的需求，使用协作方式优化课程内容质量。
 
 ## 当前状态
 - 用户角色：${state.userRole}
@@ -1124,11 +1124,11 @@ export async function a2aOptimizationNode(
 ## 你的任务
 1. 理解完整的对话历史
 2. 分析用户已经提供的所有信息
-3. 使用A2A方式优化内容：Builder Agent生成内容，Critic Agent提供反馈
+3. 使用协作方式优化内容：生成改进版本并提供反馈
 4. 迭代优化直到满意
 
 ## 输出格式（严格TOON）
-message: A2A优化说明
+message: 协作优化说明
 originalContent: 原始内容
 optimizedContent: 优化后的内容
 improvements: 具体的改进点（字符串数组，最多4条）
@@ -1163,7 +1163,7 @@ nextActions: 下一步操作（字符串数组，最多3个）
       metadata?: Record<string, unknown>;
     }>(text);
 
-    // A2A优化过程：teacher_agent和student_agent交互3次
+    // 协作优化过程：教师视角与学生视角交互3次
     let optimizedContent = result.originalContent || "待优化内容";
     const improvements = [];
     const iterations = [];
@@ -1171,7 +1171,7 @@ nextActions: 下一步操作（字符串数组，最多3个）
     // 生成3次迭代优化
     for (let i = 1; i <= 3; i++) {
       // Teacher Agent 生成改进版本
-      const teacherIteration = `**Teacher Agent - 第${i}次迭代：**
+      const teacherIteration = `**教师视角 - 第${i}次迭代：**
       基于反馈，我对内容进行了以下优化：
       - 改进了结构清晰度
       - 增强了实用性
@@ -1181,7 +1181,7 @@ nextActions: 下一步操作（字符串数组，最多3个）
       优化后的内容：${optimizedContent}`;
 
       // Student Agent 评价和改进建议
-      const studentFeedback = `**Student Agent - 第${i}次反馈：**
+      const studentFeedback = `**学生视角 - 第${i}次反馈：**
       作为学生，我认为当前内容：
       ✅ 优点：${i === 1 ? "基础结构清晰" : i === 2 ? "内容更加详细" : "已经很完善了"}
       🔧 需要改进：${i === 1 ? "需要更多实例和练习" : i === 2 ? "可以增加互动环节" : "基本满意，只需要微调"}
@@ -1208,7 +1208,7 @@ nextActions: 下一步操作（字符串数组，最多3个）
     }
 
     // 更新结果
-    result.message = `🚀 A2A内容优化完成！我使用了teacher_agent和student_agent进行了3轮迭代优化：
+    result.message = `🚀 协作内容优化完成！我使用教师视角与学生视角进行了3轮迭代优化：
 
 **优化过程：**
 ${iterations
@@ -1235,18 +1235,18 @@ ${improvements.map((imp) => `- ${imp}`).join("\n")}
 
     result.optimizedContent = optimizedContent;
     result.improvements = improvements;
-    result.qualityScore = "8.5"; // A2A优化后的质量评分
+    result.qualityScore = "8.5"; // 协作优化后的质量评分
 
     result.metadata = {
       ...result.metadata,
       toolsUsed: ["a2a_optimization", "teacher_agent", "student_agent"],
       iterations: iterations,
       finalQualityScore: result.qualityScore,
-      requiresDatabaseAction: false, // A2A优化不需要数据库操作
+      requiresDatabaseAction: false, // 协作优化不需要数据库操作
     };
 
     const aiMessage = new AIMessage({
-      content: result.message || "A2A内容优化完成！",
+      content: result.message || "协作内容优化完成！",
       additional_kwargs: {
         originalContent: result.originalContent,
         optimizedContent: result.optimizedContent,
@@ -1429,7 +1429,7 @@ async function generalContinueNode(
 - course_creation - 课程创建
 - outline_generation - 大纲生成
 - assignment_creation - 作业创建
-- a2a_optimization - A2A优化
+- a2a_optimization - 协作优化
 - content_generation - 内容生成
 - unknown - 无法判断
 

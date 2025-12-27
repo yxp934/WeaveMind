@@ -241,8 +241,8 @@ const pollA2AStatus = async (
           role: "system",
           content:
             generation.status === "completed"
-              ? `A2A会话生成完成！共进行了${generation.current_iteration}轮迭代。`
-              : `A2A会话生成失败：${generation.error_message}`,
+              ? `课次内容协作生成完成！共进行了${generation.current_iteration}轮迭代。`
+              : `课次内容协作生成失败：${generation.error_message}`,
         });
         return;
       }
@@ -385,8 +385,8 @@ const DEFAULT_TOOLS: AITool[] = [
   },
   {
     id: "a2a_session",
-    name: "A2A会话生成",
-    description: "启动Agent-to-Agent内容优化",
+    name: "课次内容协作生成",
+    description: "启动协作式内容生成",
     icon: null,
     category: "workflow",
     maxIterations: 5,
@@ -564,11 +564,18 @@ export const useChatbotStore = create<ChatbotStore>()(
                 clearTimeout(timer);
               }
             };
-            let response: Response;
+            const retryWindowMs = Number(
+              process.env.NEXT_PUBLIC_CHAT_RETRY_WINDOW_MS ||
+                (isA2ATool ? 240_000 : isToolExecution ? 120_000 : 90_000),
+            );
+            const retryStart = Date.now();
+            let response: Response | null = null;
             let lastError: any = null;
-            for (let attempt = 1; attempt <= 5; attempt++) {
+            let attempt = 0;
+            while (Date.now() - retryStart < retryWindowMs) {
+              attempt += 1;
               try {
-                console.log(`[CHATBOT] Attempt ${attempt}/5: Fetching...`);
+                console.log(`[CHATBOT] Attempt ${attempt}: Fetching...`);
                 response = await runFetch();
                 console.log(`[CHATBOT] Response status:`, response.status);
                 lastError = null;
@@ -576,7 +583,6 @@ export const useChatbotStore = create<ChatbotStore>()(
               } catch (err) {
                 console.error(`[CHATBOT] Attempt ${attempt} failed:`, err);
                 lastError = err;
-                if (attempt >= 5) break;
                 await new Promise((r) => setTimeout(r, 5000));
               }
             }
@@ -1585,7 +1591,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           });
 
           if (!response.ok) {
-            throw new Error(`A2A会话启动失败: ${response.status}`);
+            throw new Error(`内容协作启动失败: ${response.status}`);
           }
 
           const data = await response.json();
@@ -1594,7 +1600,7 @@ export const useChatbotStore = create<ChatbotStore>()(
             // 添加成功消息
             addMessage({
               role: "system",
-              content: `A2A会话生成已开始，共${config.iterations || 3}轮迭代。`,
+              content: `课次内容协作生成已开始，共${config.iterations || 3}轮迭代。`,
               toolCalls: [
                 {
                   tool: "a2a_session_generation",
@@ -1621,15 +1627,15 @@ export const useChatbotStore = create<ChatbotStore>()(
             // 启动轮询
             pollA2AStatus(data.generation.id, get, set);
           } else {
-            throw new Error(data.error || "A2A会话生成失败");
+            throw new Error(data.error || "课次内容协作生成失败");
           }
         } catch (error) {
-          console.error("A2A会话启动失败:", error);
-          setError(error instanceof Error ? error.message : "A2A会话启动失败");
+          console.error("内容协作启动失败:", error);
+          setError(error instanceof Error ? error.message : "内容协作启动失败");
 
           addMessage({
             role: "system",
-            content: "A2A会话启动失败，请重试。",
+            content: "课次内容协作生成启动失败，请重试。",
             toolCalls: [
               {
                 tool: "a2a_session_generation",
@@ -1663,13 +1669,13 @@ export const useChatbotStore = create<ChatbotStore>()(
           );
 
           if (!response.ok) {
-            throw new Error(`获取A2A状态失败: ${response.status}`);
+            throw new Error(`获取协作生成状态失败: ${response.status}`);
           }
 
           const data = await response.json();
           return data.generation;
         } catch (error) {
-          console.error("获取A2A状态失败:", error);
+          console.error("获取协作生成状态失败:", error);
           throw error;
         }
       },
@@ -1678,7 +1684,7 @@ export const useChatbotStore = create<ChatbotStore>()(
         get().cancelWorkflow();
         get().addMessage({
           role: "system",
-          content: "A2A会话已取消。",
+          content: "课次内容协作生成已取消。",
         });
       },
 
