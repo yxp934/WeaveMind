@@ -198,5 +198,6 @@ export default async function TeacherDashboard() {
     upcomingSessions={upcomingSessions}
     assignments={assignments}
     teacherData={teacherData}
+    userId={user.id}
   />;
 }

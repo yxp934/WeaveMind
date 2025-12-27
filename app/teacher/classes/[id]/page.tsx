@@ -150,6 +150,7 @@ export default async function ClassDetailPage({
       sessions={sessions}
       assignments={assignments}
       teacherData={teacherData}
+      userId={user.id}
     />
   );
 }

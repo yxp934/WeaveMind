@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 
 interface SidebarChatbotProps {
   userRole?: "teacher" | "student" | "self-learner";
+  userId?: string;
   classId?: string;
   courseId?: string;
   initialSelectedContexts?: {
@@ -153,6 +154,7 @@ function Logo() {
 
 export default function SidebarChatbot({
   userRole = "teacher",
+  userId,
   classId,
   courseId,
   initialSelectedContexts,
@@ -167,6 +169,9 @@ export default function SidebarChatbot({
     sendMessage,
     clearMessages,
     updateMessage,
+    conversationId,
+    setConversationId,
+    reset,
   } = useChatbotStore();
 
   const [input, setInput] = useState("");
@@ -194,6 +199,15 @@ export default function SidebarChatbot({
       );
     }
   }, [initialSelectedContexts]);
+  useEffect(() => {
+    if (!userId) return;
+    if (conversationId && conversationId !== userId) {
+      reset();
+    }
+    if (conversationId !== userId) {
+      setConversationId(userId);
+    }
+  }, [conversationId, reset, setConversationId, userId]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const contextButtonRef = useRef<HTMLButtonElement>(null);
 

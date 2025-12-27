@@ -45,13 +45,15 @@ interface ClassDetailClientProps {
     name: string;
     organization: string;
   };
+  userId: string;
 }
 
 export function ClassDetailClient({
   classData,
   sessions,
   assignments,
-  teacherData
+  teacherData,
+  userId,
 }: ClassDetailClientProps) {
   const router = useRouter();
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -319,6 +321,7 @@ export function ClassDetailClient({
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
             <SidebarChatbot
               userRole="teacher"
+              userId={userId}
               classId={classData.id}
               initialSelectedContexts={[
                 { id: classData.id, title: classData.title, type: "class" },

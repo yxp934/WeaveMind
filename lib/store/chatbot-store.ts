@@ -389,7 +389,6 @@ const DEFAULT_TOOLS: AITool[] = [
     description: "启动协作式内容生成",
     icon: null,
     category: "workflow",
-    maxIterations: 5,
   },
   {
     id: "workflow_manager",

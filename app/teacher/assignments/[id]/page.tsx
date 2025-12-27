@@ -172,6 +172,7 @@ export default async function AssignmentDetailPage({
       submissions={transformedSubmissions}
       upcomingSessions={upcomingSessions}
       teacherData={teacherData}
+      userId={user.id}
     />
   );
 }

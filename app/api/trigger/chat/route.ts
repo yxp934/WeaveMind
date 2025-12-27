@@ -169,21 +169,32 @@ function ensureConfirmationMetadata(
   userText?: string,
 ) {
   const base = metadata ? { ...metadata } : {};
+  const hasActionData =
+    base.actionData &&
+    typeof base.actionData === "object" &&
+    !Array.isArray(base.actionData);
   const actionType =
     base.actionType ||
-    (base.actionData?.action && base.actionData?.entity
+    (hasActionData && base.actionData?.action && base.actionData?.entity
       ? "entity_management"
       : undefined);
-  const adjustedActionData = normalizeActionData(base.actionData, userText);
+  const resolvedActionType = actionType || base.pendingToolCall?.toolName;
+  const shouldNormalize = Boolean(
+    base.requiresDatabaseAction || base.pendingToolCall || hasActionData
+  );
+  const adjustedActionData = shouldNormalize
+    ? normalizeActionData(base.actionData, userText)
+    : base.actionData;
   const requiresDatabaseAction = Boolean(
-    (base.requiresDatabaseAction || actionType) && actionType
+    resolvedActionType &&
+      (base.requiresDatabaseAction || base.pendingToolCall || actionType)
   );
 
   if (!requiresDatabaseAction) {
     return {
       ...base,
-      actionType,
-      actionData: adjustedActionData ?? base.actionData,
+      actionType: resolvedActionType,
+      actionData: adjustedActionData,
     };
   }
 
@@ -191,7 +202,7 @@ function ensureConfirmationMetadata(
     base.pendingToolCallId || base.pendingToolCall?.id || crypto.randomUUID();
   const pendingToolCallBase = base.pendingToolCall || {
     id: pendingToolCallId,
-    toolName: actionType,
+    toolName: resolvedActionType,
     input: adjustedActionData || {},
   };
   const input =
@@ -204,7 +215,7 @@ function ensureConfirmationMetadata(
   const pendingToolCall = {
     ...pendingToolCallBase,
     id: pendingToolCallBase.id || pendingToolCallId,
-    toolName: pendingToolCallBase.toolName || actionType,
+    toolName: pendingToolCallBase.toolName || resolvedActionType,
     input: normalizedInput,
   };
 

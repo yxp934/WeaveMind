@@ -796,6 +796,24 @@ async function generateSessionTitleDrafts(params: {
   return parseSessionDrafts(text);
 }
 
+function buildFallbackSessionDrafts(params: {
+  className: string;
+  sessionCount: number;
+  preferredLanguage: "zh" | "en";
+  startIndex?: number;
+}): Array<{ idx?: number; title: string; description?: string }> {
+  const { className, sessionCount, preferredLanguage, startIndex = 1 } = params;
+  const drafts: Array<{ idx?: number; title: string; description?: string }> = [];
+  for (let idx = startIndex; idx <= sessionCount; idx += 1) {
+    const title =
+      preferredLanguage === "zh"
+        ? `${className} 第${idx}讲`
+        : `${className} - Session ${idx}`;
+    drafts.push({ idx, title });
+  }
+  return drafts;
+}
+
 function getLastToolExecution(messages: any[]): {
   toolName: string | null;
   success: boolean | null;
@@ -1445,62 +1463,59 @@ export async function teacherReactAgentNode(
           updated.sessionCount - updated.sessionsDraft.length,
         );
         if (missing > 0) {
-          if (
-            !updated.sessionTitlesGenerated &&
-            updated.sessionsDraft.length === 0 &&
-            !looksLikeSessionDraft &&
-            !isApproval(userText) &&
-            updated.className
-          ) {
-            const generated = await generateSessionTitleDrafts({
-              className: updated.className,
-              classDescription: updated.classDescription,
-              courseInfo: updated.courseInfo,
-              sessionCount: updated.sessionCount,
-              preferredLanguage,
-            });
-            if (generated.length > 0) {
-              updated.sessionsDraft = mergeSessionDrafts(
-                updated.sessionsDraft,
-                generated,
-                updated.sessionCount,
-              );
-              updated.sessionTitlesGenerated = true;
-              const lines = updated.sessionsDraft
-                .map((draft: any, index: number) => {
-                  const idx = draft.idx || index + 1;
-                  const label =
-                    preferredLanguage === "zh"
-                      ? `第${idx}节`
-                      : `Session ${idx}`;
-                  const desc = draft.description ? ` - ${draft.description}` : "";
-                  return `- ${label}：${draft.title}${desc}`;
-                })
-                .join("\n");
-              const msg =
-                preferredLanguage === "zh"
-                  ? `我先根据班级信息生成了课次标题草案，请确认或修改：\n${lines}\n\n回复“确认”继续，或直接贴出修改。`
-                  : `I drafted session titles based on the class info. Please confirm or edit:\n${lines}\n\nReply "approve" to continue, or paste edits.`;
-              const withStatus = {
-                ...nextAgentState,
-                classCreation: updated,
-              };
-              const aiMessage = new AIMessage({
-                content: msg,
-                additional_kwargs: {
-                  metadata: {
-                    ...(state.metadata || {}),
-                    intent: "react_agent",
-                    agentState: withStatus,
-                    requiresDatabaseAction: false,
-                    actionType: null,
-                    actionData: null,
-                  },
-                },
+          if (updated.className) {
+            let generated: Array<{ idx?: number; title: string; description?: string }> = [];
+            if (!updated.sessionTitlesGenerated && !looksLikeSessionDraft) {
+              try {
+                generated = await generateSessionTitleDrafts({
+                  className: updated.className,
+                  classDescription: updated.classDescription,
+                  courseInfo: updated.courseInfo,
+                  sessionCount: updated.sessionCount,
+                  preferredLanguage,
+                });
+              } catch (error) {
+                generated = [];
+              }
+            }
+
+            if (generated.length === 0) {
+              generated = buildFallbackSessionDrafts({
+                className: updated.className,
+                sessionCount: updated.sessionCount,
+                preferredLanguage,
+                startIndex: updated.sessionsDraft.length + 1,
               });
-              return {
-                ...state,
-                messages: [...state.messages, aiMessage],
+            }
+
+            updated.sessionsDraft = mergeSessionDrafts(
+              updated.sessionsDraft,
+              generated,
+              updated.sessionCount,
+            );
+            updated.sessionTitlesGenerated = true;
+            const lines = updated.sessionsDraft
+              .map((draft: any, index: number) => {
+                const idx = draft.idx || index + 1;
+                const label =
+                  preferredLanguage === "zh"
+                    ? `第${idx}节`
+                    : `Session ${idx}`;
+                const desc = draft.description ? ` - ${draft.description}` : "";
+                return `- ${label}：${draft.title}${desc}`;
+              })
+              .join("\n");
+            const msg =
+              preferredLanguage === "zh"
+                ? `我先整理了课次标题草案，请确认或修改：\n${lines}\n\n回复“确认”继续，或直接贴出修改。`
+                : `I drafted session titles. Please confirm or edit:\n${lines}\n\nReply "approve" to continue, or paste edits.`;
+            const withStatus = {
+              ...nextAgentState,
+              classCreation: updated,
+            };
+            const aiMessage = new AIMessage({
+              content: msg,
+              additional_kwargs: {
                 metadata: {
                   ...(state.metadata || {}),
                   intent: "react_agent",
@@ -1508,21 +1523,33 @@ export async function teacherReactAgentNode(
                   requiresDatabaseAction: false,
                   actionType: null,
                   actionData: null,
-                  timestamp: new Date().toISOString(),
                 },
-                currentWorkflow: {
-                  type: "react_agent",
-                  status: "active",
-                  step: "ask_user",
-                  data: { phase: "review_session_titles" },
-                },
-              };
-            }
+              },
+            });
+            return {
+              ...state,
+              messages: [...state.messages, aiMessage],
+              metadata: {
+                ...(state.metadata || {}),
+                intent: "react_agent",
+                agentState: withStatus,
+                requiresDatabaseAction: false,
+                actionType: null,
+                actionData: null,
+                timestamp: new Date().toISOString(),
+              },
+              currentWorkflow: {
+                type: "react_agent",
+                status: "active",
+                step: "ask_user",
+                data: { phase: "review_session_titles" },
+              },
+            };
           }
           const ask =
             preferredLanguage === "zh"
-              ? `请再提供 ${missing} 节课的标题（可选描述）。建议每行一个，例如：\n- 第1节：...\n- 第2节：...`
-              : `Please provide ${missing} more session title(s) (optional description). One per line, for example:\n- Session 1: ...\n- Session 2: ...`;
+              ? "我还需要班级名称才能生成课次安排。请先告诉我班级名称。"
+              : "I need a class name before drafting session titles. Please share the class name.";
           const aiMessage = new AIMessage({
             content: ask,
             additional_kwargs: {

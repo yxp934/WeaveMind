@@ -124,6 +124,7 @@ export default async function SessionDetailPage({
       sessionData={sessionDisplayData}
       components={components}
       teacherData={teacherData}
+      userId={user.id}
     />
   );
 }

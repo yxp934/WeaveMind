@@ -58,6 +58,7 @@ interface TeacherDashboardClientProps {
     name: string;
     organization: string;
   };
+  userId: string;
 }
 
 export function TeacherDashboardClient({
@@ -65,6 +66,7 @@ export function TeacherDashboardClient({
   upcomingSessions,
   assignments,
   teacherData,
+  userId,
 }: TeacherDashboardClientProps) {
   const router = useRouter();
   const classScrollRef = useRef<HTMLDivElement>(null);
@@ -210,6 +212,7 @@ export function TeacherDashboardClient({
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
             <SidebarChatbot
               userRole="teacher"
+              userId={userId}
               contexts={{
                 classes: classes.map((c) => ({
                   id: c.id,

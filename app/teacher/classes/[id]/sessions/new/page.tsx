@@ -62,6 +62,7 @@ export default async function NewSessionPage({
       classData={classData}
       nextSessionNumber={nextSessionNumber}
       teacherData={teacherData}
+      userId={user.id}
     />
   );
 }

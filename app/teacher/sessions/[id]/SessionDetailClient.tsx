@@ -39,12 +39,14 @@ interface SessionDetailClientProps {
     name: string;
     organization: string;
   };
+  userId: string;
 }
 
 export function SessionDetailClient({
   sessionData,
   components,
-  teacherData
+  teacherData,
+  userId,
 }: SessionDetailClientProps) {
   const router = useRouter();
 
@@ -364,6 +366,7 @@ export function SessionDetailClient({
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
             <SidebarChatbot
               userRole="teacher"
+              userId={userId}
               classId={sessionData.classId}
               initialSelectedContexts={[
                 {

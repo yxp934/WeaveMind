@@ -20,12 +20,14 @@ interface NewSessionClientProps {
     name: string;
     organization: string;
   };
+  userId: string;
 }
 
 export function NewSessionClient({
   classData,
   nextSessionNumber,
-  teacherData
+  teacherData,
+  userId,
 }: NewSessionClientProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -245,6 +247,7 @@ export function NewSessionClient({
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
             <SidebarChatbot
               userRole="teacher"
+              userId={userId}
               classId={classData.id}
               contexts={{
                 classes: [{ id: classData.id, title: classData.name }],

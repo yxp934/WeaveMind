@@ -71,6 +71,99 @@ function extractConceptsFromComponents(components: any[]): string[] {
   return Array.from(new Set(concepts));
 }
 
+function normalizeComponentType(raw: any): "text" | "image" | "video" | "question" | "interactive" {
+  const type = String(raw || "").toLowerCase();
+  if (!type) return "text";
+  if (/(markdown|md|text|note|content)/i.test(type)) return "text";
+  if (/(question|quiz|mcq|multiple|choice)/i.test(type)) return "question";
+  if (/image/i.test(type)) return "image";
+  if (/video/i.test(type)) return "video";
+  if (/interactive/i.test(type)) return "interactive";
+  return "text";
+}
+
+function normalizeQuestionOptions(options: any): string[] {
+  if (Array.isArray(options)) {
+    return options.map((opt) => String(opt)).filter(Boolean);
+  }
+  if (typeof options === "string" && options.trim()) {
+    return options
+      .split(/\n|;/)
+      .map((opt) => opt.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeA2AComponent(component: any): {
+  type: "text" | "image" | "video" | "question" | "interactive";
+  content: Record<string, any>;
+} | null {
+  if (!component) return null;
+  const type = normalizeComponentType(component.type);
+  if (type === "question") {
+    const content = component.content || {};
+    const question =
+      content.question ||
+      component.question ||
+      content.prompt ||
+      component.prompt ||
+      "";
+    const options = normalizeQuestionOptions(
+      content.options || component.options || content.choices || component.choices,
+    );
+    const correct =
+      content.correct_answer ??
+      component.correct_answer ??
+      content.answer ??
+      component.answer ??
+      0;
+    let correctIndex = 0;
+    if (Number.isFinite(Number(correct))) {
+      correctIndex = Number(correct);
+    } else if (typeof correct === "string") {
+      const trimmed = correct.trim();
+      if (/^[A-D]$/i.test(trimmed)) {
+        correctIndex = trimmed.toUpperCase().charCodeAt(0) - 65;
+      } else if (/^\d+$/.test(trimmed)) {
+        correctIndex = Number(trimmed);
+      }
+    }
+    const explanation =
+      content.explanation || component.explanation || content.reasoning || "";
+    return {
+      type,
+      content: {
+        question: String(question || "").trim(),
+        options,
+        correct_answer: correctIndex,
+        explanation: explanation ? String(explanation) : "",
+      },
+    };
+  }
+
+  const rawContent =
+    component.content ??
+    component.text ??
+    component.markdown ??
+    component.md ??
+    component.body ??
+    "";
+  if (typeof rawContent === "object" && rawContent !== null && type !== "text") {
+    return { type, content: rawContent };
+  }
+  const text =
+    typeof rawContent === "string"
+      ? rawContent
+      : JSON.stringify(rawContent ?? "");
+  return {
+    type,
+    content: {
+      text: String(text || "").trim(),
+    },
+  };
+}
+
 async function runWithRetry<T>(
   fn: () => Promise<T>,
   maxAttempts = 5,
@@ -2545,25 +2638,59 @@ ${actionData?.teacherNotes || ""}`;
           throw error;
         }
 
-        const { data: chapter } = await dbClient
-          .from("chapters")
-          .insert({
-            class_id: classId,
-            course_id: session.course_id || null,
-            title: session.title,
-            description: session.description || "",
-            order_index: session.session_number,
-          })
-          .select()
-          .single();
-
-        if (!chapter?.id) {
-          throw new Error("Failed to create chapter for session content");
+        let chapterId: string | null = session.chapter_id || null;
+        if (chapterId) {
+          const { data: existingChapter } = await dbClient
+            .from("chapters")
+            .select("id")
+            .eq("id", chapterId)
+            .maybeSingle();
+          if (!existingChapter?.id) chapterId = null;
         }
 
-        const componentsToInsert = finalComponents.map(
+        if (chapterId) {
+          await dbClient
+            .from("chapters")
+            .update({
+              title: session.title,
+              description: session.description || "",
+              order_index: session.session_number,
+            })
+            .eq("id", chapterId);
+
+          await dbClient
+            .from("components")
+            .delete()
+            .eq("chapter_id", chapterId);
+        } else {
+          const { data: chapter } = await dbClient
+            .from("chapters")
+            .insert({
+              class_id: classId,
+              course_id: session.course_id || null,
+              title: session.title,
+              description: session.description || "",
+              order_index: session.session_number,
+            })
+            .select()
+            .single();
+
+          if (!chapter?.id) {
+            throw new Error("Failed to create chapter for session content");
+          }
+          chapterId = chapter.id;
+        }
+
+        const normalizedComponents = finalComponents
+          .map(normalizeA2AComponent)
+          .filter(Boolean) as Array<{ type: string; content: Record<string, any> }>;
+        if (normalizedComponents.length === 0) {
+          throw new Error("No valid components to save for session content");
+        }
+
+        const componentsToInsert = normalizedComponents.map(
           (component: any, idx: number) => ({
-            chapter_id: chapter.id,
+            chapter_id: chapterId,
             type: component.type || "text",
             content: component.content || {},
             order_index: idx,
@@ -2581,7 +2708,7 @@ ${actionData?.teacherNotes || ""}`;
         await dbClient
           .from("course_sessions")
           .update({
-            chapter_id: chapter.id,
+            chapter_id: chapterId,
             content_generated: true,
             updated_at: new Date().toISOString(),
           })
@@ -2651,7 +2778,7 @@ ${actionData?.teacherNotes || ""}`;
             "✅ 课次内容已生成并写入数据库。现在可以在该课次中查看完整组件内容。",
           classId,
           sessionId,
-          chapterId: chapter.id,
+          chapterId,
           toolsUsed: ["a2a_session_generation", "save_session_content"],
           agentState: nextAgentState,
         };

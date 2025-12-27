@@ -50,13 +50,15 @@ interface AssignmentDetailClientProps {
     name: string;
     organization: string;
   };
+  userId: string;
 }
 
 export function AssignmentDetailClient({
   assignmentData,
   submissions,
   upcomingSessions,
-  teacherData
+  teacherData,
+  userId,
 }: AssignmentDetailClientProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'graded' | 'ungraded'>('ungraded');
@@ -259,6 +261,7 @@ export function AssignmentDetailClient({
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
             <SidebarChatbot
               userRole="teacher"
+              userId={userId}
               classId={assignmentData.classId}
               initialSelectedContexts={[
                 {
