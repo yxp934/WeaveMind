@@ -1186,7 +1186,7 @@ export async function teacherReactAgentNode(
   // Deterministic class creation workflow (class -> sessions -> outline -> save).
   if (existingAgentState?.outlineStatus !== "reviewing") {
     const wantsCreateClass =
-      /(创建|新建|建立|开设|开班).*(班级|班|课程)/.test(userText) ||
+      /(创建|新建|建立|开设|开班|开办|开|办).*(班级|班|课程|课)/.test(userText) ||
       /(create|start).*(class|course)/i.test(userText);
     const activeCreation = existingAgentState?.classCreation;
     const isActive =
