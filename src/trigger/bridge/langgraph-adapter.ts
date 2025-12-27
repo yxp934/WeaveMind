@@ -68,6 +68,7 @@ export interface WorkflowRequest {
       id: string;
       title?: string;
     }>;
+    compressionContext?: any;
   };
 }
 

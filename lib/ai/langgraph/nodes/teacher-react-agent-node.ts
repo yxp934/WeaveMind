@@ -313,21 +313,36 @@ function parseSessionDrafts(
   const cnRe = /第\s*(\d+)\s*节\s*[:：]\s*([^\n；;]+)(?:[；;\n]|$)/g;
   for (const match of normalizedText.matchAll(cnRe)) {
     const idx = Number(match[1]);
-    const title = (match[2] || "").trim();
-    if (title) drafts.push({ idx, title });
+    const raw = (match[2] || "").trim();
+    if (raw) {
+      const [titlePart, descPart] = raw.split(/\s*[-—–]\s*/, 2);
+      const title = titlePart.trim();
+      const description = descPart?.trim();
+      if (title) drafts.push({ idx, title, description });
+    }
   }
 
   const enRe = /session\s*(\d+)\s*[:：-]\s*([^\n；;]+)(?:[；;\n]|$)/gi;
   for (const match of normalizedText.matchAll(enRe)) {
     const idx = Number(match[1]);
-    const title = (match[2] || "").trim();
-    if (title) drafts.push({ idx, title });
+    const raw = (match[2] || "").trim();
+    if (raw) {
+      const [titlePart, descPart] = raw.split(/\s*[-—–]\s*/, 2);
+      const title = titlePart.trim();
+      const description = descPart?.trim();
+      if (title) drafts.push({ idx, title, description });
+    }
   }
 
   const bullets = extractBullets(normalizedText);
   for (const b of bullets) {
     const cleaned = b.replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "").trim();
-    if (cleaned) drafts.push({ title: cleaned });
+    if (cleaned) {
+      const [titlePart, descPart] = cleaned.split(/\s*[-—–]\s*/, 2);
+      const title = titlePart.trim();
+      const description = descPart?.trim();
+      if (title) drafts.push({ title, description });
+    }
   }
 
   if (drafts.length === 0) {
@@ -340,7 +355,12 @@ function parseSessionDrafts(
         .replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "")
         .replace(/^session\s*\d+\s*[:：-]\s*/i, "")
         .trim();
-      if (cleaned) drafts.push({ title: cleaned });
+      if (cleaned) {
+        const [titlePart, descPart] = cleaned.split(/\s*[-—–]\s*/, 2);
+        const title = titlePart.trim();
+        const description = descPart?.trim();
+        if (title) drafts.push({ title, description });
+      }
     }
   }
 
@@ -444,6 +464,8 @@ AVAILABLE TOOLS:
 2. create_sessions_batch - Create multiple sessions for a class
 3. generate_class_outline_draft - Generate AI outlines for sessions
 4. save_class_outline - Save confirmed outlines to database
+5. generate_session_outline_draft - Generate outline for one session
+6. a2a_session_generate_and_save - Run A2A to generate session content and save
 
 RULES:
 - You can only propose ONE tool per turn
@@ -496,6 +518,11 @@ export async function teacherReactAgentNode(
     existingAgentState?.classCreation?.status &&
     existingAgentState.classCreation.status !== "done";
   const isOutlineReviewing = existingAgentState?.outlineStatus === "reviewing";
+  const isSessionOutlineReviewing =
+    existingAgentState?.sessionOutlineStatus === "reviewing";
+  const hasActiveSessionOutline =
+    existingAgentState?.sessionOutlineStatus &&
+    existingAgentState.sessionOutlineStatus !== "done";
   const alreadyRenderedToolId =
     typeof existingAgentState?.lastRenderedToolCallId === "string"
       ? existingAgentState.lastRenderedToolCallId
@@ -505,6 +532,8 @@ export async function teacherReactAgentNode(
     isContinuationMessage(userText) &&
     !hasActiveCreation &&
     !isOutlineReviewing &&
+    !isSessionOutlineReviewing &&
+    !hasActiveSessionOutline &&
     lastToolExecution.toolName &&
     typeof lastToolExecution.success === "boolean" &&
     lastToolExecution.confirmedToolCallId &&
@@ -559,6 +588,109 @@ export async function teacherReactAgentNode(
         status: "active",
         step: "ask_user",
         data: { phase: "post_tool_observation" },
+      },
+    };
+  }
+
+  const selectedClassId =
+    state.metadata?.selectedClassId ||
+    state.metadata?.lastCreatedClassId ||
+    null;
+  const selectedSessionId = state.metadata?.selectedSessionId || null;
+  const wantsSessionContent =
+    /(生成|制作|完善|补充).*(课次|课节|session|lesson).*(内容|讲义|组件|content)/i.test(
+      userText,
+    ) ||
+    (/生成.*内容/i.test(userText) && !!selectedSessionId);
+
+  if (wantsSessionContent && existingAgentState?.sessionOutlineStatus !== "reviewing") {
+    if (!selectedSessionId || !selectedClassId) {
+      const ask =
+        preferredLanguage === "zh"
+          ? "请先选择要生成内容的课次（在右侧聊天上下文中选中课次），或直接告诉我课次ID。"
+          : "Please select the session you want to generate content for (pick it in the context menu) or provide the session ID.";
+      const aiMessage = new AIMessage({
+        content: ask,
+        additional_kwargs: {
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+          },
+        },
+      });
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "missing_session_context" },
+        },
+      };
+    }
+
+    const msg =
+      preferredLanguage === "zh"
+        ? "我将先为这节课生成详细大纲（含教学目标和组件规划），生成后请你确认。请确认执行。"
+        : "I will generate a detailed outline for this session (objectives + component plan) and ask you to confirm. Please confirm to proceed.";
+    const nextAgentState = {
+      ...existingAgentState,
+      sessionOutlineStatus: "drafting",
+      sessionOutlineSessionId: selectedSessionId,
+      sessionOutlineClassId: selectedClassId,
+    };
+    const aiMessage = new AIMessage({
+      content: msg,
+      additional_kwargs: {
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: nextAgentState,
+          requiresDatabaseAction: true,
+          actionType: "generate_session_outline_draft",
+          actionData: {
+            classId: selectedClassId,
+            sessionId: selectedSessionId,
+            language: preferredLanguage,
+            agentState: nextAgentState,
+          },
+        },
+      },
+    });
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      metadata: {
+        ...(state.metadata || {}),
+        intent: "react_agent",
+        agentState: nextAgentState,
+        requiresDatabaseAction: true,
+        actionType: "generate_session_outline_draft",
+        actionData: {
+          classId: selectedClassId,
+          sessionId: selectedSessionId,
+          language: preferredLanguage,
+          agentState: nextAgentState,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      currentWorkflow: {
+        type: "react_agent",
+        status: "active",
+        step: "propose_tool",
+        data: { phase: "generate_session_outline" },
       },
     };
   }
@@ -1054,8 +1186,8 @@ export async function teacherReactAgentNode(
 
           const msg =
             preferredLanguage === "zh"
-              ? `${toolMessage}\n\n我可以重试创建 ${sessions.length} 节课次（如果你没提供日期，我会为每节课自动填入一个默认日期：从今天开始按顺序往后排）。请确认执行重试。`
-              : `${toolMessage}\n\nI can retry creating ${sessions.length} sessions (if you didn't provide dates, I'll auto-fill a default scheduled date for each session, starting from today). Please confirm to run the retry.`;
+              ? `${toolMessage}\n\n我可以重试创建 ${sessions.length} 节课次。若需要指定时间，请在确认前补充每节课日期/时间。请确认执行重试。`
+              : `${toolMessage}\n\nI can retry creating ${sessions.length} sessions. If you need specific dates/times, please add them before confirming. Please confirm to run the retry.`;
 
           const withStatus = {
             ...nextAgentState,
@@ -1347,7 +1479,12 @@ export async function teacherReactAgentNode(
     }
   }
 
-  if (wantsList && listEntity && existingAgentState?.outlineStatus !== "reviewing") {
+  if (
+    wantsList &&
+    listEntity &&
+    existingAgentState?.outlineStatus !== "reviewing" &&
+    existingAgentState?.sessionOutlineStatus !== "reviewing"
+  ) {
     if (toolCallsExecuted >= 5) {
       const limitMsg =
         preferredLanguage === "zh"
@@ -1467,6 +1604,173 @@ export async function teacherReactAgentNode(
         status: "active",
         step: "propose_tool",
         data: { phase: "list_entity" },
+      },
+    };
+  }
+
+  if (
+    existingAgentState?.sessionOutlineStatus === "reviewing" &&
+    existingAgentState?.sessionOutlineDraft
+  ) {
+    const language: "zh" | "en" =
+      existingAgentState.sessionOutlineLanguage === "en"
+        ? "en"
+        : preferredLanguage;
+    const draft = existingAgentState.sessionOutlineDraft as any;
+    const classId = existingAgentState.sessionOutlineClassId;
+    const sessionId = existingAgentState.sessionOutlineSessionId;
+    const nextAgentState = {
+      ...existingAgentState,
+      sessionOutlineDraft: { ...draft },
+    };
+
+    if (isApproval(userText)) {
+      if (toolCallsRemaining <= 0) {
+        const limitMsg =
+          language === "en"
+            ? "Tool call limit reached (5). Please start a new goal to run A2A generation."
+            : "工具调用次数已达到上限（5）。请开启新目标后再运行 A2A 生成。";
+        const aiMessage = new AIMessage({
+          content: limitMsg,
+          additional_kwargs: {
+            metadata: {
+              ...(state.metadata || {}),
+              intent: "react_agent",
+              agentState: nextAgentState,
+              requiresDatabaseAction: false,
+              actionType: null,
+              actionData: null,
+            },
+          },
+        });
+        return {
+          ...state,
+          messages: [...state.messages, aiMessage],
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: nextAgentState,
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+            timestamp: new Date().toISOString(),
+          },
+          currentWorkflow: {
+            type: "react_agent",
+            status: "active",
+            step: "ask_user",
+            data: { phase: "tool_limit" },
+          },
+        };
+      }
+
+      const prompt =
+        language === "en"
+          ? "Outline confirmed. I can now run A2A generation and save the session content. Please confirm to proceed."
+          : "大纲已确认。我现在可以运行 A2A 生成并保存课次内容。请确认执行。";
+      const awaitingState = {
+        ...nextAgentState,
+        sessionOutlineStatus: "awaiting_a2a",
+      };
+      const aiMessage = new AIMessage({
+        content: prompt,
+        additional_kwargs: {
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: awaitingState,
+            requiresDatabaseAction: true,
+            actionType: "a2a_session_generate_and_save",
+            actionData: {
+              classId,
+              sessionId,
+              outlineDraft: draft,
+              agentState: awaitingState,
+            },
+          },
+        },
+      });
+
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: awaitingState,
+          requiresDatabaseAction: true,
+          actionType: "a2a_session_generate_and_save",
+          actionData: {
+            classId,
+            sessionId,
+            outlineDraft: draft,
+            agentState: awaitingState,
+          },
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "propose_tool",
+          data: { phase: "a2a_session_generation" },
+        },
+      };
+    }
+
+    const userProvidedBullets = extractBullets(userText);
+    if (userProvidedBullets.length > 0) {
+      nextAgentState.sessionOutlineDraft = {
+        ...draft,
+        outline: userProvidedBullets,
+      };
+    }
+
+    const componentsPlan = (nextAgentState.sessionOutlineDraft.components_plan || [])
+      .map((item: any) => `${item.type}: ${item.description}`)
+      .join("\n- ");
+    const outlineText = (nextAgentState.sessionOutlineDraft.outline || []).join(
+      "\n- ",
+    );
+    const objectivesText = (
+      nextAgentState.sessionOutlineDraft.learning_objectives || []
+    ).join("\n- ");
+
+    const message =
+      language === "en"
+        ? `Session ${draft.session_number}: ${draft.title}\n\nOutline:\n- ${outlineText}\n\nLearning objectives:\n- ${objectivesText}\n\nComponents plan:\n- ${componentsPlan}\n\nReply \"approve\" to confirm, or paste edits as bullet points.`
+        : `第${draft.session_number}节：${draft.title}\n\n大纲：\n- ${outlineText}\n\n学习目标：\n- ${objectivesText}\n\n组件规划：\n- ${componentsPlan}\n\n请回复“确认”通过，或用项目符号直接贴出修改。`;
+
+    const aiMessage = new AIMessage({
+      content: message,
+      additional_kwargs: {
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: nextAgentState,
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+        },
+      },
+    });
+
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      metadata: {
+        ...(state.metadata || {}),
+        intent: "react_agent",
+        agentState: nextAgentState,
+        requiresDatabaseAction: false,
+        actionType: null,
+        actionData: null,
+        timestamp: new Date().toISOString(),
+      },
+      currentWorkflow: {
+        type: "react_agent",
+        status: "active",
+        step: "ask_user",
+        data: { phase: "session_outline_review" },
       },
     };
   }
@@ -1654,12 +1958,16 @@ export async function teacherReactAgentNode(
             "\n- ",
           )}\n\nLearning objectives:\n- ${(nextChapter.learning_objectives || []).join(
             "\n- ",
-          )}`
+          )}\n\nComponents plan:\n- ${(nextChapter.components_plan || [])
+            .map((item: any) => `${item.type}: ${item.description}`)
+            .join("\n- ")}`
         : `第${nextChapter.session_number}节：${nextChapter.title}\n\n大纲：\n- ${(nextChapter.outline || []).join(
             "\n- ",
           )}\n\n学习目标：\n- ${(nextChapter.learning_objectives || []).join(
             "\n- ",
-          )}`);
+          )}\n\n组件规划：\n- ${(nextChapter.components_plan || [])
+            .map((item: any) => `${item.type}: ${item.description}`)
+            .join("\n- ")}`);
 
     const movedToNext = nextIndex !== idx;
     const reply =

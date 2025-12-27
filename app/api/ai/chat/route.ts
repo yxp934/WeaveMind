@@ -15,11 +15,58 @@ import {
   DEFAULT_MODEL,
 } from "@/lib/ai/langgraph/config/openai-gateway";
 import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
+import {
+  buildTeacherAgentPrompt,
+  buildStudentAgentPrompt,
+  extractComponentsFromTeacherResponse,
+  extractFeedbackFromStudentResponse,
+  type A2AContext,
+} from "@/lib/ai/prompts";
 
 // Use Node.js runtime because this endpoint may perform Supabase admin operations.
 export const runtime = "nodejs";
 
 const openai = createGatewayOpenAI();
+
+function extractJsonObject<T>(text: string): T | null {
+  if (!text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[0]) as T;
+  } catch (error) {
+    console.warn("Failed to parse JSON from model output:", error);
+    return null;
+  }
+}
+
+function normalizeDifficultyLevel(input?: string | null) {
+  if (!input) return null;
+  if (/beginner|入门|初级|基础/i.test(input)) return "beginner";
+  if (/intermediate|中级|中等|进阶/i.test(input)) return "intermediate";
+  if (/advanced|高级|高阶|专家/i.test(input)) return "advanced";
+  return null;
+}
+
+function extractConceptsFromComponents(components: any[]): string[] {
+  const concepts: string[] = [];
+  components.forEach((component) => {
+    if (component?.type === "text" && component?.content?.text) {
+      const text = String(component.content.text);
+      const words = text
+        .split(/\s+/)
+        .filter(
+          (word) =>
+            word.length > 4 &&
+            !["the", "and", "for", "with", "this", "that", "from", "they", "have"].includes(
+              word.toLowerCase(),
+            ),
+        );
+      concepts.push(...words.slice(0, 5));
+    }
+  });
+  return Array.from(new Set(concepts));
+}
 
 async function runWithRetry<T>(
   fn: () => Promise<T>,
@@ -61,7 +108,7 @@ async function withTimeout<T>(
   }
 }
 
-const TOOL_EXECUTION_TIMEOUT_MS = 25_000;
+const TOOL_EXECUTION_TIMEOUT_MS = 120_000;
 
 function isApprovalMessage(message: string) {
   return /^(approve|approved|yes|ok|okay|confirm|confirmed|确认|同意|好的|可以)$/i.test(
@@ -1359,37 +1406,112 @@ async function handleDatabaseOperation(
           // 不抛出错误，因为班级已创建成功
         }
 
-        // 创建课程会话
-        const sessionsPerWeek = actionData.sessionsPerWeek || 2;
-        const duration = actionData.duration || 8;
-        const totalSessions = actionData.totalSessions || 16;
+        const sessionInputs = Array.isArray(actionData.sessions)
+          ? actionData.sessions
+          : [];
+        if (sessionInputs.length === 0) {
+          throw new Error("缺少课次信息，无法创建课程。请先提供每节课的标题/描述。");
+        }
 
-        console.log(`🔄 开始创建${totalSessions}个课程会话...`);
-        for (let i = 1; i <= Math.min(totalSessions, 16); i++) {
-          const sessionDate = new Date();
-          sessionDate.setDate(sessionDate.getDate() + (i - 1) * 7);
-          const sessionDateStr = sessionDate.toISOString().split("T")[0];
+        const normalizeScheduledDate = (value: any): string | null => {
+          if (!value) return null;
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return null;
+          return d.toISOString();
+        };
 
-          const { error: sessionError } = await dbClient
-            .from("course_sessions")
-            .insert({
-              class_id: classId,
-              title: `第${i}节：${actionData.className}`,
-              description: `第${i}节课程内容，基于${actionData.className}`,
-              scheduled_date: sessionDateStr,
-              start_time: "09:00",
-              end_time: "10:00",
-              duration_minutes: 60,
-              created_by: user.id,
-              session_number: i, // 🔧 添加必需的session_number字段
-            });
+        const sessionRows = sessionInputs.map((session: any, index: number) => {
+          const sessionNumber =
+            typeof session.session_number === "number"
+              ? session.session_number
+              : index + 1;
+          const scheduledDate =
+            session.scheduled_date ||
+            session.scheduledDate ||
+            session.scheduledAt ||
+            session.date ||
+            null;
+          return {
+            class_id: classId,
+            session_number: sessionNumber,
+            title: session.title,
+            description: session.description || null,
+            scheduled_date: normalizeScheduledDate(scheduledDate),
+            start_time: session.start_time || session.startTime || null,
+            end_time: session.end_time || session.endTime || null,
+            duration_minutes:
+              session.duration_minutes || session.durationMinutes || null,
+            created_by: user.id,
+          };
+        });
 
-          if (sessionError) {
-            console.error(`创建第${i}节课程失败:`, sessionError);
-            // 不抛出错误，继续创建其他课程
-          } else {
-            console.log(`✅ 第${i}节课程创建成功`);
+        for (const row of sessionRows) {
+          if (!row.title) {
+            throw new Error("课次标题不能为空，请补充课次标题后重试。");
           }
+        }
+
+        const { data: insertedSessions, error: sessionsError } = await dbClient
+          .from("course_sessions")
+          .insert(sessionRows)
+          .select("id,title,session_number,scheduled_date");
+
+        if (sessionsError) {
+          console.error("创建课次失败:", sessionsError);
+          throw sessionsError;
+        }
+
+        const totalSessions = insertedSessions?.length || sessionRows.length;
+
+        // 初始化课程信息库（compression context）
+        const sessionContexts = sessionRows.map((s) => ({
+          session_number: s.session_number,
+          session_title: s.title,
+          title: s.title,
+          description: s.description || "",
+        }));
+
+        const courseInfo = actionData.courseInfo || {};
+        const difficultyLevel = normalizeDifficultyLevel(courseInfo.difficultyLevel);
+        const summarySource = actionData.classDescription || actionData.className;
+        const contextPayload = {
+          class_id: classId,
+          organization_id: organizationId,
+          created_by: user.id,
+          compressed_summary: summarySource || actionData.className,
+          key_concepts: [],
+          learning_objectives: courseInfo.learningObjectives
+            ? [courseInfo.learningObjectives]
+            : [],
+          session_contexts: sessionContexts,
+          teaching_method: courseInfo.teachingMethod || null,
+          target_audience: courseInfo.targetAudience || null,
+          prerequisites: [],
+          difficulty_level: difficultyLevel,
+          total_duration_minutes: sessionRows
+            .map((s) => s.duration_minutes)
+            .filter((v: any) => typeof v === "number")
+            .reduce((acc: number, v: number) => acc + v, 0),
+        };
+
+        const { data: existingContext } = await dbClient
+          .from("course_compression_context")
+          .select("id,version")
+          .eq("class_id", classId)
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+
+        if (existingContext?.id) {
+          await dbClient
+            .from("course_compression_context")
+            .update({
+              ...contextPayload,
+              last_updated: new Date().toISOString(),
+              version: existingContext.version ? existingContext.version + 1 : 1,
+            })
+            .eq("id", existingContext.id);
+        } else {
+          await dbClient.from("course_compression_context").insert(contextPayload);
         }
 
         return {
@@ -1399,18 +1521,16 @@ async function handleDatabaseOperation(
 **班级信息：**
 - 班级名称：${actionData.className}
 - 加入代码：${joinCode}
-- 课程节数：${Math.min(totalSessions, 16)}节
+- 课程节数：${totalSessions}节
 
 **课程结构：**
-- 总时长：${duration}周
-- 每周课次：${sessionsPerWeek}节
 - 目标学员：${actionData.courseInfo?.targetAudience || "未指定"}
-- 难度级别：${actionData.courseInfo?.difficultyLevel || "中等"}
+- 难度级别：${actionData.courseInfo?.difficultyLevel || "未指定"}
 
 课程已保存到数据库，您可以开始在WeaveMind平台上管理这个班级了！`,
           classId,
           joinCode,
-          toolsUsed: ["createClass", "createSession"],
+          toolsUsed: ["createClass", "createSessionsBatch", "updateCompressionContext"],
         };
       }
 
@@ -1557,26 +1677,28 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
 
         const startNumber = (lastSession?.session_number || 0) + 1;
         const capped = sessions.slice(0, 32);
-        const baseTime = Date.now();
         const rows = capped.map((session: any, idx: number) => ({
           class_id: classId,
           session_number: startNumber + idx,
           title: session.title,
           description: session.description || "",
-          // Some production databases enforce NOT NULL on scheduled_date.
-          // Provide a deterministic default (today + idx days) if not provided.
           scheduled_date:
             normalizeScheduledDate(
               session.scheduledDate ??
                 session.scheduled_date ??
                 session.scheduledAt ??
                 session.date,
-            ) ?? new Date(baseTime + idx * 24 * 60 * 60 * 1000).toISOString(),
+            ) ?? null,
           start_time: session.startTime || null,
           end_time: session.endTime || null,
           duration_minutes: session.durationMinutes || null,
           created_by: user.id,
         }));
+
+        const missingTitle = rows.find((row) => !row.title);
+        if (missingTitle) {
+          throw new Error("课次标题不能为空，请补充课次标题后再创建。");
+        }
 
         const { data: inserted, error: insertError } = await dbClient
           .from("course_sessions")
@@ -1598,7 +1720,7 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
 
         return {
           success: true,
-          message:
+            message:
             actionData?.language === "en"
               ? `Created ${ordered.length} sessions for class "${cls.name}":\n${lines.join("\n")}`
               : `✅ 已为班级「${cls.name}」创建 ${ordered.length} 节课次：\n${lines.join("\n")}`,
@@ -1656,6 +1778,14 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           throw new Error("This class has no sessions yet. Create sessions first.");
         }
 
+        const { data: compressionContext } = await dbClient
+          .from("course_compression_context")
+          .select(
+            "compressed_summary,key_concepts,learning_objectives,teaching_method,target_audience,difficulty_level,session_contexts",
+          )
+          .eq("class_id", classId)
+          .maybeSingle();
+
         const systemPrompt = `You are an expert teacher. Generate a draft outline for each session of a class.
 
 Rules:
@@ -1672,6 +1802,9 @@ chapters: array of objects, one per session, in session_number order:
   title: string
   outline: array of bullet strings
   learning_objectives: array of strings
+  components_plan: array of objects with:
+    type: "text" | "question"
+    description: string
 `;
 
         const userPrompt = `Class:
@@ -1687,7 +1820,16 @@ ${sessions
   .join("\n")}
 
 Teacher goals (optional):
-${actionData?.teachingGoals || ""}`;
+${actionData?.teachingGoals || ""}
+
+Course info library (if available):
+- summary: ${compressionContext?.compressed_summary || ""}
+- key concepts: ${(compressionContext?.key_concepts || []).join(", ")}
+- learning objectives: ${(compressionContext?.learning_objectives || []).join(", ")}
+- teaching method: ${compressionContext?.teaching_method || ""}
+- target audience: ${compressionContext?.target_audience || ""}
+- difficulty level: ${compressionContext?.difficulty_level || ""}
+- session contexts: ${JSON.stringify(compressionContext?.session_contexts || [])}`;
 
         const { text } = await generateText({
           model: openai.chat(DEFAULT_MODEL),
@@ -1705,6 +1847,10 @@ ${actionData?.teachingGoals || ""}`;
             title: string;
             outline: string[];
             learning_objectives: string[];
+            components_plan?: Array<{
+              type: "text" | "question";
+              description: string;
+            }>;
           }>;
         }>(text);
 
@@ -1731,11 +1877,19 @@ ${actionData?.teachingGoals || ""}`;
                 first.outline || []
               ).join("\n- ")}\n\nLearning objectives:\n- ${(
                 first.learning_objectives || []
+              ).join("\n- ")}\n\nComponents plan:\n- ${(
+                (first.components_plan || []).map(
+                  (item) => `${item.type}: ${item.description}`,
+                )
               ).join("\n- ")}`
             : `第${first.session_number}节：${first.title}\n\n大纲：\n- ${(
                 first.outline || []
               ).join("\n- ")}\n\n学习目标：\n- ${(
                 first.learning_objectives || []
+              ).join("\n- ")}\n\n组件规划：\n- ${(
+                (first.components_plan || []).map(
+                  (item) => `${item.type}: ${item.description}`,
+                )
               ).join("\n- ")}`;
 
         const message =
@@ -1750,6 +1904,497 @@ ${actionData?.teachingGoals || ""}`;
           outlineDraft: nextAgentState.outlineDraft,
           agentState: nextAgentState,
           toolsUsed: ["generateClassOutlineDraft"],
+        };
+      }
+
+      case "generate_session_outline_draft": {
+        const classId =
+          actionData?.classId ||
+          metadata.classId ||
+          metadata.selectedClassId ||
+          metadata?.requestContext?.selectedClassId;
+        const sessionId =
+          actionData?.sessionId ||
+          metadata.sessionId ||
+          metadata.selectedSessionId;
+        const language: "zh" | "en" =
+          actionData?.language === "en" ? "en" : "zh";
+
+        if (!classId || !sessionId) {
+          throw new Error("Missing classId or sessionId for session outline draft");
+        }
+
+        const { data: cls } = await dbClient
+          .from("classes")
+          .select("id,name,description,created_by")
+          .eq("id", classId)
+          .maybeSingle();
+
+        if (!cls) {
+          throw new Error("Class not found");
+        }
+
+        const { data: membership } = await dbClient
+          .from("class_members")
+          .select("role")
+          .eq("class_id", classId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (
+          cls.created_by !== user.id &&
+          !membership?.role?.match(/teacher|owner/)
+        ) {
+          throw new Error("Forbidden: not a teacher in this class");
+        }
+
+        const { data: session } = await dbClient
+          .from("course_sessions")
+          .select("id,session_number,title,description,scheduled_date,duration_minutes")
+          .eq("id", sessionId)
+          .single();
+
+        if (!session) {
+          throw new Error("Session not found");
+        }
+
+        const { data: scheduleContext } = await dbClient
+          .from("schedule_generation_context")
+          .select("*")
+          .eq("class_id", classId)
+          .maybeSingle();
+
+        const { data: compressionContext } = await dbClient
+          .from("course_compression_context")
+          .select(
+            "compressed_summary,key_concepts,learning_objectives,teaching_method,target_audience,difficulty_level,session_contexts",
+          )
+          .eq("class_id", classId)
+          .maybeSingle();
+
+        const systemPrompt = `You are an expert teacher planning a single class session.
+
+Rules:
+- Output JSON only (no Markdown, no code fences).
+- Write the outline in ${language === "en" ? "English" : "Chinese"}.
+- Use ONLY the provided class/session context.
+
+Output JSON schema:
+{
+  "session_number": number,
+  "title": string,
+  "learning_objectives": string[],
+  "outline": string[],
+  "components_plan": [
+    { "type": "text", "description": string },
+    { "type": "question", "description": string }
+  ]
+}
+
+The components_plan must include BOTH types ("text" and "question").`;
+
+        const userPrompt = `Class:
+- name: ${cls.name}
+- description: ${cls.description || ""}
+
+Session:
+- session_number: ${session.session_number}
+- title: ${session.title}
+- description: ${session.description || ""}
+- scheduled_date: ${session.scheduled_date || ""}
+- duration_minutes: ${session.duration_minutes || ""}
+
+Schedule context:
+${scheduleContext ? JSON.stringify(scheduleContext) : "N/A"}
+
+Course info library:
+- summary: ${compressionContext?.compressed_summary || ""}
+- key concepts: ${(compressionContext?.key_concepts || []).join(", ")}
+- learning objectives: ${(compressionContext?.learning_objectives || []).join(", ")}
+- teaching method: ${compressionContext?.teaching_method || ""}
+- target audience: ${compressionContext?.target_audience || ""}
+- difficulty level: ${compressionContext?.difficulty_level || ""}
+- session contexts: ${JSON.stringify(compressionContext?.session_contexts || [])}
+
+Teacher notes:
+${actionData?.teacherNotes || ""}`;
+
+        const { text } = await generateText({
+          model: openai.chat(DEFAULT_MODEL),
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+          maxTokens: 1200,
+          temperature: 0.4,
+          abortSignal: AbortSignal.timeout(30000),
+        });
+
+        const parsed =
+          extractJsonObject<{
+            session_number: number;
+            title: string;
+            learning_objectives: string[];
+            outline: string[];
+            components_plan: Array<{
+              type: "text" | "question";
+              description: string;
+            }>;
+          }>(text) || parseModelResponse(text);
+
+        if (!parsed || !parsed.outline) {
+          throw new Error("Failed to parse session outline draft");
+        }
+
+        const outlineDraft = {
+          session_number: parsed.session_number || session.session_number,
+          title: parsed.title || session.title,
+          learning_objectives: parsed.learning_objectives || [],
+          outline: parsed.outline || [],
+          components_plan: parsed.components_plan || [],
+        };
+
+        const componentsLines = (outlineDraft.components_plan || []).map(
+          (item) => `${item.type}: ${item.description}`,
+        );
+
+        const message =
+          language === "en"
+            ? `Session ${outlineDraft.session_number}: ${outlineDraft.title}\n\nOutline:\n- ${outlineDraft.outline.join(
+                "\n- ",
+              )}\n\nLearning objectives:\n- ${outlineDraft.learning_objectives.join(
+                "\n- ",
+              )}\n\nComponents plan:\n- ${componentsLines.join(
+                "\n- ",
+              )}\n\nPlease review and reply \"approve\" to confirm, or paste edits as bullet points.`
+            : `第${outlineDraft.session_number}节：${outlineDraft.title}\n\n大纲：\n- ${outlineDraft.outline.join(
+                "\n- ",
+              )}\n\n学习目标：\n- ${outlineDraft.learning_objectives.join(
+                "\n- ",
+              )}\n\n组件规划：\n- ${componentsLines.join(
+                "\n- ",
+              )}\n\n请确认大纲（回复“确认”），或用项目符号直接贴出修改。`;
+
+        const nextAgentState = {
+          ...(actionData?.agentState || {}),
+          sessionOutlineStatus: "reviewing",
+          sessionOutlineDraft: outlineDraft,
+          sessionOutlineSessionId: sessionId,
+          sessionOutlineClassId: classId,
+          sessionOutlineLanguage: language,
+        };
+
+        return {
+          success: true,
+          message,
+          classId,
+          sessionId,
+          outlineDraft,
+          agentState: nextAgentState,
+          toolsUsed: ["generateSessionOutlineDraft"],
+        };
+      }
+
+      case "a2a_session_generate_and_save": {
+        const classId =
+          actionData?.classId ||
+          metadata.classId ||
+          metadata.selectedClassId ||
+          metadata?.requestContext?.selectedClassId;
+        const sessionId =
+          actionData?.sessionId ||
+          metadata.sessionId ||
+          metadata.selectedSessionId;
+
+        if (!classId || !sessionId) {
+          throw new Error("Missing classId or sessionId for A2A session generation");
+        }
+
+        const { data: cls } = await dbClient
+          .from("classes")
+          .select("id,name,description,created_by,organization_id")
+          .eq("id", classId)
+          .maybeSingle();
+
+        if (!cls) {
+          throw new Error("Class not found");
+        }
+
+        const { data: membership } = await dbClient
+          .from("class_members")
+          .select("role")
+          .eq("class_id", classId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (
+          cls.created_by !== user.id &&
+          !membership?.role?.match(/teacher|owner/)
+        ) {
+          throw new Error("Forbidden: not a teacher in this class");
+        }
+
+        const { data: session } = await dbClient
+          .from("course_sessions")
+          .select("*")
+          .eq("id", sessionId)
+          .single();
+
+        if (!session) {
+          throw new Error("Session not found");
+        }
+
+        const { data: scheduleContext } = await dbClient
+          .from("schedule_generation_context")
+          .select("*")
+          .eq("class_id", classId)
+          .maybeSingle();
+
+        const outlineDraft =
+          actionData?.outlineDraft ||
+          actionData?.sessionOutlineDraft ||
+          actionData?.agentState?.sessionOutlineDraft ||
+          null;
+
+        const conversationContext = outlineDraft
+          ? [
+              `Outline: ${(outlineDraft.outline || []).join("; ")}`,
+              `Objectives: ${(outlineDraft.learning_objectives || []).join("; ")}`,
+              `Components plan: ${(outlineDraft.components_plan || [])
+                .map((item: any) => `${item.type}: ${item.description}`)
+                .join("; ")}`,
+            ].join("\n")
+          : "";
+
+        const { data: previousSessions } = await dbClient
+          .from("course_sessions")
+          .select("session_number,title,description,chapter_id")
+          .eq("class_id", classId)
+          .lt("session_number", session.session_number)
+          .order("session_number", { ascending: true });
+
+        const previousSummary = (previousSessions || [])
+          .map(
+            (s: any) =>
+              `Session ${s.session_number}: ${s.title}${s.description ? ` - ${s.description}` : ""}`,
+          )
+          .join("\n");
+
+        const a2aContext: A2AContext = {
+          className: cls.name,
+          classDescription: cls.description || "",
+          sessionNumber: session.session_number,
+          sessionTitle: session.title,
+          sessionDescription: session.description || "",
+          scheduledDate: session.scheduled_date,
+          previousSessionsSummary: previousSummary,
+          conversationContext,
+          scheduleContext: scheduleContext || null,
+        };
+
+        const { data: generation, error: generationError } = await dbClient
+          .from("a2a_session_generations")
+          .insert({
+            session_id: sessionId,
+            created_by: user.id,
+            status: "running",
+            max_iterations: 3,
+            current_iteration: 0,
+          })
+          .select()
+          .single();
+
+        if (generationError) {
+          throw generationError;
+        }
+
+        const builderFeedback: any[] = [];
+        const criticFeedback: any[] = [];
+        let finalComponents: any[] = [];
+
+        try {
+          for (let iteration = 1; iteration <= 3; iteration += 1) {
+            const lastStudentFeedback =
+              iteration > 1
+                ? criticFeedback[criticFeedback.length - 1]?.overall_feedback
+                : undefined;
+            const teacherPrompt = buildTeacherAgentPrompt(
+              a2aContext,
+              iteration,
+              lastStudentFeedback,
+            );
+
+            const teacherResult = await generateText({
+              model: openai.chat(DEFAULT_MODEL),
+              prompt: teacherPrompt,
+              temperature: 0.7,
+            });
+
+            const components = extractComponentsFromTeacherResponse(
+              teacherResult.text,
+            );
+            if (!components || components.length === 0) {
+              throw new Error("A2A teacher output did not include components");
+            }
+
+            builderFeedback.push({
+              iteration,
+              content: teacherResult.text,
+              components,
+              timestamp: new Date().toISOString(),
+            });
+
+            finalComponents = components;
+
+            if (iteration < 3) {
+              const studentPrompt = buildStudentAgentPrompt(
+                a2aContext,
+                iteration,
+              );
+              const studentResult = await generateText({
+                model: openai.chat(DEFAULT_MODEL),
+                prompt: `${studentPrompt}\n\n**CONTENT TO REVIEW:**\n${JSON.stringify(components, null, 2)}`,
+                temperature: 0.5,
+              });
+
+              const feedback = extractFeedbackFromStudentResponse(
+                studentResult.text,
+              );
+              criticFeedback.push({
+                iteration,
+                ...feedback,
+                raw: studentResult.text,
+                timestamp: new Date().toISOString(),
+              });
+            }
+          }
+        } catch (error: any) {
+          await dbClient
+            .from("a2a_session_generations")
+            .update({
+              status: "failed",
+              current_iteration: builderFeedback.length,
+              builder_feedback: builderFeedback,
+              critic_feedback: criticFeedback,
+              error_message: error?.message || "A2A generation failed",
+            })
+            .eq("id", generation.id);
+          throw error;
+        }
+
+        const { data: chapter } = await dbClient
+          .from("chapters")
+          .insert({
+            class_id: classId,
+            course_id: session.course_id || null,
+            title: session.title,
+            description: session.description || "",
+            order_index: session.session_number,
+          })
+          .select()
+          .single();
+
+        if (!chapter?.id) {
+          throw new Error("Failed to create chapter for session content");
+        }
+
+        const componentsToInsert = finalComponents.map(
+          (component: any, idx: number) => ({
+            chapter_id: chapter.id,
+            type: component.type || "text",
+            content: component.content || {},
+            order_index: idx,
+          }),
+        );
+
+        const { error: componentsError } = await dbClient
+          .from("components")
+          .insert(componentsToInsert);
+
+        if (componentsError) {
+          throw componentsError;
+        }
+
+        await dbClient
+          .from("course_sessions")
+          .update({
+            chapter_id: chapter.id,
+            content_generated: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sessionId);
+
+        const conceptList = extractConceptsFromComponents(finalComponents);
+        const { data: compressionContext } = await dbClient
+          .from("course_compression_context")
+          .select("id,key_concepts,session_contexts,version")
+          .eq("class_id", classId)
+          .maybeSingle();
+
+        if (compressionContext?.id) {
+          const existingConcepts = Array.isArray(compressionContext.key_concepts)
+            ? compressionContext.key_concepts
+            : [];
+          const mergedConcepts = Array.from(
+            new Set([...existingConcepts, ...conceptList]),
+          );
+
+          const sessionContexts = Array.isArray(
+            compressionContext.session_contexts,
+          )
+            ? compressionContext.session_contexts
+            : [];
+          const updatedSessionContexts = [
+            ...sessionContexts.filter(
+              (c: any) => c.session_number !== session.session_number,
+            ),
+            {
+              session_number: session.session_number,
+              session_title: session.title,
+              components_count: finalComponents.length,
+              key_concepts: conceptList,
+              generated_at: new Date().toISOString(),
+            },
+          ];
+
+          await dbClient
+            .from("course_compression_context")
+            .update({
+              key_concepts: mergedConcepts,
+              session_contexts: updatedSessionContexts,
+              last_updated: new Date().toISOString(),
+              version: compressionContext.version
+                ? compressionContext.version + 1
+                : 1,
+            })
+            .eq("id", compressionContext.id);
+        }
+
+        await dbClient
+          .from("a2a_session_generations")
+          .update({
+            status: "completed",
+            current_iteration: 3,
+            builder_feedback: builderFeedback,
+            critic_feedback: criticFeedback,
+            final_content: { components: finalComponents },
+          })
+          .eq("id", generation.id);
+
+        const nextAgentState = {
+          ...(actionData?.agentState || {}),
+          sessionOutlineStatus: "done",
+          sessionOutlineSessionId: sessionId,
+          sessionOutlineClassId: classId,
+        };
+
+        return {
+          success: true,
+          message:
+            "✅ A2A 生成完成，已写入数据库。现在可以在该课次中查看完整组件内容。",
+          classId,
+          sessionId,
+          chapterId: chapter.id,
+          toolsUsed: ["a2a_session_generation", "save_session_content"],
+          agentState: nextAgentState,
         };
       }
 
@@ -1827,6 +2472,67 @@ ${actionData?.teachingGoals || ""}`;
           }
         }
 
+        const { data: classSessions } = await dbClient
+          .from("course_sessions")
+          .select("id,session_number,title,description")
+          .eq("class_id", classId)
+          .order("session_number", { ascending: true });
+
+        if (classSessions && classSessions.length > 0) {
+          for (const session of classSessions) {
+            const chapter = chapters.find(
+              (c: any) => c.session_number === session.session_number,
+            );
+            if (!chapter) continue;
+
+            const objectives = (chapter.learning_objectives || [])
+              .filter(Boolean)
+              .join(language === "en" ? "; " : "；");
+            const outlineLines = (chapter.outline || [])
+              .filter(Boolean)
+              .join(language === "en" ? "; " : "；");
+            const componentsPlan = (chapter.components_plan || [])
+              .map((item: any) => `${item.type}: ${item.description}`)
+              .join(language === "en" ? "; " : "；");
+
+            const description =
+              language === "en"
+                ? `Learning objectives: ${objectives}\nOutline: ${outlineLines}\nComponents plan: ${componentsPlan}`
+                : `学习目标：${objectives}\n大纲：${outlineLines}\n组件规划：${componentsPlan}`;
+
+            await dbClient
+              .from("course_sessions")
+              .update({ description })
+              .eq("id", session.id);
+          }
+        }
+
+        const { data: existingContext } = await dbClient
+          .from("course_compression_context")
+          .select("id,session_contexts,version")
+          .eq("class_id", classId)
+          .maybeSingle();
+
+        const outlineContexts = (chapters || []).map((chapter: any) => ({
+          session_number: chapter.session_number,
+          session_title: chapter.title,
+          title: chapter.title,
+          outline: chapter.outline || [],
+          learning_objectives: chapter.learning_objectives || [],
+          components_plan: chapter.components_plan || [],
+        }));
+
+        if (existingContext?.id) {
+          await dbClient
+            .from("course_compression_context")
+            .update({
+              session_contexts: outlineContexts,
+              last_updated: new Date().toISOString(),
+              version: existingContext.version ? existingContext.version + 1 : 1,
+            })
+            .eq("id", existingContext.id);
+        }
+
         return {
           success: true,
           message:
@@ -1834,7 +2540,7 @@ ${actionData?.teachingGoals || ""}`;
               ? `Saved the outline for class "${cls.name}".`
               : `✅ 已保存班级「${cls.name}」的课程大纲。`,
           classId,
-          toolsUsed: ["saveClassOutline"],
+          toolsUsed: ["saveClassOutline", "updateSessionDescriptions"],
           agentState: actionData?.agentState || null,
         };
       }
@@ -2085,11 +2791,12 @@ ${actionData?.teachingGoals || ""}`;
               };
             }
             case "create": {
-              const title = actionData.details?.title || "未命名课次";
-              const scheduledDate =
-                actionData.details?.scheduledDate ||
-                new Date().toISOString().slice(0, 10);
-              const startTime = actionData.details?.startTime || "09:00";
+              const title = actionData.details?.title;
+              if (!title) {
+                throw new Error("创建课次需要标题，请补充课次标题。");
+              }
+              const scheduledDate = actionData.details?.scheduledDate || null;
+              const startTime = actionData.details?.startTime || null;
 
               const { data: lastSession } = await dbClient
                 .from("course_sessions")
@@ -2110,7 +2817,7 @@ ${actionData?.teachingGoals || ""}`;
                   description: actionData.details?.description || "",
                   scheduled_date: scheduledDate,
                   start_time: startTime,
-                  duration_minutes: 60,
+                  duration_minutes: actionData.details?.durationMinutes || null,
                   created_by: user.id,
                 })
                 .select("id,title,scheduled_date,start_time,session_number")
@@ -2122,7 +2829,11 @@ ${actionData?.teachingGoals || ""}`;
 
               return {
                 success: true,
-                message: `✅ 已为班级创建第${session.session_number}节课「${session.title}」，时间：${session.scheduled_date?.slice(0, 10)} ${session.start_time || ""}`,
+                message: `✅ 已为班级创建第${session.session_number}节课「${session.title}」。${
+                  session.scheduled_date
+                    ? `时间：${session.scheduled_date?.slice(0, 10)} ${session.start_time || ""}`
+                    : "尚未设置具体时间"
+                }`,
                 classId,
                 toolsUsed: ["createSession"],
               };

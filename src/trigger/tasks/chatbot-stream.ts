@@ -1,6 +1,7 @@
 import { task, wait, streams } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { chatbot } from "../../../lib/ai/langgraph/chatbot-graph";
+import { createAdminClient } from "../../../lib/supabase/admin";
 
 /**
  * Chatbot Streaming Task
@@ -28,6 +29,7 @@ const ConversationContextSchema = z.object({
   selectedClassId: z.string().optional(),
   selectedSessionId: z.string().optional(),
   selectedAssignmentId: z.string().optional(),
+  compressionContext: z.any().optional(),
   selectedContexts: z
     .array(
       z.object({
@@ -74,6 +76,8 @@ export const enhancedChatStreamTask = task({
     const { message, context, options } = payload;
     const { conversationId, sessionId, userRole, userId, conversationHistory = [] } = context;
     const resolvedConversationId = conversationId || sessionId || `conv_${Date.now()}`;
+    const resolvedClassId = context.selectedClassId || context.classId || null;
+    let compressionContext = context.compressionContext || null;
 
     let responseContent = "";
     let responseMetadata: Record<string, any> = {};
@@ -113,6 +117,20 @@ export const enhancedChatStreamTask = task({
               });
             }
 
+            if (!compressionContext && resolvedClassId) {
+              try {
+                const admin = createAdminClient();
+                const { data } = await admin
+                  .from("course_compression_context")
+                  .select("*")
+                  .eq("class_id", resolvedClassId)
+                  .maybeSingle();
+                compressionContext = data || null;
+              } catch (error) {
+                console.warn("Failed to load compression context:", error);
+              }
+            }
+
             const result = await chatbot.processMessage(
               message,
               resolvedConversationId,
@@ -127,6 +145,7 @@ export const enhancedChatStreamTask = task({
                 selectedSessionId: context.selectedSessionId,
                 selectedAssignmentId: context.selectedAssignmentId,
                 selectedContexts: context.selectedContexts,
+                compressionContext,
               }
             );
 

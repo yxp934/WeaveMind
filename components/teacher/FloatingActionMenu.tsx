@@ -8,6 +8,7 @@ interface Session {
   title: string;
   className: string;
   date: string;
+  dateIso?: string | null;
   time: string;
   duration: string;
   location: string;
@@ -96,9 +97,19 @@ export function FloatingActionMenu({ sessions }: FloatingActionMenuProps) {
 
   const getClassIndicator = (day: number | null) => {
     if (!day) return null;
-    // Only show green indicators for sessions
-    if ([7, 14, 21, 28].includes(day)) return '#3FA11B';
-    return null;
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth();
+    const hasSession = sessions.find((session) => {
+      const rawDate = session.dateIso || session.date;
+      const sessionDate = rawDate ? new Date(rawDate) : null;
+      if (!sessionDate || Number.isNaN(sessionDate.getTime())) return false;
+      return (
+        sessionDate.getFullYear() === year &&
+        sessionDate.getMonth() === month &&
+        sessionDate.getDate() === day
+      );
+    });
+    return hasSession ? hasSession.color || '#3FA11B' : null;
   };
 
   const menuItems = [
@@ -209,9 +220,15 @@ export function FloatingActionMenu({ sessions }: FloatingActionMenuProps) {
               placeholder="e.g. Advanced React Patterns"
               className="w-full px-4 py-2.5 border border-white/20 rounded-lg focus:outline-none focus:border-[#F772E8] transition-colors text-[14px] bg-white/40 backdrop-blur-sm"
             />
-            <button className="w-full mt-3 bg-[#B882B1] text-white py-2.5 rounded-lg hover:opacity-90 transition-opacity text-[14px]">
+            <button
+              className="w-full mt-3 bg-[#B882B1] text-white py-2.5 rounded-lg opacity-60 cursor-not-allowed text-[14px]"
+              disabled
+            >
               Create Class
             </button>
+            <p className="text-[11px] text-[#6a7282] mt-2">
+              Use the AI chatbot on the right to create a class.
+            </p>
           </motion.div>
         );
 

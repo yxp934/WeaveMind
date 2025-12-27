@@ -20,7 +20,7 @@ export default async function SessionDetailPage({
   const { data: sessionData } = await supabase
     .from("course_sessions")
     .select(`
-      id, title, description, scheduled_date, start_time, end_time, location,
+      id, title, description, scheduled_date, start_time, end_time, duration_minutes, location,
       class_id,
       classes(id, name),
       chapter:chapters(id, title)
@@ -44,15 +44,15 @@ export default async function SessionDetailPage({
   if (sessionData.chapter?.id) {
     const { data: componentsData } = await supabase
       .from("components")
-      .select("id, title, type, order_index")
+      .select("id, type, content, order_index")
       .eq("chapter_id", sessionData.chapter.id)
       .order("order_index", { ascending: true });
 
     components = (componentsData || []).map(c => ({
       id: c.id,
-      title: c.title || `Component ${c.order_index + 1}`,
       type: c.type || 'text',
-      duration: '5 min' // Placeholder duration
+      content: c.content || {},
+      orderIndex: c.order_index ?? 0
     }));
   }
 
@@ -70,6 +70,17 @@ export default async function SessionDetailPage({
   }
 
   // Transform session data
+  const durationFromTimes =
+    sessionData.start_time && sessionData.end_time
+      ? Math.round(
+          (new Date(`2000-01-01T${sessionData.end_time}`).getTime() -
+            new Date(`2000-01-01T${sessionData.start_time}`).getTime()) /
+            (1000 * 60),
+        )
+      : null;
+  const durationMinutes =
+    sessionData.duration_minutes ?? durationFromTimes ?? null;
+
   const sessionDisplayData = {
     id: id,
     title: sessionData.title || 'Untitled Session',
@@ -80,20 +91,23 @@ export default async function SessionDetailPage({
       ? new Date(sessionData.scheduled_date).toLocaleDateString('en-US', {
           weekday: 'long', month: 'short', day: 'numeric', year: 'numeric'
         })
-      : 'TBD',
+      : '未设置',
+    dateIso: sessionData.scheduled_date || null,
     time: sessionData.start_time
       ? new Date(`2000-01-01T${sessionData.start_time}`).toLocaleTimeString('en-US', {
           hour: 'numeric', minute: '2-digit'
         })
-      : 'TBD',
+      : '未设置',
     endTime: sessionData.end_time
       ? new Date(`2000-01-01T${sessionData.end_time}`).toLocaleTimeString('en-US', {
           hour: 'numeric', minute: '2-digit'
         })
-      : 'TBD',
-    location: sessionData.location || 'Classroom',
+      : '未设置',
+    durationMinutes,
+    location: sessionData.location || '未设置',
     isOnline: (sessionData.location || '').toLowerCase().includes('zoom') ||
-              (sessionData.location || '').toLowerCase().includes('online'),
+              (sessionData.location || '').toLowerCase().includes('online') ||
+              (sessionData.location || '').includes('线上'),
     studentsCount: studentsCount || 0,
     status
   };

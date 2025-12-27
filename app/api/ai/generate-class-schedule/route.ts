@@ -773,7 +773,8 @@ export async function POST(req: Request) {
         topic: sessionTopics[i] || null,
         overview: parsedRequirements.sessionOverviews[i] || null
       })),
-      conversation_context: requirements.courseOverview
+      conversation_context: requirements.courseOverview,
+      created_by: user.id
     }
 
     // Delete existing context first
@@ -830,5 +831,4 @@ export async function POST(req: Request) {
     )
   }
 }
-
 

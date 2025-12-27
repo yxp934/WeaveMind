@@ -155,6 +155,7 @@ export class LangGraphChatbot {
       selectedClassId?: string;
       selectedSessionId?: string;
       selectedAssignmentId?: string;
+      compressionContext?: any;
       selectedContexts?: Array<{
         type: "class" | "session" | "assignment";
         id: string;
@@ -186,6 +187,7 @@ export class LangGraphChatbot {
           courseId: requestContext.courseId,
           classId: requestContext.classId,
           organizationId: requestContext.organizationId,
+          compressionContext: requestContext.compressionContext,
         },
       };
 

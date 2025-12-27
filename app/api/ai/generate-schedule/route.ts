@@ -415,7 +415,8 @@ export async function POST(req: Request) {
         topic: sessionTopics[i] || null,
         overview: null // Not available in this endpoint yet
       })),
-      conversation_context: requirements.courseOverview
+      conversation_context: requirements.courseOverview,
+      created_by: user.id
     }
 
     // Delete existing context

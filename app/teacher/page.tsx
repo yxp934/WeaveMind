@@ -39,6 +39,7 @@ export default async function TeacherDashboard() {
     .eq('class_members.role', 'teacher');
 
   // Fetch student counts for each class
+  const nowIso = new Date().toISOString();
   const classesWithCounts = await Promise.all(
     (classesData || []).map(async (classItem) => {
       const { count } = await supabase
@@ -47,21 +48,30 @@ export default async function TeacherDashboard() {
         .eq('class_id', classItem.id)
         .eq('role', 'student');
 
-      // Calculate progress from learning events (placeholder for now)
-      const { count: totalEvents } = await supabase
-        .from('learning_events')
+      const { count: totalSessions } = await supabase
+        .from('course_sessions')
         .select('*', { count: 'exact', head: true })
         .eq('class_id', classItem.id);
 
-      const progress = totalEvents && totalEvents > 0 ? Math.min(85, Math.round((totalEvents / 10) * 100)) : 0;
+      const { count: completedSessions } = await supabase
+        .from('course_sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('class_id', classItem.id)
+        .lt('scheduled_date', nowIso);
+
+      const safeTotalSessions = totalSessions || 0;
+      const safeCompletedSessions = completedSessions || 0;
+      const progress = safeTotalSessions > 0
+        ? Math.min(100, Math.round((safeCompletedSessions / safeTotalSessions) * 100))
+        : 0;
 
       return {
         id: classItem.id,
         title: classItem.name,
         instructor: displayName,
         progress: progress,
-        totalSessions: 20, // Default value
-        completedSessions: Math.round((progress / 100) * 20),
+        totalSessions: safeTotalSessions,
+        completedSessions: safeCompletedSessions,
         students: count || 0,
         color: '#B882B1'
       };
@@ -73,7 +83,7 @@ export default async function TeacherDashboard() {
   const { data: sessionsData, error: sessionsError } = await supabase
     .from('course_sessions')
     .select(`
-      id, title, description, scheduled_date, start_time, end_time,
+      id, title, description, scheduled_date, start_time, end_time, duration_minutes, location,
       classes!inner(
         name
       )
@@ -82,19 +92,43 @@ export default async function TeacherDashboard() {
     .order('scheduled_date', { ascending: true })
     .limit(10);
 
-  const upcomingSessions = (sessionsData || []).map((session) => ({
-    id: session.id,
-    title: session.title,
-    className: session.classes.name,
-    date: new Date(session.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    time: session.start_time ? new Date(`2000-01-01T${session.start_time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'TBD',
-    duration: session.end_time && session.start_time ?
-      `${Math.round((new Date(`2000-01-01T${session.end_time}`).getTime() - new Date(`2000-01-01T${session.start_time}`).getTime()) / (1000 * 60))}m` :
-      'TBD',
-    location: 'Classroom', // Default value
-    isOnline: false,
-    color: '#3FA11B'
-  }));
+  const upcomingSessions = (sessionsData || []).map((session) => {
+    const hasStart = Boolean(session.start_time);
+    const hasEnd = Boolean(session.end_time);
+    const durationFromTimes =
+      hasStart && hasEnd
+        ? Math.round(
+            (new Date(`2000-01-01T${session.end_time}`).getTime() -
+              new Date(`2000-01-01T${session.start_time}`).getTime()) /
+              (1000 * 60),
+          )
+        : null;
+    const durationMinutes =
+      session.duration_minutes ?? durationFromTimes ?? null;
+
+    const locationText = session.location || '未设置';
+    const locationLower = locationText.toLowerCase();
+    const isOnline = locationLower.includes('zoom') ||
+      locationLower.includes('online') ||
+      locationLower.includes('线上');
+
+    return {
+      id: session.id,
+      title: session.title || 'Untitled Session',
+      className: session.classes.name,
+      date: session.scheduled_date
+        ? new Date(session.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '未设置',
+      dateIso: session.scheduled_date || null,
+      time: session.start_time
+        ? new Date(`2000-01-01T${session.start_time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : '未设置',
+      duration: durationMinutes ? `${durationMinutes}m` : '未设置',
+      location: locationText,
+      isOnline,
+      color: '#3FA11B'
+    };
+  });
 
   // Fetch assignments created by the user
   const { data: assignmentsData, error: assignmentsError } = await supabase

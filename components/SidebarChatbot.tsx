@@ -50,6 +50,26 @@ const suggestions = [
   "分析学生学习进度",
 ];
 
+const getToolBadgeIcon = (toolName: string) => {
+  const normalized = toolName.toLowerCase();
+  if (normalized.includes("a2a")) return Sparkles;
+  if (normalized.includes("outline")) return BookOpen;
+  if (normalized.includes("assignment")) return FileText;
+  if (normalized.includes("session")) return BookOpen;
+  if (normalized.includes("class")) return Users;
+  return Sparkles;
+};
+
+const getToolBadgeColor = (toolName: string) => {
+  const normalized = toolName.toLowerCase();
+  if (normalized.includes("a2a")) return "text-[#B882B1]";
+  if (normalized.includes("outline")) return "text-[#3FA11B]";
+  if (normalized.includes("assignment")) return "text-[#B882B1]";
+  if (normalized.includes("session")) return "text-[#3FA11B]";
+  if (normalized.includes("class")) return "text-[#B882B1]";
+  return "text-[#6a7282]";
+};
+
 function Logo() {
   return (
     <div className="h-[28px] w-[27px] shrink-0">
@@ -471,6 +491,14 @@ export default function SidebarChatbot({
                                         : "bg-gray-400"
                                 }`}
                               />
+                              {(() => {
+                                const ToolIcon = getToolBadgeIcon(toolCall.tool);
+                                return (
+                                  <ToolIcon
+                                    className={`size-3 ${getToolBadgeColor(toolCall.tool)}`}
+                                  />
+                                );
+                              })()}
                               <span className="text-[#101828]">
                                 {toolCall.tool}
                               </span>

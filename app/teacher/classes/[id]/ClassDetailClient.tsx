@@ -6,14 +6,16 @@ import { ArrowLeft, Plus, Calendar, Clock, Video, MapPin, FileText, Users, Trash
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation } from '@/components/teacher/design';
 import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
-import { TeacherDashboardChat } from '@/components/teacher/TeacherDashboardChat';
+import SidebarChatbot from '@/components/SidebarChatbot';
 
 interface Session {
   id: string;
   title: string;
   date: string;
+  dateIso?: string | null;
   time: string;
   location: string;
+  duration: string;
   hasContent: boolean;
   componentsCount: number;
 }
@@ -53,21 +55,31 @@ export function ClassDetailClient({
 }: ClassDetailClientProps) {
   const router = useRouter();
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ type: 'session' | 'assignment'; id: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
-  const handleDelete = (type: 'session' | 'assignment', id: string) => {
-    setItemToDelete({ type, id });
+  const handleDeleteAssignment = (id: string) => {
+    setItemToDelete(id);
     setShowDeleteConfirmation(true);
   };
 
   const confirmDelete = async () => {
-    if (itemToDelete) {
-      // API call to delete would go here
-      console.log(`Deleting ${itemToDelete.type}: ${itemToDelete.id}`);
+    if (!itemToDelete) return;
+
+    try {
+      const response = await fetch(`/api/assignments/${itemToDelete}/delete`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete assignment');
+      }
+
       setShowDeleteConfirmation(false);
       setItemToDelete(null);
-      // Refresh the page or update state
       router.refresh();
+    } catch (error) {
+      console.error('Failed to delete assignment:', error);
     }
   };
 
@@ -77,14 +89,14 @@ export function ClassDetailClient({
   };
 
   const upcomingSessions = sessions.map(s => ({
-    id: parseInt(s.id) || 0,
     title: s.title,
     className: classData.title,
     date: s.date.split(',')[0] || s.date,
+    dateIso: s.dateIso || null,
     time: s.time,
-    duration: '1.5h',
+    duration: s.duration,
     location: s.location,
-    isOnline: s.location.toLowerCase().includes('zoom') || s.location.toLowerCase().includes('online'),
+    isOnline: s.location.toLowerCase().includes('zoom') || s.location.toLowerCase().includes('online') || s.location.includes('线上'),
     color: '#3FA11B'
   }));
 
@@ -162,15 +174,6 @@ export function ClassDetailClient({
                       className="bg-white rounded-[8px] border border-gray-200 p-2.5 hover:shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.1)] transition-all hover:-translate-y-0.5 cursor-pointer relative group"
                       onClick={() => router.push(`/teacher/sessions/${session.id}`)}
                     >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete('session', session.id);
-                        }}
-                        className="absolute top-2 right-2 size-6 rounded-md border-2 border-red-500 flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
                       <div className="flex items-start gap-2">
                         <div
                           className={`${session.hasContent ? 'size-8 rounded-lg' : 'size-1.5 rounded-full mt-1.5'} shrink-0 flex items-center justify-center bg-[#3FA11B]`}
@@ -192,7 +195,7 @@ export function ClassDetailClient({
                               <span>{session.time}</span>
                             </div>
                             <div className="flex items-center gap-1 col-span-2">
-                              {session.location.toLowerCase().includes('zoom') ? (
+                              {session.location.toLowerCase().includes('zoom') || session.location.includes('线上') ? (
                                 <>
                                   <Video className="size-3" />
                                   <span>{session.location}</span>
@@ -256,7 +259,7 @@ export function ClassDetailClient({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete('assignment', assignment.id);
+                            handleDeleteAssignment(assignment.id);
                           }}
                           className="absolute top-2 right-2 size-6 rounded-md border-2 border-red-500 flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                         >
@@ -314,10 +317,22 @@ export function ClassDetailClient({
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <TeacherDashboardChat
-              classes={[{ id: parseInt(classData.id) || 0, title: classData.title }]}
-              sessions={sessions.map(s => ({ id: parseInt(s.id) || 0, title: s.title }))}
-              assignments={assignments.map(a => ({ id: parseInt(a.id) || 0, title: a.title }))}
+            <SidebarChatbot
+              userRole="teacher"
+              classId={classData.id}
+              contexts={{
+                classes: [{ id: classData.id, title: classData.title }],
+                sessions: sessions.map((s) => ({
+                  id: s.id,
+                  title: s.title,
+                  className: classData.title,
+                })),
+                assignments: assignments.map((a) => ({
+                  id: a.id,
+                  title: a.title,
+                  className: classData.title,
+                })),
+              }}
             />
           </div>
         </div>
@@ -350,7 +365,7 @@ export function ClassDetailClient({
                 Confirm Delete
               </h3>
               <p className="text-[#6a7282] text-[15px] mb-8 text-center">
-                Are you sure you want to delete this {itemToDelete?.type}?
+                Are you sure you want to delete this assignment?
               </p>
               <div className="flex items-center justify-center gap-3">
                 <button

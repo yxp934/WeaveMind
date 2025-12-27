@@ -70,6 +70,10 @@ export function responseGeneratorNode(state: ChatbotState): {
 function generateIntelligentDefaultResponse(state: ChatbotState): any {
   const intent = state.intent?.type || "unknown";
   const workflowType = state.currentWorkflow?.type;
+  const knownClassId =
+    (state.metadata as any)?.selectedClassId ||
+    (state.metadata as any)?.classId ||
+    null;
 
   // 根据当前状态生成合适的默认响应
   if (workflowType && state.currentWorkflow?.status === "active") {
@@ -83,7 +87,7 @@ function generateIntelligentDefaultResponse(state: ChatbotState): any {
         workflowType,
         currentStep: state.currentWorkflow?.step,
         workflowStatus: state.currentWorkflow?.status,
-        classId: crypto.randomUUID(),
+        classId: knownClassId,
         courseTopic: state.courseInfo?.topic,
         knownInfo: state.courseInfo,
         missingInfo: getMissingInfo(state),
@@ -144,7 +148,7 @@ function generateIntelligentDefaultResponse(state: ChatbotState): any {
       suggestions: ["创建课程", "生成大纲", "创建作业"],
       workflowType: null,
       currentStep: null,
-      classId: crypto.randomUUID(),
+      classId: knownClassId,
       courseTopic: null,
       knownInfo: null,
       missingInfo: ["user_intent"],
@@ -166,6 +170,10 @@ function generateStructuredResponse(
 ): any {
   const intent = state.intent?.type || "unknown";
   const workflowType = state.currentWorkflow?.type;
+  const knownClassId =
+    (state.metadata as any)?.selectedClassId ||
+    (state.metadata as any)?.classId ||
+    null;
 
   // 关键修复4: 为不同工作流生成相应的选择题
   let choices: any[] = [];
@@ -233,7 +241,7 @@ function generateStructuredResponse(
       workflowType,
       currentStep: state.currentWorkflow?.step,
       workflowStatus: state.currentWorkflow?.status,
-      classId: crypto.randomUUID(),
+      classId: knownClassId,
 
       // 课程信息
       courseTopic: state.courseInfo?.topic,

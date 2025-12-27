@@ -1,18 +1,19 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Clock, Video, MapPin, Users, Play, FileText, Plus, Trash2, Edit } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
+import { ArrowLeft, Calendar, Clock, Video, MapPin, Users, Play, FileText } from 'lucide-react';
 import { Navigation } from '@/components/teacher/design';
 import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
-import { TeacherDashboardChat } from '@/components/teacher/TeacherDashboardChat';
+import SidebarChatbot from '@/components/SidebarChatbot';
 
 interface ComponentData {
   id: string;
-  title: string;
   type: 'text' | 'image' | 'video' | 'question' | 'interactive';
-  duration?: string;
+  content: any;
+  orderIndex: number;
 }
 
 interface SessionDetailClientProps {
@@ -23,8 +24,10 @@ interface SessionDetailClientProps {
     className: string;
     classId: string;
     date: string;
+    dateIso?: string | null;
     time: string;
     endTime: string;
+    durationMinutes?: number | null;
     location: string;
     isOnline: boolean;
     studentsCount: number;
@@ -44,30 +47,17 @@ export function SessionDetailClient({
   teacherData
 }: SessionDetailClientProps) {
   const router = useRouter();
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
-  const handleDelete = () => {
-    setShowDeleteConfirmation(true);
-  };
-
-  const confirmDelete = async () => {
-    // API call to delete session
-    console.log('Deleting session:', sessionData.id);
-    setShowDeleteConfirmation(false);
-    router.push(`/teacher/classes/${sessionData.classId}`);
-  };
-
-  const cancelDelete = () => {
-    setShowDeleteConfirmation(false);
-  };
-
+  const durationLabel = sessionData.durationMinutes
+    ? `${sessionData.durationMinutes}m`
+    : '未设置';
   const upcomingSessions = [{
-    id: parseInt(sessionData.id) || 0,
     title: sessionData.title,
     className: sessionData.className,
     date: sessionData.date,
+    dateIso: sessionData.dateIso || null,
     time: sessionData.time,
-    duration: '1.5h',
+    duration: durationLabel,
     location: sessionData.location,
     isOnline: sessionData.isOnline,
     color: '#3FA11B'
@@ -88,6 +78,114 @@ export function SessionDetailClient({
       default:
         return <FileText className="size-4 text-gray-400" />;
     }
+  };
+
+  const renderComponentTitle = (component: ComponentData, index: number) => {
+    if (component.type === 'question') {
+      const questionRaw = component.content?.question;
+      const question =
+        typeof questionRaw === 'string'
+          ? questionRaw
+          : questionRaw
+            ? String(questionRaw)
+            : '';
+      if (typeof question === 'string' && question.trim()) {
+        return question.trim();
+      }
+      return `Question ${index + 1}`;
+    }
+
+    if (component.type === 'text') {
+      const rawText =
+        typeof component.content === 'string'
+          ? component.content
+          : component.content?.text;
+      const text = typeof rawText === 'string' ? rawText : '';
+      if (typeof text === 'string' && text.trim()) {
+        const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+        const heading = lines.find((line) => line.startsWith('#'));
+        const title = heading ? heading.replace(/^#+\s*/, '').trim() : lines[0];
+        return title || `Text ${index + 1}`;
+      }
+      return `Text ${index + 1}`;
+    }
+
+    return `Component ${index + 1}`;
+  };
+
+  const renderComponentContent = (component: ComponentData) => {
+    if (component.type === 'text') {
+      const rawText =
+        typeof component.content === 'string'
+          ? component.content
+          : component.content?.text;
+      const text = typeof rawText === 'string' ? rawText : '';
+      if (!text) {
+        return <p className="text-[#6a7282] text-[13px]">No text content provided.</p>;
+      }
+      return (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeSanitize]}
+          className="prose prose-sm max-w-none text-[#101828]"
+        >
+          {text}
+        </ReactMarkdown>
+      );
+    }
+
+    if (component.type === 'question') {
+      const question = component.content?.question;
+      const options = Array.isArray(component.content?.options)
+        ? component.content.options
+        : [];
+      const rawAnswer = component.content?.correct_answer;
+      const correctIndex =
+        typeof rawAnswer === 'number'
+          ? rawAnswer
+          : typeof rawAnswer === 'string' && /^\d+$/.test(rawAnswer)
+            ? Number(rawAnswer)
+            : null;
+      const explanation = component.content?.explanation;
+
+      return (
+        <div className="space-y-3 text-[13px] text-[#101828]">
+          {question && (
+            <p className="font-medium text-[#101828]">{question}</p>
+          )}
+          {options.length > 0 && (
+            <ol className="space-y-1 list-decimal list-inside text-[#6a7282]">
+              {options.map((option: string, optionIndex: number) => (
+                <li
+                  key={`${String(option)}-${optionIndex}`}
+                  className={
+                    correctIndex === optionIndex
+                      ? 'text-[#3FA11B] font-medium'
+                      : 'text-[#6a7282]'
+                  }
+                >
+                  {String(option)}
+                </li>
+              ))}
+            </ol>
+          )}
+          {correctIndex !== null && options[correctIndex] && (
+            <p className="text-[#3FA11B]">
+              Correct answer: {options[correctIndex]}
+            </p>
+          )}
+          {explanation && (
+            <p className="text-[#6a7282]">Explanation: {String(explanation)}</p>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <pre className="rounded-lg bg-[#f8f6f9] p-3 text-[12px] text-[#6a7282] overflow-x-auto">
+        {JSON.stringify(component.content || {}, null, 2)}
+      </pre>
+    );
   };
 
   return (
@@ -117,21 +215,6 @@ export function SessionDetailClient({
 
             {/* Session Header */}
             <div className="bg-white rounded-3xl p-8 shadow-sm relative">
-              <div className="absolute top-6 right-6 flex items-center gap-2">
-                <button
-                  onClick={() => router.push(`/teacher/sessions/${sessionData.id}/edit`)}
-                  className="size-10 rounded-xl border-2 border-[#B882B1] flex items-center justify-center text-[#B882B1] hover:bg-[#f3e8f4] transition-colors"
-                >
-                  <Edit className="size-5" />
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="size-10 rounded-xl border-2 border-red-500 flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="size-5" />
-                </button>
-              </div>
-
               <h1
                 className="text-[#3FA11B] text-[36px] leading-[1.1] mb-2 pr-24"
                 style={{ fontFamily: "'Slackey', cursive, sans-serif" }}
@@ -192,20 +275,14 @@ export function SessionDetailClient({
                 >
                   Session Content
                 </h2>
-                <button
-                  onClick={() => router.push(`/teacher/sessions/${sessionData.id}/components/new`)}
-                  className="size-12 rounded-xl bg-[#B882B1] flex items-center justify-center hover:opacity-90 transition-opacity shadow-md"
-                >
-                  <Plus className="size-6 text-white" />
-                </button>
               </div>
 
               {components.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {components.map((component, index) => (
                     <div
                       key={component.id}
-                      className="bg-white rounded-[8px] border border-gray-200 p-4 hover:shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.1)] transition-all cursor-pointer group"
+                      className="bg-white rounded-[12px] border border-gray-200 p-4 hover:shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.1)] transition-all"
                     >
                       <div className="flex items-center gap-4">
                         <span className="text-[#6a7282] text-[14px] w-6">{index + 1}.</span>
@@ -216,12 +293,14 @@ export function SessionDetailClient({
                           {getComponentIcon(component.type)}
                         </div>
                         <div className="flex-1">
-                          <h4 className="text-[#101828] text-[14px] font-medium">{component.title}</h4>
+                          <h4 className="text-[#101828] text-[14px] font-medium">
+                            {renderComponentTitle(component, index)}
+                          </h4>
                           <p className="text-[#6a7282] text-[12px] capitalize">{component.type}</p>
                         </div>
-                        {component.duration && (
-                          <span className="text-[#6a7282] text-[12px]">{component.duration}</span>
-                        )}
+                      </div>
+                      <div className="mt-4 border-t border-gray-100 pt-4">
+                        {renderComponentContent(component)}
                       </div>
                     </div>
                   ))}
@@ -229,34 +308,23 @@ export function SessionDetailClient({
               ) : (
                 <div className="text-center py-12">
                   <FileText className="size-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-[#6a7282] text-[14px] mb-4">No content added yet</p>
-                  <button
-                    onClick={() => router.push(`/teacher/sessions/${sessionData.id}/components/new`)}
-                    className="px-6 py-3 bg-[#B882B1] text-white rounded-xl hover:opacity-90 transition-opacity"
-                  >
-                    Add First Component
-                  </button>
+                  <p className="text-[#6a7282] text-[14px]">No content added yet. Use the AI chatbot to generate this session.</p>
                 </div>
               )}
             </div>
 
-            {/* Start Session Button */}
-            {sessionData.status === 'upcoming' && (
-              <div className="flex justify-center">
-                <button className="px-8 py-4 bg-[#3FA11B] text-white rounded-2xl text-[16px] font-medium hover:opacity-90 transition-opacity shadow-lg flex items-center gap-3">
-                  <Play className="size-5" />
-                  Start Session
-                </button>
-              </div>
-            )}
           </div>
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <TeacherDashboardChat
-              classes={[{ id: parseInt(sessionData.classId) || 0, title: sessionData.className }]}
-              sessions={[{ id: parseInt(sessionData.id) || 0, title: sessionData.title }]}
-              assignments={[]}
+            <SidebarChatbot
+              userRole="teacher"
+              classId={sessionData.classId}
+              contexts={{
+                classes: [{ id: sessionData.classId, title: sessionData.className }],
+                sessions: [{ id: sessionData.id, title: sessionData.title, className: sessionData.className }],
+                assignments: [],
+              }}
             />
           </div>
         </div>
@@ -264,51 +332,6 @@ export function SessionDetailClient({
 
       {/* Floating Action Menu */}
       <FloatingActionMenu sessions={upcomingSessions} />
-
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        {showDeleteConfirmation && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50"
-            onClick={cancelDelete}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl p-8 shadow-2xl w-[360px]"
-            >
-              <h3
-                className="text-[#B882B1] text-[24px] leading-[1.1] mb-3 text-center"
-                style={{ fontFamily: "'Slackey', cursive, sans-serif" }}
-              >
-                Confirm Delete
-              </h3>
-              <p className="text-[#6a7282] text-[15px] mb-8 text-center">
-                Are you sure you want to delete this session?
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={cancelDelete}
-                  className="px-6 py-2.5 rounded-xl bg-gray-200 text-gray-700 text-[14px] hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="px-6 py-2.5 rounded-xl bg-red-500 text-white text-[14px] hover:opacity-90 transition-opacity shadow-md"
-                >
-                  Delete
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

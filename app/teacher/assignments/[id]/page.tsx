@@ -107,6 +107,46 @@ export default async function AssignmentDetailPage({
     organization: user.user_metadata?.organization || 'Your Organization'
   };
 
+  const todayIso = new Date().toISOString();
+  const { data: upcomingSessionsData } = await supabase
+    .from('course_sessions')
+    .select('id, title, scheduled_date, start_time, end_time, duration_minutes, location')
+    .eq('class_id', assignment.class_id)
+    .gte('scheduled_date', todayIso)
+    .order('scheduled_date', { ascending: true })
+    .limit(6);
+
+  const upcomingSessions = (upcomingSessionsData || []).map((session) => {
+    const durationFromTimes =
+      session.start_time && session.end_time
+        ? Math.round(
+            (new Date(`2000-01-01T${session.end_time}`).getTime() -
+              new Date(`2000-01-01T${session.start_time}`).getTime()) /
+              (1000 * 60),
+          )
+        : null;
+    const durationMinutes =
+      session.duration_minutes ?? durationFromTimes ?? null;
+    const locationText = session.location || '未设置';
+    const locationLower = locationText.toLowerCase();
+
+    return {
+      title: session.title || 'Untitled Session',
+      className: assignment.class?.name || 'Unknown Class',
+      date: session.scheduled_date
+        ? new Date(session.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '未设置',
+      dateIso: session.scheduled_date || null,
+      time: session.start_time
+        ? new Date(`2000-01-01T${session.start_time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : '未设置',
+      duration: durationMinutes ? `${durationMinutes}m` : '未设置',
+      location: locationText,
+      isOnline: locationLower.includes('zoom') || locationLower.includes('online') || locationLower.includes('线上'),
+      color: '#3FA11B'
+    };
+  });
+
   // Assignment data for display
   const assignmentDisplayData = {
     id: id,
@@ -130,6 +170,7 @@ export default async function AssignmentDetailPage({
     <AssignmentDetailClient
       assignmentData={assignmentDisplayData}
       submissions={transformedSubmissions}
+      upcomingSessions={upcomingSessions}
       teacherData={teacherData}
     />
   );

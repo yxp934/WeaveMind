@@ -6,7 +6,7 @@ import { ArrowLeft, Eye, CheckCircle, Clock, FileText, Trash2 } from 'lucide-rea
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation } from '@/components/teacher/design';
 import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
-import { TeacherDashboardChat } from '@/components/teacher/TeacherDashboardChat';
+import SidebarChatbot from '@/components/SidebarChatbot';
 
 interface Submission {
   id: string;
@@ -15,6 +15,18 @@ interface Submission {
   submittedAt: string;
   status: 'pending' | 'graded';
   grade: number | null;
+}
+
+interface UpcomingSession {
+  title: string;
+  className: string;
+  date: string;
+  dateIso?: string | null;
+  time: string;
+  duration: string;
+  location: string;
+  isOnline: boolean;
+  color: string;
 }
 
 interface AssignmentDetailClientProps {
@@ -32,6 +44,7 @@ interface AssignmentDetailClientProps {
     maxScore: number;
   };
   submissions: Submission[];
+  upcomingSessions: UpcomingSession[];
   teacherData: {
     avatar: string;
     name: string;
@@ -42,6 +55,7 @@ interface AssignmentDetailClientProps {
 export function AssignmentDetailClient({
   assignmentData,
   submissions,
+  upcomingSessions,
   teacherData
 }: AssignmentDetailClientProps) {
   const router = useRouter();
@@ -53,10 +67,21 @@ export function AssignmentDetailClient({
   };
 
   const confirmDelete = async () => {
-    // API call to delete assignment
-    console.log('Assignment deleted');
-    setShowDeleteConfirmation(false);
-    router.push(`/teacher/classes/${assignmentData.classId}`);
+    try {
+      const response = await fetch(`/api/assignments/${assignmentData.id}/delete`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete assignment');
+      }
+
+      setShowDeleteConfirmation(false);
+      router.push(`/teacher/classes/${assignmentData.classId}`);
+    } catch (error) {
+      console.error('Failed to delete assignment:', error);
+    }
   };
 
   const cancelDelete = () => {
@@ -72,18 +97,6 @@ export function AssignmentDetailClient({
   const gradingRate = assignmentData.submittedCount > 0
     ? Math.round((assignmentData.gradedCount / assignmentData.submittedCount) * 100)
     : 0;
-
-  const upcomingSessions = [{
-    id: 0,
-    title: 'Related Session',
-    className: assignmentData.className,
-    date: 'Dec 06',
-    time: '10:00 AM',
-    duration: '2h',
-    location: 'Classroom',
-    isOnline: false,
-    color: '#3FA11B'
-  }];
 
   return (
     <div className="min-h-screen bg-[#f3e8f4]">
@@ -244,10 +257,14 @@ export function AssignmentDetailClient({
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <TeacherDashboardChat
-              classes={[{ id: parseInt(assignmentData.classId) || 0, title: assignmentData.className }]}
-              sessions={[]}
-              assignments={[{ id: parseInt(assignmentData.id) || 0, title: assignmentData.title }]}
+            <SidebarChatbot
+              userRole="teacher"
+              classId={assignmentData.classId}
+              contexts={{
+                classes: [{ id: assignmentData.classId, title: assignmentData.className }],
+                sessions: [],
+                assignments: [{ id: assignmentData.id, title: assignmentData.title, className: assignmentData.className }],
+              }}
             />
           </div>
         </div>

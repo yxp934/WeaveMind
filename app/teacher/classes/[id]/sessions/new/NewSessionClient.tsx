@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Clock, FileText, MapPin, Video } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowLeft, Calendar, Clock, FileText, MapPin } from 'lucide-react';
 import { Navigation } from '@/components/teacher/design';
 import { FloatingActionMenu } from '@/components/teacher/FloatingActionMenu';
-import { TeacherDashboardChat } from '@/components/teacher/TeacherDashboardChat';
+import SidebarChatbot from '@/components/SidebarChatbot';
 
 interface NewSessionClientProps {
   classData: {
@@ -36,9 +35,9 @@ export function NewSessionClient({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
+  const [startTime, setStartTime] = useState('');
   const [duration, setDuration] = useState(60);
-  const [location, setLocation] = useState('Classroom');
+  const [location, setLocation] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +57,7 @@ export function NewSessionClient({
           scheduled_date: scheduledDate,
           start_time: startTime,
           duration_minutes: duration,
-          location: location.trim(),
+          location: location.trim() || null,
         }),
       });
 
@@ -244,17 +243,21 @@ export function NewSessionClient({
 
           {/* AI Chatbot Sidebar */}
           <div className="w-[400px] sticky top-6 h-[calc(100vh-120px)]">
-            <TeacherDashboardChat
-              classes={[{ id: parseInt(classData.id) || 0, title: classData.name }]}
-              sessions={[]}
-              assignments={[]}
+            <SidebarChatbot
+              userRole="teacher"
+              classId={classData.id}
+              contexts={{
+                classes: [{ id: classData.id, title: classData.name }],
+                sessions: [],
+                assignments: [],
+              }}
             />
           </div>
         </div>
       </div>
 
       {/* Floating Action Menu */}
-      <FloatingActionMenu />
+      <FloatingActionMenu sessions={[]} />
     </div>
   );
 }

@@ -16,6 +16,29 @@ function extractMessageFromToon(raw: string): string | null {
   return value.replace(/^"(.*)"$/, "$1").trim() || null;
 }
 
+function buildToolCalls(
+  toolsUsed?: string[] | null,
+  pendingToolCall?: { toolName?: string; input?: Record<string, any> } | null,
+): ToolCall[] | undefined {
+  const calls: ToolCall[] = [];
+  const used = Array.isArray(toolsUsed) ? toolsUsed.filter(Boolean) : [];
+  used.forEach((tool) => {
+    calls.push({
+      tool,
+      args: {},
+      status: "completed",
+    });
+  });
+  if (pendingToolCall?.toolName) {
+    calls.unshift({
+      tool: pendingToolCall.toolName,
+      args: pendingToolCall.input || {},
+      status: "pending",
+    });
+  }
+  return calls.length > 0 ? calls : undefined;
+}
+
 // 消息类型定义
 export interface ChatMessage {
   id: string;
@@ -608,6 +631,11 @@ export const useChatbotStore = create<ChatbotStore>()(
                     input: actionData,
                   }
                 : null);
+            const toolsUsed =
+              data?.data?.metadata?.toolsUsed ||
+              data?.data?.toolsUsed ||
+              [];
+            const toolCalls = buildToolCalls(toolsUsed, derivedPendingToolCall);
 
             set((state) => ({
               messages: state.messages.map((msg) =>
@@ -615,6 +643,7 @@ export const useChatbotStore = create<ChatbotStore>()(
                   ? {
                       ...msg,
                       content: displayMessage,
+                      toolCalls: toolCalls || msg.toolCalls,
                       metadata: {
                         ...(msg.metadata || {}),
                         ...(data?.data?.metadata || {}),
@@ -1071,6 +1100,11 @@ export const useChatbotStore = create<ChatbotStore>()(
                           "[STREAM] 流式完成，内容长度:",
                           finalContent.length,
                         );
+                        const streamToolsUsed =
+                          data?.data?.metadata?.toolsUsed ||
+                          data?.data?.toolsUsed ||
+                          [];
+                        const streamToolCalls = buildToolCalls(streamToolsUsed, null);
 
                         set((state) => ({
                           messages: state.messages.map((msg) =>
@@ -1078,6 +1112,7 @@ export const useChatbotStore = create<ChatbotStore>()(
                               ? {
                                   ...msg,
                                   content: finalContent,
+                                  toolCalls: streamToolCalls || msg.toolCalls,
                                   metadata: {
                                     ...msg.metadata,
                                     ...data.data.metadata,

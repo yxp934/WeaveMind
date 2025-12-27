@@ -16,7 +16,7 @@ import { FloatingActionMenu } from "@/components/teacher/FloatingActionMenu";
 import SidebarChatbot from "@/components/SidebarChatbot";
 
 interface ClassData {
-  id: number;
+  id: string;
   title: string;
   instructor: string;
   progress: number;
@@ -27,10 +27,11 @@ interface ClassData {
 }
 
 interface SessionData {
-  id: number;
+  id: string;
   title: string;
   className: string;
   date: string;
+  dateIso?: string | null;
   time: string;
   duration: string;
   location: string;
@@ -39,7 +40,7 @@ interface SessionData {
 }
 
 interface AssignmentData {
-  id: number;
+  id: string;
   title: string;
   className: string;
   dueDate: string;
@@ -211,16 +212,16 @@ export function TeacherDashboardClient({
               userRole="teacher"
               contexts={{
                 classes: classes.map((c) => ({
-                  id: String(c.id),
+                  id: c.id,
                   title: c.title,
                 })),
                 sessions: upcomingSessions.map((s) => ({
-                  id: String(s.id),
+                  id: s.id,
                   title: s.title,
                   className: s.className,
                 })),
                 assignments: assignments.map((a) => ({
-                  id: String(a.id),
+                  id: a.id,
                   title: a.title,
                   className: a.className,
                 })),
