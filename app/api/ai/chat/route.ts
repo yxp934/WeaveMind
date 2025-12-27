@@ -515,21 +515,32 @@ export async function POST(
       if (!actionData.assignmentId && context?.selectedAssignmentId) {
         actionData.assignmentId = context.selectedAssignmentId;
       }
+      if (!actionData.classId && context?.selectedSessionId) {
+        const admin = createAdminClient();
+        const { data: sessionData } = await admin
+          .from("course_sessions")
+          .select("class_id")
+          .eq("id", context.selectedSessionId)
+          .maybeSingle();
+        if (sessionData?.class_id) {
+          actionData.classId = sessionData.class_id;
+        }
+      }
       actionData = normalizeActionData(actionData, sourceText);
       const meta = {
         requiresDatabaseAction: true,
         actionType: toolName,
         actionData,
         toolsUsed: [],
-        classId: context?.classId,
+        classId: actionData.classId || context?.classId,
         sessionId: context?.sessionId,
         assignmentId: context?.assignmentId,
-        selectedClassId: context?.selectedClassId,
+        selectedClassId: actionData.classId || context?.selectedClassId,
         selectedSessionId: context?.selectedSessionId,
         selectedAssignmentId: context?.selectedAssignmentId,
         requestContext: {
-          classId: context?.classId,
-          selectedClassId: context?.selectedClassId,
+          classId: actionData.classId || context?.classId,
+          selectedClassId: actionData.classId || context?.selectedClassId,
           selectedSessionId: context?.selectedSessionId,
           selectedAssignmentId: context?.selectedAssignmentId,
         },
@@ -2018,8 +2029,7 @@ Course info library (if available):
           temperature: 0.4,
           abortSignal: AbortSignal.timeout(30000),
         });
-
-        const outlineDraft = parseModelData<{
+        let outlineDraft = null as null | {
           requirements: Record<string, any>;
           chapters: Array<{
             session_number: number;
@@ -2031,7 +2041,34 @@ Course info library (if available):
               description: string;
             }>;
           }>;
-        }>(text);
+        };
+
+        try {
+          outlineDraft = parseModelData<typeof outlineDraft>(text);
+        } catch (err) {
+          outlineDraft = extractJsonObject<typeof outlineDraft>(text);
+        }
+
+        if (!outlineDraft || !Array.isArray(outlineDraft.chapters)) {
+          const retrySystem = `${systemPrompt}\n\nOnly return valid JSON. Do not include any extra text.`;
+          const { text: retryText } = await generateText({
+            model: openai.chat(DEFAULT_MODEL),
+            system: retrySystem,
+            messages: [{ role: "user", content: userPrompt }],
+            maxTokens: 1800,
+            temperature: 0.2,
+            abortSignal: AbortSignal.timeout(30000),
+          });
+          try {
+            outlineDraft = parseModelData<typeof outlineDraft>(retryText);
+          } catch (err) {
+            outlineDraft = extractJsonObject<typeof outlineDraft>(retryText);
+          }
+        }
+
+        if (!outlineDraft || !Array.isArray(outlineDraft.chapters)) {
+          throw new Error("Failed to parse session outline draft");
+        }
 
         const orderedChapters = (outlineDraft.chapters || []).slice().sort(
           (a, b) => (a.session_number || 0) - (b.session_number || 0),
@@ -2206,19 +2243,41 @@ ${actionData?.teacherNotes || ""}`;
           abortSignal: AbortSignal.timeout(30000),
         });
 
-        const parsed =
-          extractJsonObject<{
-            session_number: number;
-            title: string;
-            learning_objectives: string[];
-            outline: string[];
-            components_plan: Array<{
-              type: "text" | "question";
-              description: string;
-            }>;
-          }>(text) || parseModelResponse(text);
+        let parsed = null as null | {
+          session_number: number;
+          title: string;
+          learning_objectives: string[];
+          outline: string[];
+          components_plan: Array<{
+            type: "text" | "question";
+            description: string;
+          }>;
+        };
 
-        if (!parsed || !parsed.outline) {
+        try {
+          parsed = parseModelData<typeof parsed>(text);
+        } catch (err) {
+          parsed = extractJsonObject<typeof parsed>(text);
+        }
+
+        if (!parsed || !Array.isArray(parsed.outline)) {
+          const retrySystem = `${systemPrompt}\n\nOnly return valid JSON. Do not include any extra text.`;
+          const { text: retryText } = await generateText({
+            model: openai.chat(DEFAULT_MODEL),
+            system: retrySystem,
+            messages: [{ role: "user", content: userPrompt }],
+            maxTokens: 1200,
+            temperature: 0.2,
+            abortSignal: AbortSignal.timeout(30000),
+          });
+          try {
+            parsed = parseModelData<typeof parsed>(retryText);
+          } catch (err) {
+            parsed = extractJsonObject<typeof parsed>(retryText);
+          }
+        }
+
+        if (!parsed || !Array.isArray(parsed.outline)) {
           throw new Error("Failed to parse session outline draft");
         }
 
@@ -2726,8 +2785,8 @@ ${actionData?.teacherNotes || ""}`;
               `${componentsLabel}:`,
               componentsPlan,
             ]
-              .filter((line) => line !== "")
-              .join("\n");
+              .join("\n")
+              .trim();
 
             const baseDescription =
               typeof session.description === "string"

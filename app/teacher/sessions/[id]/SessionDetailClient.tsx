@@ -189,6 +189,39 @@ export function SessionDetailClient({
     );
   };
 
+  const normalizeDescription = (value: string) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    let normalized = trimmed;
+    if (
+      (normalized.startsWith('"') && normalized.endsWith('"')) ||
+      (normalized.startsWith('“') && normalized.endsWith('”'))
+    ) {
+      try {
+        const parsed = JSON.parse(normalized);
+        if (typeof parsed === 'string') {
+          normalized = parsed.trim();
+        }
+      } catch (error) {
+        normalized = normalized.slice(1, -1).trim();
+      }
+    }
+    normalized = normalized
+      .replace(
+        /(课程大纲|学习目标|组件规划|Session Outline|Learning objectives|Components plan):/g,
+        '\n\n$1:',
+      )
+      .split('\n')
+      .map((line) => line.trim().replace(/^"(.*)"$/, '$1'))
+      .join('\n')
+      .replace(/^\n+/, '')
+      .trim();
+    return normalized;
+  };
+
+  const sessionDescription = normalizeDescription(sessionData.description);
+
   return (
     <div className="min-h-screen bg-[#f3e8f4]">
       <Navigation
@@ -223,7 +256,18 @@ export function SessionDetailClient({
                 {sessionData.title}
               </h1>
               <p className="text-[#B882B1] text-[18px] mb-3">{sessionData.className}</p>
-              <p className="text-[#6a7282] text-[16px] mb-4">{sessionData.description || 'No description provided'}</p>
+              {sessionDescription ? (
+                <div className="prose prose-sm max-w-none text-[#6a7282] mb-4">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeSanitize]}
+                  >
+                    {sessionDescription}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <p className="text-[#6a7282] text-[16px] mb-4">No description provided</p>
+              )}
 
               {/* Session Details */}
               <div className="grid grid-cols-4 gap-4 mt-6">

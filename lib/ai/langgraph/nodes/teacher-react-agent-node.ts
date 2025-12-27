@@ -44,12 +44,15 @@ function extractBullets(text: string): string[] {
 
 function extractClassName(text: string): string | null {
   const patterns: RegExp[] = [
+    /《([^》]+)》/i,
     /班级[:：]\s*([^\n，。,。;；]+)\s*/i,
     /(班级名|班级名称|班级名字|班名)[:：]\s*([^\n，。,。;；]+)\s*/i,
     /(名称是|名字是|名称为|名字为|名为)\s*([^\n，。,。;；]+)\s*/i,
     /(?:创建|新建|建立|开设|开班)\s*(?:一个|一门|一堂|一节)?\s*([^\n，。,。;；]+?(?:班级|班|课程|class))/i,
+    /班级[“"《]([^”"》\n，。,。;；]+)[”"》]/i,
     /叫(?:做)?\s*([^\n，。,。;；]+)\s*/i,
     /名为[“"]([^”"]+)[”"]/i,
+    /名为《([^》]+)》/i,
     /named\s+[“"]([^”"]+)[”"]/i,
     /(class\s*name)[:：]\s*([^\n,.;]+)\s*/i,
   ];
@@ -759,6 +762,40 @@ function mergeSessionDrafts(
   return cappedCount ? next.slice(0, cappedCount) : next;
 }
 
+async function generateSessionTitleDrafts(params: {
+  className: string;
+  classDescription?: string | null;
+  courseInfo?: Record<string, any> | null;
+  sessionCount: number;
+  preferredLanguage: "zh" | "en";
+}): Promise<Array<{ idx?: number; title: string; description?: string }>> {
+  const {
+    className,
+    classDescription,
+    courseInfo,
+    sessionCount,
+    preferredLanguage,
+  } = params;
+
+  const systemPrompt =
+    preferredLanguage === "zh"
+      ? `你是经验丰富的课程设计师。请为一个班级生成 ${sessionCount} 节课的标题草案。\n\n规则：\n- 只输出要点列表（不要额外解释）。\n- 每行格式：- 第X节：标题 - 可选描述\n- 确保编号从1到${sessionCount}，标题清晰具体。`
+      : `You are an expert curriculum designer. Generate ${sessionCount} session title drafts.\n\nRules:\n- Output only bullet lines (no extra prose).\n- Format each line as: - Session X: Title - optional description\n- Ensure numbering from 1 to ${sessionCount}.`;
+
+  const userPrompt = `Class name: ${className}\nClass description: ${classDescription || ""}\nCourse info: ${JSON.stringify(courseInfo || {})}`;
+
+  const { text } = await generateText({
+    model: openai.chat(DEFAULT_MODEL),
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+    maxTokens: 600,
+    temperature: 0.4,
+    abortSignal: AbortSignal.timeout(15000),
+  });
+
+  return parseSessionDrafts(text);
+}
+
 function getLastToolExecution(messages: any[]): {
   toolName: string | null;
   success: boolean | null;
@@ -965,8 +1002,8 @@ export async function teacherReactAgentNode(
 
     const nextPrompt =
       preferredLanguage === "zh"
-        ? "\n\n接下来你想做什么？你可以让我：列出班级/课次/作业，创建/更新/删除它们，或创建一个新班级。"
-        : "\n\nWhat would you like to do next? I can list/create/update/delete classes, sessions, or assignments, or create a new class.";
+        ? "\n\n如果需要继续，请告诉我下一步。"
+        : "\n\nIf you'd like to continue, tell me the next step.";
 
     const nextAgentState = {
       ...existingAgentState,
@@ -1015,12 +1052,14 @@ export async function teacherReactAgentNode(
   const selectedSessionId = state.metadata?.selectedSessionId || null;
   const sessionOutlineStatus = existingAgentState?.sessionOutlineStatus || null;
   const wantsSessionContent =
-    /(生成|制作|完善|补充).*(课次|课节|session|lesson).*(内容|讲义|组件|content)/i.test(
-      userText,
-    ) ||
+    (/(生成|制作|完善|补充|创建|编写|撰写)/i.test(userText) &&
+      /(课次|课节|session|lesson|这节|本节|这个)/i.test(userText) &&
+      /(内容|讲义|组件|content|教学)/i.test(userText)) ||
     (/生成.*内容/i.test(userText) && !!selectedSessionId);
+  const wantsSessionOutline =
+    !!selectedSessionId && /(大纲|outline)/i.test(userText);
 
-  if (wantsSessionContent && !hasActiveSessionOutline) {
+  if ((wantsSessionContent || wantsSessionOutline) && !hasActiveSessionOutline) {
     if (!selectedSessionId || !selectedClassId) {
       const ask =
         preferredLanguage === "zh"
@@ -1146,6 +1185,7 @@ export async function teacherReactAgentNode(
         sessionsDraft: Array.isArray(activeCreation?.sessionsDraft)
           ? activeCreation.sessionsDraft
           : [],
+        sessionTitlesGenerated: activeCreation?.sessionTitlesGenerated || false,
         classId: activeCreation?.classId || null,
         outlineLanguage: activeCreation?.outlineLanguage || null,
       };
@@ -1239,12 +1279,13 @@ export async function teacherReactAgentNode(
       if (normalizedClassName) {
         updated.className = normalizedClassName;
       }
-      if (updated.sessionCount && !isApproval(userText)) {
-        const looksLikeSessionDraft =
-          /第\s*\d+\s*节/i.test(userText) ||
+      const looksLikeSessionDraft =
+        Boolean(updated.sessionCount) &&
+        (/第\s*\d+\s*节/i.test(userText) ||
           /session\s*\d+/i.test(userText) ||
           /(^|\n)\s*[-*•]\s+/m.test(userText) ||
-          /(^|\n)\s*\d+[.)]\s+/m.test(userText);
+          /(^|\n)\s*\d+[.)]\s+/m.test(userText));
+      if (updated.sessionCount && !isApproval(userText)) {
         if (looksLikeSessionDraft) {
           const parsed = parseSessionDrafts(userText);
           if (parsed.length > 0) {
@@ -1404,6 +1445,80 @@ export async function teacherReactAgentNode(
           updated.sessionCount - updated.sessionsDraft.length,
         );
         if (missing > 0) {
+          if (
+            !updated.sessionTitlesGenerated &&
+            updated.sessionsDraft.length === 0 &&
+            !looksLikeSessionDraft &&
+            !isApproval(userText) &&
+            updated.className
+          ) {
+            const generated = await generateSessionTitleDrafts({
+              className: updated.className,
+              classDescription: updated.classDescription,
+              courseInfo: updated.courseInfo,
+              sessionCount: updated.sessionCount,
+              preferredLanguage,
+            });
+            if (generated.length > 0) {
+              updated.sessionsDraft = mergeSessionDrafts(
+                updated.sessionsDraft,
+                generated,
+                updated.sessionCount,
+              );
+              updated.sessionTitlesGenerated = true;
+              const lines = updated.sessionsDraft
+                .map((draft: any, index: number) => {
+                  const idx = draft.idx || index + 1;
+                  const label =
+                    preferredLanguage === "zh"
+                      ? `第${idx}节`
+                      : `Session ${idx}`;
+                  const desc = draft.description ? ` - ${draft.description}` : "";
+                  return `- ${label}：${draft.title}${desc}`;
+                })
+                .join("\n");
+              const msg =
+                preferredLanguage === "zh"
+                  ? `我先根据班级信息生成了课次标题草案，请确认或修改：\n${lines}\n\n回复“确认”继续，或直接贴出修改。`
+                  : `I drafted session titles based on the class info. Please confirm or edit:\n${lines}\n\nReply "approve" to continue, or paste edits.`;
+              const withStatus = {
+                ...nextAgentState,
+                classCreation: updated,
+              };
+              const aiMessage = new AIMessage({
+                content: msg,
+                additional_kwargs: {
+                  metadata: {
+                    ...(state.metadata || {}),
+                    intent: "react_agent",
+                    agentState: withStatus,
+                    requiresDatabaseAction: false,
+                    actionType: null,
+                    actionData: null,
+                  },
+                },
+              });
+              return {
+                ...state,
+                messages: [...state.messages, aiMessage],
+                metadata: {
+                  ...(state.metadata || {}),
+                  intent: "react_agent",
+                  agentState: withStatus,
+                  requiresDatabaseAction: false,
+                  actionType: null,
+                  actionData: null,
+                  timestamp: new Date().toISOString(),
+                },
+                currentWorkflow: {
+                  type: "react_agent",
+                  status: "active",
+                  step: "ask_user",
+                  data: { phase: "review_session_titles" },
+                },
+              };
+            }
+          }
           const ask =
             preferredLanguage === "zh"
               ? `请再提供 ${missing} 节课的标题（可选描述）。建议每行一个，例如：\n- 第1节：...\n- 第2节：...`
@@ -2973,9 +3088,10 @@ export async function teacherReactAgentNode(
     }
   }
 
+  let nextAction = parsed.next_action;
   let proposedTool = parsed.proposed_tool || null;
   if (
-    parsed.next_action === "propose_tool" &&
+    nextAction === "propose_tool" &&
     proposedTool?.toolName === "entity_management"
   ) {
     proposedTool = {
@@ -2987,6 +3103,10 @@ export async function teacherReactAgentNode(
         selectedAssignmentId: state.metadata?.selectedAssignmentId || null,
       }),
     };
+    if (!proposedTool.input?.action || !proposedTool.input?.entity) {
+      proposedTool = null;
+      nextAction = "ask_user";
+    }
   }
 
   const assistantMessage = new AIMessage({
@@ -2999,7 +3119,7 @@ export async function teacherReactAgentNode(
         agentState: parsed.agent_state || state.metadata?.agentState || {},
         // Tool proposal payload for API confirmation gate
         requiresDatabaseAction:
-          parsed.next_action === "propose_tool" && Boolean(proposedTool?.toolName),
+          nextAction === "propose_tool" && Boolean(proposedTool?.toolName),
         actionType: proposedTool?.toolName || null,
         actionData: proposedTool?.input || null,
       },
@@ -3012,8 +3132,7 @@ export async function teacherReactAgentNode(
     reasoning: parsed.reasoning,
     agentState: parsed.agent_state || state.metadata?.agentState || {},
     requiresDatabaseAction:
-      parsed.next_action === "propose_tool" &&
-      Boolean(proposedTool?.toolName),
+      nextAction === "propose_tool" && Boolean(proposedTool?.toolName),
     actionType: proposedTool?.toolName || null,
     actionData: proposedTool?.input || null,
     toolsUsed: state.metadata?.toolsUsed || [],
@@ -3027,7 +3146,7 @@ export async function teacherReactAgentNode(
     currentWorkflow: {
       type: "react_agent",
       status: "active",
-      step: parsed.next_action,
+      step: nextAction,
       data: {
         toolCallsExecuted,
       },
