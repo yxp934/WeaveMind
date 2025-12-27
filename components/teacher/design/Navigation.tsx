@@ -57,7 +57,7 @@ export function Navigation({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 size-5" />
             <input
-              type="text"
+              type="search"
               placeholder="Search courses, assignments..."
               className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-[320px] focus:outline-none focus:border-[#B882B1] transition-colors text-[14px]"
             />

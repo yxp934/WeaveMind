@@ -455,7 +455,12 @@ export default function SidebarChatbot({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  data-role={message.role}
+                  className={`flex ${
+                    message.role === "user"
+                      ? "justify-end"
+                      : "justify-start chat-message ai-response"
+                  }`}
                 >
                   <div
                     className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"} max-w-[85%]`}
@@ -649,8 +654,8 @@ export default function SidebarChatbot({
                 handleSend();
               }
             }}
-            placeholder="输入您的问题或需求..."
-            className="flex-1 outline-none text-[14px] text-[#101828] placeholder:text-[#6a7282]"
+            placeholder="输入消息..."
+            className="flex-1 outline-none text-[14px] text-[#101828] placeholder:text-[#6a7282] chat-input"
             disabled={isLoading}
           />
           <button
