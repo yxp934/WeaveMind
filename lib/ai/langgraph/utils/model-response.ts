@@ -114,6 +114,40 @@ export function parseModelResponse<T = any>(text: string): T {
   }
 }
 
+export function parseModelData<T = any>(text: string): T {
+  let target = extractToonSegment(text);
+
+  if (!target) {
+    target = tryLooseExtraction(text);
+  }
+
+  if (!target) {
+    throw new Error("模型返回为空，请检查提示词和模型设置");
+  }
+
+  const cleanedTarget = cleanModelOutput(target);
+
+  try {
+    return decodeToon(cleanedTarget) as T;
+  } catch (toonError) {
+    try {
+      return JSON.parse(cleanedTarget) as T;
+    } catch (jsonError) {
+      const loose = tryLooseExtraction(text);
+      if (loose && loose !== cleanedTarget) {
+        try {
+          return JSON.parse(cleanModelOutput(loose)) as T;
+        } catch (retryError) {
+          // fall through to throw below
+        }
+      }
+      throw new Error(
+        `TOON解码失败: ${(toonError as Error).message}; JSON解析失败: ${(jsonError as Error).message}`,
+      );
+    }
+  }
+}
+
 /**
  * 宽松模式提取TOON内容
  * 尝试在各种格式中找到可能的结构化数据

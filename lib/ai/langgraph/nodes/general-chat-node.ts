@@ -30,12 +30,27 @@ export async function generalChatNode(state: ChatbotState): Promise<Partial<Chat
       })
       .join('\n')
 
+    const compressionContext = (state.metadata as any)?.compressionContext || null
+    const courseInfoBlock = compressionContext
+      ? `
+课程信息库：
+- summary: ${compressionContext.compressed_summary || ''}
+- key concepts: ${(compressionContext.key_concepts || []).join(', ')}
+- learning objectives: ${(compressionContext.learning_objectives || []).join(', ')}
+- teaching method: ${compressionContext.teaching_method || ''}
+- target audience: ${compressionContext.target_audience || ''}
+- difficulty level: ${compressionContext.difficulty_level || ''}
+- session contexts: ${JSON.stringify(compressionContext.session_contexts || [])}
+`
+      : ''
+
     // 构建提示
     const prompt = `
 你是一个专业的AI学习助手，名为WeaveMind。你需要与用户进行自然、友好的对话。
 
 用户角色：${state.userRole}
 当前时间：${new Date().toLocaleString('zh-CN')}
+${courseInfoBlock}
 
 对话历史：
 ${conversationHistory}
@@ -157,8 +172,8 @@ ${conversationHistory}
         ...state.metadata,
         timestamp: new Date().toISOString(),
         toolsUsed: [],
-        suggestions: ['重新开始对话'],
-        availableActions: []
+        suggestions: [],
+        availableActions: [],
       }
     }
   }

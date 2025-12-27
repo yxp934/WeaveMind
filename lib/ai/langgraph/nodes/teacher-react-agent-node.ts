@@ -16,8 +16,8 @@ function detectLanguage(text: string): "zh" | "en" {
 }
 
 function isApproval(text: string): boolean {
-  return /^(approve|approved|yes|ok|okay|confirm|confirmed|确认|同意|好的|可以)$/.test(
-    text.trim().toLowerCase(),
+  return /^(approve|approved|yes|ok|okay|confirm|confirmed|确认|同意|好的|可以)[.!。！？\s]*$/i.test(
+    text.trim(),
   );
 }
 
@@ -56,10 +56,22 @@ function extractClassName(text: string): string | null {
     const raw = m?.[2] || m?.[1];
     if (raw) {
       const name = raw.trim();
-      if (name) return name;
+      const cleaned = sanitizeClassName(name);
+      if (cleaned) return cleaned;
     }
   }
   return null;
+}
+
+function sanitizeClassName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const name = String(value).trim();
+  if (!name) return null;
+  const cut = name.match(
+    /^(.*?)(?:(?:\s+一共|\s+共有|\s+共|\s+第\s*\d+\s*节|\s+session\s*\d+|\s+\d+\s*sessions?|\s+-\s+第\s*\d+\s*节|\s+-\s+session\s*\d+).*?)?$/i,
+  );
+  const cleaned = (cut?.[1] || name).replace(/[-–—:：]+$/g, "").trim();
+  return cleaned || null;
 }
 
 function extractSessionCount(text: string): number | null {
@@ -182,6 +194,154 @@ function extractTime(text: string): string | null {
   return match?.[0] || null;
 }
 
+function extractLabeledValue(text: string, labels: string[]): string | null {
+  for (const label of labels) {
+    const re = new RegExp(`${label}\\s*[:：]\\s*([^\\n]+)`, "i");
+    const match = text.match(re);
+    if (match?.[1]) {
+      const value = match[1].trim();
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function extractCourseInfoFields(text: string): {
+  classDescription?: string;
+  courseInfo?: {
+    targetAudience?: string;
+    learningObjectives?: string;
+    teachingMethod?: string;
+    difficultyLevel?: string;
+  };
+} {
+  if (!text) return {};
+
+  const classDescription =
+    extractLabeledValue(text, [
+      "课程简介",
+      "课程描述",
+      "课程说明",
+      "课程概述",
+      "班级描述",
+      "description",
+      "summary",
+      "overview",
+    ]) || undefined;
+
+  let targetAudience =
+    extractLabeledValue(text, [
+      "目标学员",
+      "目标受众",
+      "受众",
+      "面向人群",
+      "面向对象",
+      "target audience",
+      "audience",
+    ]) || undefined;
+  if (!targetAudience) {
+    const match = text.match(/(?:面向|适合|针对)\s*([^\n，。,。;；]+)/);
+    if (match?.[1]) targetAudience = match[1].trim();
+  }
+
+  let learningObjectives =
+    extractLabeledValue(text, [
+      "学习目标",
+      "课程目标",
+      "教学目标",
+      "目标",
+      "learning objectives",
+      "learning goals",
+      "goals",
+    ]) || undefined;
+
+  let teachingMethod =
+    extractLabeledValue(text, [
+      "教学方法",
+      "教学方式",
+      "授课方式",
+      "教学形式",
+      "教学模式",
+      "teaching method",
+      "teaching approach",
+      "delivery method",
+    ]) || undefined;
+  if (!teachingMethod) {
+    const match = text.match(/(?:采用|以|使用)\s*([^\n，。,。;；]+)(?:教学|授课|方式)/);
+    if (match?.[1]) teachingMethod = match[1].trim();
+  }
+
+  let difficultyLevel =
+    extractLabeledValue(text, [
+      "难度级别",
+      "难度",
+      "水平",
+      "difficulty",
+      "level",
+    ]) || undefined;
+  if (!difficultyLevel) {
+    if (/(入门|初级|beginner)/i.test(text)) difficultyLevel = "beginner";
+    if (/(中级|进阶|intermediate)/i.test(text)) difficultyLevel = "intermediate";
+    if (/(高级|高阶|advanced|expert)/i.test(text)) difficultyLevel = "advanced";
+  }
+
+  if (
+    !classDescription &&
+    !targetAudience &&
+    !learningObjectives &&
+    !teachingMethod &&
+    !difficultyLevel
+  ) {
+    const cleaned = text.trim();
+    const looksLikeSessions =
+      /第\s*\d+\s*节|session\s*\d+/i.test(cleaned) ||
+      /(^|\n)\s*[-*•]\s+/.test(cleaned) ||
+      /(^|\n)\s*\d+[.)]\s+/.test(cleaned);
+    if (!looksLikeSessions && cleaned.length > 20 && !isApproval(cleaned)) {
+      return { classDescription: cleaned };
+    }
+  }
+
+  const courseInfo: Record<string, string> = {};
+  if (targetAudience) courseInfo.targetAudience = targetAudience;
+  if (learningObjectives) courseInfo.learningObjectives = learningObjectives;
+  if (teachingMethod) courseInfo.teachingMethod = teachingMethod;
+  if (difficultyLevel) courseInfo.difficultyLevel = difficultyLevel;
+
+  return {
+    classDescription,
+    courseInfo: Object.keys(courseInfo).length > 0 ? (courseInfo as any) : undefined,
+  };
+}
+
+function mergeCourseInfo(
+  existing: Record<string, any> | null | undefined,
+  incoming: Record<string, any> | null | undefined,
+) {
+  const next = { ...(existing || {}) };
+  const entries = incoming && typeof incoming === "object" ? Object.entries(incoming) : [];
+  for (const [key, value] of entries) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    next[key] = value;
+  }
+  return next;
+}
+
+function hasCourseInfo(creation: {
+  classDescription?: string | null;
+  courseInfo?: Record<string, any> | null;
+}) {
+  if (creation.classDescription) return true;
+  const info = creation.courseInfo || {};
+  return Boolean(
+    info.targetAudience ||
+      info.learningObjectives ||
+      info.teachingMethod ||
+      info.difficultyLevel,
+  );
+}
+
 function normalizeEntityManagementInput(
   userText: string,
   input: Record<string, any> | null | undefined,
@@ -301,48 +461,83 @@ function normalizeEntityManagementInput(
 
 function parseSessionDrafts(
   text: string,
-): Array<{ title: string; description?: string }> {
+): Array<{
+  idx?: number;
+  title: string;
+  description?: string;
+  scheduledDate?: string;
+  startTime?: string;
+}> {
   // Some UIs collapse newlines; normalize common "- Session" separators into newlines.
   const normalizedText = text.replace(
     /\s+-\s+(?=(第\s*\d+\s*节|session\s*\d+))/gi,
     "\n- ",
   );
-  const drafts: Array<{ idx?: number; title: string; description?: string }> =
-    [];
+  const drafts: Array<{
+    idx?: number;
+    title: string;
+    description?: string;
+    scheduledDate?: string;
+    startTime?: string;
+  }> = [];
 
-  const cnRe = /第\s*(\d+)\s*节\s*[:：]\s*([^\n；;]+)(?:[；;\n]|$)/g;
+  const buildDraft = (raw: string, idx?: number) => {
+    const scheduledDate = extractDate(raw) || undefined;
+    const startTime = extractTime(raw) || undefined;
+    let cleaned = raw;
+    if (scheduledDate) {
+      cleaned = cleaned.replace(scheduledDate, " ");
+    }
+    if (startTime) {
+      cleaned = cleaned.replace(startTime, " ");
+    }
+    cleaned = cleaned.replace(/\s+/g, " ").trim();
+    if (typeof idx === "number") {
+      const idxRe = new RegExp(`^(第\\s*${idx}\\s*节|session\\s*${idx})\\s*[:：-]?\\s*`, "i");
+      cleaned = cleaned.replace(idxRe, "").trim();
+    }
+    if (!cleaned && typeof idx === "number") {
+      cleaned = /session/i.test(raw) ? `Session ${idx}` : `第${idx}节`;
+    }
+    if (!cleaned) return null;
+    const [titlePart, descPart] = cleaned.split(/\s*[-—–]\s*/, 2);
+    const title = titlePart.trim();
+    if (!title) return null;
+    const description = descPart?.trim();
+    return {
+      idx,
+      title,
+      description: description || undefined,
+      scheduledDate,
+      startTime,
+    };
+  };
+
+  const cnRe = /第\s*(\d+)\s*节\s*[:：-]?\s*([^\n；;]+)(?:[；;\n]|$)/g;
   for (const match of normalizedText.matchAll(cnRe)) {
     const idx = Number(match[1]);
     const raw = (match[2] || "").trim();
-    if (raw) {
-      const [titlePart, descPart] = raw.split(/\s*[-—–]\s*/, 2);
-      const title = titlePart.trim();
-      const description = descPart?.trim();
-      if (title) drafts.push({ idx, title, description });
-    }
+    if (!raw) continue;
+    const draft = buildDraft(raw, idx);
+    if (draft) drafts.push(draft);
   }
 
-  const enRe = /session\s*(\d+)\s*[:：-]\s*([^\n；;]+)(?:[；;\n]|$)/gi;
+  const enRe = /session\s*(\d+)\s*[:：-]?\s*([^\n；;]+)(?:[；;\n]|$)/gi;
   for (const match of normalizedText.matchAll(enRe)) {
     const idx = Number(match[1]);
     const raw = (match[2] || "").trim();
-    if (raw) {
-      const [titlePart, descPart] = raw.split(/\s*[-—–]\s*/, 2);
-      const title = titlePart.trim();
-      const description = descPart?.trim();
-      if (title) drafts.push({ idx, title, description });
-    }
+    if (!raw) continue;
+    const draft = buildDraft(raw, idx);
+    if (draft) drafts.push(draft);
   }
 
   const bullets = extractBullets(normalizedText);
   for (const b of bullets) {
-    const cleaned = b.replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "").trim();
-    if (cleaned) {
-      const [titlePart, descPart] = cleaned.split(/\s*[-—–]\s*/, 2);
-      const title = titlePart.trim();
-      const description = descPart?.trim();
-      if (title) drafts.push({ title, description });
-    }
+    const idxMatch = b.match(/第\s*(\d+)\s*节/i);
+    const enMatch = b.match(/session\s*(\d+)/i);
+    const idx = idxMatch ? Number(idxMatch[1]) : enMatch ? Number(enMatch[1]) : undefined;
+    const draft = buildDraft(b, idx);
+    if (draft) drafts.push(draft);
   }
 
   if (drafts.length === 0) {
@@ -351,23 +546,19 @@ function parseSessionDrafts(
       .map((p) => p.trim())
       .filter(Boolean);
     for (const p of parts) {
-      const cleaned = p
-        .replace(/^第\s*\d+\s*节\s*[:：]\s*/i, "")
-        .replace(/^session\s*\d+\s*[:：-]\s*/i, "")
-        .trim();
-      if (cleaned) {
-        const [titlePart, descPart] = cleaned.split(/\s*[-—–]\s*/, 2);
-        const title = titlePart.trim();
-        const description = descPart?.trim();
-        if (title) drafts.push({ title, description });
-      }
+      const idxMatch = p.match(/第\s*(\d+)\s*节/i);
+      const enMatch = p.match(/session\s*(\d+)/i);
+      const idx = idxMatch ? Number(idxMatch[1]) : enMatch ? Number(enMatch[1]) : undefined;
+      const draft = buildDraft(p, idx);
+      if (draft) drafts.push(draft);
     }
   }
 
   const seen = new Set<string>();
   return drafts
     .filter((d) => {
-      const key = d.title.toLowerCase();
+      const key =
+        typeof d.idx === "number" ? `idx:${d.idx}` : `title:${d.title.toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -380,8 +571,66 @@ function parseSessionDrafts(
       if (typeof b.idx === "number") return 1;
       return 0;
     })
-    .map(({ title, description }) => ({ title, description }))
     .slice(0, 32);
+}
+
+function mergeSessionDrafts(
+  existing: Array<Record<string, any>>,
+  incoming: Array<Record<string, any>>,
+  sessionCount?: number | null,
+) {
+  const cappedCount =
+    typeof sessionCount === "number" && sessionCount > 0 ? sessionCount : null;
+  const next = (Array.isArray(existing) ? existing : []).map((d, i) => ({
+    ...d,
+    idx: typeof d.idx === "number" ? d.idx : i + 1,
+  }));
+  const mergeValue = (prev: any, nextValue: any) => {
+    if (nextValue === undefined || nextValue === null) return prev;
+    if (typeof nextValue === "string" && !nextValue.trim()) return prev;
+    return nextValue;
+  };
+
+  for (const item of incoming || []) {
+    if (!item) continue;
+    const incomingIdx =
+      typeof item.idx === "number" && item.idx > 0 ? item.idx : null;
+    let targetIndex = -1;
+    if (
+      incomingIdx &&
+      (!cappedCount || incomingIdx <= cappedCount)
+    ) {
+      targetIndex = incomingIdx - 1;
+    } else if (item.title) {
+      const lower = String(item.title).toLowerCase();
+      targetIndex = next.findIndex(
+        (d) => d?.title && String(d.title).toLowerCase() === lower,
+      );
+    }
+
+    if (targetIndex >= 0) {
+      const base = next[targetIndex] || {};
+      next[targetIndex] = {
+        ...base,
+        ...item,
+        idx: base.idx || incomingIdx || targetIndex + 1,
+        title: mergeValue(base.title, item.title),
+        description: mergeValue(base.description, item.description),
+        scheduledDate: mergeValue(base.scheduledDate, item.scheduledDate),
+        startTime: mergeValue(base.startTime, item.startTime),
+      };
+      continue;
+    }
+
+    if (!cappedCount || next.length < cappedCount) {
+      next.push({
+        ...item,
+        idx: incomingIdx || next.length + 1,
+      });
+    }
+  }
+
+  return cappedCount ? next.slice(0, cappedCount) : next;
 }
 
 function getLastToolExecution(messages: any[]): {
@@ -421,23 +670,35 @@ function isContinuationMessage(text: string): boolean {
 
 function buildSystemPrompt(params: {
   toolCallsExecuted: number;
-  toolCallsRemaining: number;
   preferredLanguage: "zh" | "en";
   selectedClassId?: string | null;
   selectedSessionId?: string | null;
   selectedAssignmentId?: string | null;
   lastCreatedClassId?: string | null;
   agentState?: Record<string, any> | null;
+  compressionContext?: Record<string, any> | null;
 }): string {
   const {
     toolCallsExecuted,
-    toolCallsRemaining,
     preferredLanguage,
     selectedClassId,
     selectedSessionId,
     selectedAssignmentId,
     lastCreatedClassId,
+    compressionContext,
   } = params;
+
+  const compressionBlock = compressionContext
+    ? `COURSE INFO LIBRARY:
+- summary: ${compressionContext.compressed_summary || ""}
+- key concepts: ${(compressionContext.key_concepts || []).join(", ")}
+- learning objectives: ${(compressionContext.learning_objectives || []).join(", ")}
+- teaching method: ${compressionContext.teaching_method || ""}
+- target audience: ${compressionContext.target_audience || ""}
+- difficulty level: ${compressionContext.difficulty_level || ""}
+- session contexts: ${JSON.stringify(compressionContext.session_contexts || [])}
+`
+    : "";
 
   return `You are WeaveMind's teacher assistant. You help teachers manage classes, sessions, and assignments.
 
@@ -470,7 +731,6 @@ AVAILABLE TOOLS:
 RULES:
 - You can only propose ONE tool per turn
 - All tools need user confirmation before execution
-- Maximum 5 tool calls per goal (${toolCallsRemaining} remaining)
 - If no tool needed, use next_action: ask_user
 - Be helpful and explain what you're doing
 
@@ -478,6 +738,7 @@ CONTEXT:
 - Selected Class: ${selectedClassId || "none"}
 - Selected Session: ${selectedSessionId || "none"}
 - Last Created Class: ${lastCreatedClassId || "none"}
+${compressionBlock}
 
 Always be helpful and guide the user step by step.`;
 }
@@ -505,10 +766,32 @@ export async function teacherReactAgentNode(
 
   const userText = lastMessage.content.toString();
   const preferredLanguage = detectLanguage(userText);
-  const existingAgentState: any = state.metadata?.agentState || {};
-  const toolCallsExecuted = countExecutedToolCallsFromHistory(state.messages);
-  const toolCallsRemaining = Math.max(0, 5 - toolCallsExecuted);
   const lastToolExecution = getLastToolExecution(state.messages);
+  const toolCallsExecuted = countExecutedToolCallsFromHistory(state.messages);
+  const toolAgentState =
+    lastToolExecution.toolResult &&
+    typeof lastToolExecution.toolResult === "object"
+      ? (lastToolExecution.toolResult as any).agentState
+      : null;
+  let existingAgentState: any = state.metadata?.agentState || {};
+  if (toolAgentState && typeof toolAgentState === "object") {
+    existingAgentState = {
+      ...toolAgentState,
+      ...existingAgentState,
+      sessionOutlineStatus:
+        existingAgentState.sessionOutlineStatus ||
+        toolAgentState.sessionOutlineStatus,
+      sessionOutlineDraft:
+        existingAgentState.sessionOutlineDraft ||
+        toolAgentState.sessionOutlineDraft,
+      sessionOutlineSessionId:
+        existingAgentState.sessionOutlineSessionId ||
+        toolAgentState.sessionOutlineSessionId,
+      sessionOutlineClassId:
+        existingAgentState.sessionOutlineClassId ||
+        toolAgentState.sessionOutlineClassId,
+    };
+  }
 
   // After a confirmed tool execution, the server sends a synthetic "continue/继续" message.
   // Show the tool's human-readable result and ask what to do next, unless we're in a
@@ -597,13 +880,14 @@ export async function teacherReactAgentNode(
     state.metadata?.lastCreatedClassId ||
     null;
   const selectedSessionId = state.metadata?.selectedSessionId || null;
+  const sessionOutlineStatus = existingAgentState?.sessionOutlineStatus || null;
   const wantsSessionContent =
     /(生成|制作|完善|补充).*(课次|课节|session|lesson).*(内容|讲义|组件|content)/i.test(
       userText,
     ) ||
     (/生成.*内容/i.test(userText) && !!selectedSessionId);
 
-  if (wantsSessionContent && existingAgentState?.sessionOutlineStatus !== "reviewing") {
+  if (wantsSessionContent && !hasActiveSessionOutline) {
     if (!selectedSessionId || !selectedClassId) {
       const ask =
         preferredLanguage === "zh"
@@ -723,6 +1007,8 @@ export async function teacherReactAgentNode(
         status: isActive ? activeCreation.status : "collecting",
         className: activeCreation?.className || null,
         classDescription: activeCreation?.classDescription || null,
+        courseInfo: activeCreation?.courseInfo || {},
+        courseInfoConfirmed: activeCreation?.courseInfoConfirmed || false,
         sessionCount: activeCreation?.sessionCount || null,
         sessionsDraft: Array.isArray(activeCreation?.sessionsDraft)
           ? activeCreation.sessionsDraft
@@ -781,6 +1067,16 @@ export async function teacherReactAgentNode(
       // Update collected fields from the current user turn (if any).
       const updated = { ...creation };
       const trimmed = userText.trim();
+      const extractedInfo = extractCourseInfoFields(userText);
+      if (extractedInfo.classDescription && !updated.classDescription) {
+        updated.classDescription = extractedInfo.classDescription;
+      }
+      if (extractedInfo.courseInfo) {
+        updated.courseInfo = mergeCourseInfo(
+          updated.courseInfo,
+          extractedInfo.courseInfo,
+        );
+      }
       if (!updated.className) {
         updated.className = extractClassName(userText) || null;
         // If we're actively collecting and the user replies with a bare name
@@ -806,11 +1102,11 @@ export async function teacherReactAgentNode(
           }
         }
       }
-      if (
-        updated.sessionCount &&
-        updated.sessionsDraft.length < updated.sessionCount &&
-        !isApproval(userText)
-      ) {
+      const normalizedClassName = sanitizeClassName(updated.className);
+      if (normalizedClassName) {
+        updated.className = normalizedClassName;
+      }
+      if (updated.sessionCount && !isApproval(userText)) {
         const looksLikeSessionDraft =
           /第\s*\d+\s*节/i.test(userText) ||
           /session\s*\d+/i.test(userText) ||
@@ -818,11 +1114,24 @@ export async function teacherReactAgentNode(
           /(^|\n)\s*\d+[.)]\s+/m.test(userText);
         if (looksLikeSessionDraft) {
           const parsed = parseSessionDrafts(userText);
-          for (const s of parsed) {
-            if (updated.sessionsDraft.length >= updated.sessionCount) break;
-            updated.sessionsDraft.push(s);
+          if (parsed.length > 0) {
+            updated.sessionsDraft = mergeSessionDrafts(
+              updated.sessionsDraft,
+              parsed,
+              updated.sessionCount,
+            );
           }
         }
+      }
+
+      if (updated.status === "ask_course_info") {
+        const skipCourseInfo = /(跳过|暂时不|以后再说|不需要|不知道|skip)/i.test(
+          userText,
+        );
+        if (isApproval(userText) || skipCourseInfo || hasCourseInfo(updated)) {
+          updated.courseInfoConfirmed = true;
+        }
+        updated.status = "collecting";
       }
 
       const nextAgentState = {
@@ -952,18 +1261,22 @@ export async function teacherReactAgentNode(
           };
         }
 
-        if (toolCallsRemaining <= 0) {
-          const limitMsg =
+        if (!updated.courseInfoConfirmed && !hasCourseInfo(updated)) {
+          const ask =
             preferredLanguage === "zh"
-              ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
-              : "Tool call limit reached (5). Please simplify your request or start a new goal.";
+              ? "在创建前，请补充课程信息库（课程简介/目标学员/学习目标/教学方法/难度，可一次性给出）。如果暂时不需要，请回复“确认”跳过。"
+              : "Before creating the class, please provide the course info library (summary, target audience, learning objectives, teaching method, difficulty). Reply \"approve\" to skip for now.";
+          const withStatus = {
+            ...nextAgentState,
+            classCreation: { ...updated, status: "ask_course_info" },
+          };
           const aiMessage = new AIMessage({
-            content: limitMsg,
+            content: ask,
             additional_kwargs: {
               metadata: {
                 ...(state.metadata || {}),
                 intent: "react_agent",
-                agentState: nextAgentState,
+                agentState: withStatus,
                 requiresDatabaseAction: false,
                 actionType: null,
                 actionData: null,
@@ -976,7 +1289,7 @@ export async function teacherReactAgentNode(
             metadata: {
               ...(state.metadata || {}),
               intent: "react_agent",
-              agentState: nextAgentState,
+              agentState: withStatus,
               requiresDatabaseAction: false,
               actionType: null,
               actionData: null,
@@ -986,15 +1299,59 @@ export async function teacherReactAgentNode(
               type: "react_agent",
               status: "active",
               step: "ask_user",
-              data: { phase: "tool_limit" },
+              data: { phase: "ask_course_info" },
             },
           };
         }
 
+        const courseInfo = updated.courseInfo || {};
+        const summaryLines: string[] = [];
+        if (updated.classDescription) {
+          summaryLines.push(
+            preferredLanguage === "zh"
+              ? `课程简介：${updated.classDescription}`
+              : `Summary: ${updated.classDescription}`,
+          );
+        }
+        if (courseInfo.targetAudience) {
+          summaryLines.push(
+            preferredLanguage === "zh"
+              ? `目标学员：${courseInfo.targetAudience}`
+              : `Target audience: ${courseInfo.targetAudience}`,
+          );
+        }
+        if (courseInfo.learningObjectives) {
+          summaryLines.push(
+            preferredLanguage === "zh"
+              ? `学习目标：${courseInfo.learningObjectives}`
+              : `Learning objectives: ${courseInfo.learningObjectives}`,
+          );
+        }
+        if (courseInfo.teachingMethod) {
+          summaryLines.push(
+            preferredLanguage === "zh"
+              ? `教学方法：${courseInfo.teachingMethod}`
+              : `Teaching method: ${courseInfo.teachingMethod}`,
+          );
+        }
+        if (courseInfo.difficultyLevel) {
+          summaryLines.push(
+            preferredLanguage === "zh"
+              ? `难度：${courseInfo.difficultyLevel}`
+              : `Difficulty: ${courseInfo.difficultyLevel}`,
+          );
+        }
+        const courseInfoBlock =
+          summaryLines.length > 0
+            ? `\n\n${preferredLanguage === "zh" ? "课程信息库：" : "Course info library:"}\n- ${summaryLines.join(
+                "\n- ",
+              )}`
+            : "";
+
         const msg =
           preferredLanguage === "zh"
-            ? `我可以现在创建班级「${updated.className}」。请确认执行创建。`
-            : `I can now create the class "${updated.className}". Please confirm to run the creation.`;
+            ? `我可以现在创建班级「${updated.className}」。${courseInfoBlock}\n\n请确认执行创建。`
+            : `I can now create the class "${updated.className}".${courseInfoBlock}\n\nPlease confirm to run the creation.`;
 
         const withStatus = {
           ...nextAgentState,
@@ -1063,6 +1420,8 @@ export async function teacherReactAgentNode(
             .map((s: any) => ({
               title: s.title,
               description: s.description || "",
+              scheduledDate: s.scheduledDate,
+              startTime: s.startTime,
             }));
 
           const msg =
@@ -1092,6 +1451,8 @@ export async function teacherReactAgentNode(
                   classId,
                   sessions,
                   language: preferredLanguage,
+                  classDescription: updated.classDescription,
+                  courseInfo: updated.courseInfo,
                   agentState: withStatus,
                 },
               },
@@ -1110,6 +1471,8 @@ export async function teacherReactAgentNode(
                 classId,
                 sessions,
                 language: preferredLanguage,
+                classDescription: updated.classDescription,
+                courseInfo: updated.courseInfo,
                 agentState: withStatus,
               },
               timestamp: new Date().toISOString(),
@@ -1182,6 +1545,8 @@ export async function teacherReactAgentNode(
             .map((s: any) => ({
               title: s.title,
               description: s.description || "",
+              scheduledDate: s.scheduledDate,
+              startTime: s.startTime,
             }));
 
           const msg =
@@ -1207,6 +1572,8 @@ export async function teacherReactAgentNode(
                   classId,
                   sessions,
                   language: preferredLanguage,
+                  classDescription: updated.classDescription,
+                  courseInfo: updated.courseInfo,
                   agentState: withStatus,
                 },
               },
@@ -1225,6 +1592,8 @@ export async function teacherReactAgentNode(
                 classId,
                 sessions,
                 language: preferredLanguage,
+                classDescription: updated.classDescription,
+                courseInfo: updated.courseInfo,
                 agentState: withStatus,
               },
               timestamp: new Date().toISOString(),
@@ -1380,45 +1749,6 @@ export async function teacherReactAgentNode(
           };
         }
 
-        if (toolCallsRemaining <= 0) {
-          const limitMsg =
-            preferredLanguage === "zh"
-              ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
-              : "Tool call limit reached (5). Please simplify your request or start a new goal.";
-          const aiMessage = new AIMessage({
-            content: limitMsg,
-            additional_kwargs: {
-              metadata: {
-                ...(state.metadata || {}),
-                intent: "react_agent",
-                agentState: nextAgentState,
-                requiresDatabaseAction: false,
-                actionType: null,
-                actionData: null,
-              },
-            },
-          });
-          return {
-            ...state,
-            messages: [...state.messages, aiMessage],
-            metadata: {
-              ...(state.metadata || {}),
-              intent: "react_agent",
-              agentState: nextAgentState,
-              requiresDatabaseAction: false,
-              actionType: null,
-              actionData: null,
-              timestamp: new Date().toISOString(),
-            },
-            currentWorkflow: {
-              type: "react_agent",
-              status: "active",
-              step: "ask_user",
-              data: { phase: "tool_limit" },
-            },
-          };
-        }
-
         const msg =
           preferredLanguage === "zh"
             ? `好的。我将使用${chosen === "en" ? "英文" : "中文"}为每节课生成大纲草稿。请确认执行生成。`
@@ -1485,43 +1815,6 @@ export async function teacherReactAgentNode(
     existingAgentState?.outlineStatus !== "reviewing" &&
     existingAgentState?.sessionOutlineStatus !== "reviewing"
   ) {
-    if (toolCallsExecuted >= 5) {
-      const limitMsg =
-        preferredLanguage === "zh"
-          ? "工具调用次数已达到上限（5）。请简化请求或开启新的目标。"
-          : "Tool call limit reached (5). Please simplify your request or start a new goal.";
-      const aiMessage = new AIMessage({
-        content: limitMsg,
-        additional_kwargs: {
-          metadata: {
-            ...(state.metadata || {}),
-            intent: "react_agent",
-            requiresDatabaseAction: false,
-            actionType: null,
-            actionData: null,
-          },
-        },
-      });
-      return {
-        ...state,
-        messages: [...state.messages, aiMessage],
-        metadata: {
-          ...(state.metadata || {}),
-          intent: "react_agent",
-          requiresDatabaseAction: false,
-          actionType: null,
-          actionData: null,
-          timestamp: new Date().toISOString(),
-        },
-        currentWorkflow: {
-          type: "react_agent",
-          status: "active",
-          step: "ask_user",
-          data: { phase: "tool_limit" },
-        },
-      };
-    }
-
     // For sessions/assignments listing, we need a class context.
     const classId =
       state.metadata?.selectedClassId ||
@@ -1608,44 +1901,31 @@ export async function teacherReactAgentNode(
     };
   }
 
-  if (
-    existingAgentState?.sessionOutlineStatus === "reviewing" &&
-    existingAgentState?.sessionOutlineDraft
-  ) {
+  if (existingAgentState?.sessionOutlineStatus === "reviewing") {
     const language: "zh" | "en" =
       existingAgentState.sessionOutlineLanguage === "en"
         ? "en"
         : preferredLanguage;
-    const draft = existingAgentState.sessionOutlineDraft as any;
+    const draft =
+      (existingAgentState.sessionOutlineDraft as any) ||
+      (lastToolExecution.toolResult as any)?.outlineDraft ||
+      (lastToolExecution.toolResult as any)?.agentState?.sessionOutlineDraft ||
+      null;
     const classId = existingAgentState.sessionOutlineClassId;
     const sessionId = existingAgentState.sessionOutlineSessionId;
     const nextAgentState = {
       ...existingAgentState,
-      sessionOutlineDraft: { ...draft },
+      sessionOutlineDraft: draft ? { ...draft } : undefined,
     };
 
-    if (isApproval(userText)) {
-      if (toolCallsRemaining <= 0) {
-        const limitMsg =
-          language === "en"
-            ? "Tool call limit reached (5). Please start a new goal to run A2A generation."
-            : "工具调用次数已达到上限（5）。请开启新目标后再运行 A2A 生成。";
-        const aiMessage = new AIMessage({
-          content: limitMsg,
-          additional_kwargs: {
-            metadata: {
-              ...(state.metadata || {}),
-              intent: "react_agent",
-              agentState: nextAgentState,
-              requiresDatabaseAction: false,
-              actionType: null,
-              actionData: null,
-            },
-          },
-        });
-        return {
-          ...state,
-          messages: [...state.messages, aiMessage],
+    if (!draft) {
+      const missingDraftMsg =
+        language === "en"
+          ? "I can't find the outline draft in context. Please ask me to generate the session outline again."
+          : "我没有找到本节课的大纲草案，请重新让我生成该课次的大纲。";
+      const aiMessage = new AIMessage({
+        content: missingDraftMsg,
+        additional_kwargs: {
           metadata: {
             ...(state.metadata || {}),
             intent: "react_agent",
@@ -1653,17 +1933,31 @@ export async function teacherReactAgentNode(
             requiresDatabaseAction: false,
             actionType: null,
             actionData: null,
-            timestamp: new Date().toISOString(),
           },
-          currentWorkflow: {
-            type: "react_agent",
-            status: "active",
-            step: "ask_user",
-            data: { phase: "tool_limit" },
-          },
-        };
-      }
+        },
+      });
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: nextAgentState,
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "missing_outline_draft" },
+        },
+      };
+    }
 
+    if (isApproval(userText)) {
       const prompt =
         language === "en"
           ? "Outline confirmed. I can now run A2A generation and save the session content. Please confirm to proceed."
@@ -1775,6 +2069,149 @@ export async function teacherReactAgentNode(
     };
   }
 
+  if (existingAgentState?.sessionOutlineStatus === "awaiting_a2a") {
+    const language: "zh" | "en" =
+      existingAgentState.sessionOutlineLanguage === "en"
+        ? "en"
+        : preferredLanguage;
+    const draft =
+      (existingAgentState.sessionOutlineDraft as any) ||
+      (lastToolExecution.toolResult as any)?.outlineDraft ||
+      (lastToolExecution.toolResult as any)?.agentState?.sessionOutlineDraft ||
+      null;
+    const classId = existingAgentState.sessionOutlineClassId;
+    const sessionId = existingAgentState.sessionOutlineSessionId;
+    const wantsA2A =
+      isApproval(userText) ||
+      /a2a/i.test(userText) ||
+      /(开始|运行|生成).*(a2a|内容)/i.test(userText);
+
+    if (!draft || !classId || !sessionId) {
+      const fallbackMsg =
+        language === "en"
+          ? "I can't locate the outline draft for A2A generation. Please ask me to generate the session outline again."
+          : "我无法找到用于 A2A 的大纲草案，请重新让我生成该课次的大纲。";
+      const aiMessage = new AIMessage({
+        content: fallbackMsg,
+        additional_kwargs: {
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: existingAgentState,
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+          },
+        },
+      });
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: existingAgentState,
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "missing_outline_for_a2a" },
+        },
+      };
+    }
+
+    if (!wantsA2A) {
+      const remind =
+        language === "en"
+          ? "I can run A2A generation and save the session content. Please reply \"confirm\" to proceed."
+          : "我可以运行 A2A 生成并保存课次内容。请回复“确认”以继续。";
+      const aiMessage = new AIMessage({
+        content: remind,
+        additional_kwargs: {
+          metadata: {
+            ...(state.metadata || {}),
+            intent: "react_agent",
+            agentState: existingAgentState,
+            requiresDatabaseAction: false,
+            actionType: null,
+            actionData: null,
+          },
+        },
+      });
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: existingAgentState,
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "awaiting_a2a_confirmation" },
+        },
+      };
+    }
+
+    const prompt =
+      language === "en"
+        ? "Outline confirmed. I can now run A2A generation and save the session content. Please confirm to proceed."
+        : "大纲已确认。我现在可以运行 A2A 生成并保存课次内容。请确认执行。";
+    const aiMessage = new AIMessage({
+      content: prompt,
+      additional_kwargs: {
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: existingAgentState,
+          requiresDatabaseAction: true,
+          actionType: "a2a_session_generate_and_save",
+          actionData: {
+            classId,
+            sessionId,
+            outlineDraft: draft,
+            agentState: existingAgentState,
+          },
+        },
+      },
+    });
+    return {
+      ...state,
+      messages: [...state.messages, aiMessage],
+      metadata: {
+        ...(state.metadata || {}),
+        intent: "react_agent",
+        agentState: existingAgentState,
+        requiresDatabaseAction: true,
+        actionType: "a2a_session_generate_and_save",
+        actionData: {
+          classId,
+          sessionId,
+          outlineDraft: draft,
+          agentState: existingAgentState,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      currentWorkflow: {
+        type: "react_agent",
+        status: "active",
+        step: "propose_tool",
+        data: { phase: "a2a_session_generation" },
+      },
+    };
+  }
+
   // Deterministic outline confirmation flow (reduces reliance on the model for state tracking).
   if (
     existingAgentState?.outlineStatus === "reviewing" &&
@@ -1788,31 +2225,32 @@ export async function teacherReactAgentNode(
       existingAgentState.outlineDraft.requirements || {};
     const idx = Math.max(0, Number(existingAgentState.outlineReviewIndex || 0));
     const current = chapters[idx];
+    const formatChapter = (chapter: any) =>
+      language === "en"
+        ? `Session ${chapter.session_number}: ${chapter.title}\n\nOutline:\n- ${(chapter.outline || []).join(
+            "\n- ",
+          )}\n\nLearning objectives:\n- ${(chapter.learning_objectives || []).join(
+            "\n- ",
+          )}\n\nComponents plan:\n- ${(chapter.components_plan || [])
+            .map((item: any) => `${item.type}: ${item.description}`)
+            .join("\n- ")}`
+        : `第${chapter.session_number}节：${chapter.title}\n\n大纲：\n- ${(chapter.outline || []).join(
+            "\n- ",
+          )}\n\n学习目标：\n- ${(chapter.learning_objectives || []).join(
+            "\n- ",
+          )}\n\n组件规划：\n- ${(chapter.components_plan || [])
+            .map((item: any) => `${item.type}: ${item.description}`)
+            .join("\n- ")}`;
 
-    if (!current) {
-      // Already finished; propose saving.
-      const alreadyExecuted = countExecutedToolCallsFromHistory(state.messages);
-      if (alreadyExecuted >= 5) {
-        const limitMsg =
-          language === "en"
-            ? "Tool call limit reached (5). Please start a new goal to save the outline."
-            : "工具调用次数已达到上限（5）。请开启一个新的目标后再保存大纲。";
-        const aiMessage = new AIMessage({
-          content: limitMsg,
-          additional_kwargs: {
-            metadata: {
-              ...(state.metadata || {}),
-              intent: "react_agent",
-              agentState: existingAgentState,
-              requiresDatabaseAction: false,
-              actionType: null,
-              actionData: null,
-            },
-          },
-        });
-        return {
-          ...state,
-          messages: [...state.messages, aiMessage],
+    if (isContinuationMessage(userText) && current) {
+      const show = formatChapter(current);
+      const reply =
+        language === "en"
+          ? `Please review this session:\n\n${show}\n\nReply "approve" to accept, or paste edits as bullets.`
+          : `请确认本节内容：\n\n${show}\n\n回复“确认”通过，或用项目符号直接贴出修改。`;
+      const aiMessage = new AIMessage({
+        content: reply,
+        additional_kwargs: {
           metadata: {
             ...(state.metadata || {}),
             intent: "react_agent",
@@ -1820,17 +2258,33 @@ export async function teacherReactAgentNode(
             requiresDatabaseAction: false,
             actionType: null,
             actionData: null,
-            timestamp: new Date().toISOString(),
           },
-          currentWorkflow: {
-            type: "react_agent",
-            status: "active",
-            step: "ask_user",
-            data: { phase: "tool_limit" },
-          },
-        };
-      }
+        },
+      });
 
+      return {
+        ...state,
+        messages: [...state.messages, aiMessage],
+        metadata: {
+          ...(state.metadata || {}),
+          intent: "react_agent",
+          agentState: existingAgentState,
+          requiresDatabaseAction: false,
+          actionType: null,
+          actionData: null,
+          timestamp: new Date().toISOString(),
+        },
+        currentWorkflow: {
+          type: "react_agent",
+          status: "active",
+          step: "ask_user",
+          data: { phase: "outline_review" },
+        },
+      };
+    }
+
+    if (!current) {
+      // Already finished; propose saving.
       const msg =
         language === "en"
           ? "All session outlines are confirmed. I can now save the outline to the database. Please confirm to run `save_class_outline`."
@@ -1951,23 +2405,7 @@ export async function teacherReactAgentNode(
     };
 
     const nextChapter = updatedChapters[nextIndex];
-    const show =
-      nextChapter &&
-      (language === "en"
-        ? `Session ${nextChapter.session_number}: ${nextChapter.title}\n\nOutline:\n- ${(nextChapter.outline || []).join(
-            "\n- ",
-          )}\n\nLearning objectives:\n- ${(nextChapter.learning_objectives || []).join(
-            "\n- ",
-          )}\n\nComponents plan:\n- ${(nextChapter.components_plan || [])
-            .map((item: any) => `${item.type}: ${item.description}`)
-            .join("\n- ")}`
-        : `第${nextChapter.session_number}节：${nextChapter.title}\n\n大纲：\n- ${(nextChapter.outline || []).join(
-            "\n- ",
-          )}\n\n学习目标：\n- ${(nextChapter.learning_objectives || []).join(
-            "\n- ",
-          )}\n\n组件规划：\n- ${(nextChapter.components_plan || [])
-            .map((item: any) => `${item.type}: ${item.description}`)
-            .join("\n- ")}`);
+    const show = nextChapter ? formatChapter(nextChapter) : "";
 
     const movedToNext = nextIndex !== idx;
     const reply =
@@ -2020,13 +2458,13 @@ export async function teacherReactAgentNode(
 
   const systemPrompt = buildSystemPrompt({
     toolCallsExecuted,
-    toolCallsRemaining,
     preferredLanguage,
     selectedClassId: state.metadata?.selectedClassId || null,
     selectedSessionId: state.metadata?.selectedSessionId || null,
     selectedAssignmentId: state.metadata?.selectedAssignmentId || null,
     lastCreatedClassId: state.metadata?.lastCreatedClassId || null,
     agentState: state.metadata?.agentState || null,
+    compressionContext: state.metadata?.compressionContext || null,
   });
 
   const conversationMessages = state.messages.map((msg) => {
@@ -2157,7 +2595,6 @@ export async function teacherReactAgentNode(
       step: parsed.next_action,
       data: {
         toolCallsExecuted,
-        toolCallsRemaining,
       },
     },
   };

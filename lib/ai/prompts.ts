@@ -1,3 +1,5 @@
+import { parseModelData } from "@/lib/ai/langgraph/utils/model-response";
+
 /**
  * AI Prompt Templates for WeaveMind
  * Phase 3: Course Requirement Gathering & Outline Generation
@@ -427,6 +429,8 @@ export function buildTeacherAgentPrompt(context: A2AContext, iteration: number, 
 
 ${languageInstruction}
 
+**OUTPUT STRICTNESS:** Output JSON only. Do not include Markdown fences or extra commentary.
+
 **CLASS CONTEXT:**
 - Class Name: ${context.className}
 - Class Description: ${context.classDescription}
@@ -503,7 +507,7 @@ Generate pedagogically sound learning content with:
 - Questions that test understanding, not just memorization
 
 **OUTPUT FORMAT:**
-Output as JSON:
+Output as JSON (no code fences, no extra text):
 {
   "components": [
     { "type": "text", "content": { "text": "# 1. Main Section Title\\n\\n## 1.1 Subsection Title\\n\\n### 1.1.1 Knowledge Point\\n\\nDetailed explanation...\\n\\n| Column 1 | Column 2 |\\n|----------|----------|\\n| Data 1   | Data 2   |\\n\\n📝 **学习笔记 / Study Notes:**\\n- Key point 1\\n- Key point 2\\n..." } },
@@ -683,16 +687,53 @@ Provide your review as JSON:
  * Extract components from teacher agent response
  */
 export function extractComponentsFromTeacherResponse(response: string): any[] {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*"components"[\s\S]*\}/)
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0])
-      return parsed.components || []
+  if (!response) return []
+
+  const tryParse = (raw: string): any[] | null => {
+    try {
+      const parsed = parseModelData<any>(raw)
+      if (Array.isArray(parsed)) return parsed
+      if (parsed?.components && Array.isArray(parsed.components)) {
+        return parsed.components
+      }
+    } catch (error) {
+      // ignore and fall through
     }
-  } catch (e) {
-    console.error('Failed to parse teacher response:', e)
+    return null
   }
-  return []
+
+  const direct = tryParse(response)
+  if (direct) return direct
+
+  const fenceMatches = response.match(/```(?:json)?\s*([\s\S]*?)```/gi) || []
+  for (const match of fenceMatches) {
+    const cleaned = match.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim()
+    const parsed = tryParse(cleaned)
+    if (parsed) return parsed
+  }
+
+  const objectMatch = response.match(/\{[\s\S]*"components"[\s\S]*\}/)
+  if (objectMatch?.[0]) {
+    const parsed = tryParse(objectMatch[0])
+    if (parsed) return parsed
+  }
+
+  const arrayMatch = response.match(/\[[\s\S]*\]/)
+  if (arrayMatch?.[0] && /"type"\s*:/.test(arrayMatch[0])) {
+    const parsed = tryParse(arrayMatch[0])
+    if (parsed) return parsed
+  }
+
+  const trimmed = response.trim()
+  if (!trimmed) return []
+  return [
+    {
+      type: "text",
+      content: {
+        text: trimmed,
+      },
+    },
+  ]
 }
 
 /**

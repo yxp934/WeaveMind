@@ -144,6 +144,7 @@ function findPendingToolCall(context: any, userText?: string) {
   const lastUserText = getLastNonApprovalUserText(context, userText);
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const meta = history[i]?.metadata || {};
+    if (meta.confirmationExecuted) continue;
     const pending = meta.pendingToolCall;
     if (pending?.id && pending.toolName) {
       return {
@@ -152,7 +153,7 @@ function findPendingToolCall(context: any, userText?: string) {
       };
     }
     const actionType = meta.actionType;
-    if (meta.requiresDatabaseAction && actionType) {
+    if (meta.requiresDatabaseAction && actionType && meta.confirmationRequired !== false) {
       return {
         id: meta.pendingToolCallId || crypto.randomUUID(),
         toolName: actionType,

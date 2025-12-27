@@ -14,7 +14,10 @@ import {
   createGatewayOpenAI,
   DEFAULT_MODEL,
 } from "@/lib/ai/langgraph/config/openai-gateway";
-import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
+import {
+  parseModelResponse,
+  parseModelData,
+} from "@/lib/ai/langgraph/utils/model-response";
 import {
   buildTeacherAgentPrompt,
   buildStudentAgentPrompt,
@@ -238,6 +241,7 @@ function findPendingToolCall(context: any, userText?: string) {
   const lastUserText = getLastNonApprovalUserText(context, userText);
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const meta = history[i]?.metadata || {};
+    if (meta.confirmationExecuted) continue;
     const pending = meta.pendingToolCall;
     if (pending?.id && pending.toolName) {
       return {
@@ -246,7 +250,7 @@ function findPendingToolCall(context: any, userText?: string) {
       };
     }
     const actionType = meta.actionType;
-    if (meta.requiresDatabaseAction && actionType) {
+    if (meta.requiresDatabaseAction && actionType && meta.confirmationRequired !== false) {
       return {
         id: meta.pendingToolCallId || crypto.randomUUID(),
         toolName: actionType,
@@ -282,6 +286,57 @@ function normalizeChatData(data: any) {
   return {
     ...data,
     message: normalizeResponseText(data.message),
+  };
+}
+
+function resolveClassIdFromContext(
+  context: Record<string, any> | null | undefined,
+  classIdOverride?: string | null,
+) {
+  if (classIdOverride) return classIdOverride;
+  if (!context) return null;
+  const selectedFromList = Array.isArray(context.selectedContexts)
+    ? context.selectedContexts.find((item: any) => item?.type === "class")
+    : null;
+  return (
+    context.selectedClassId ||
+    context.classId ||
+    selectedFromList?.id ||
+    null
+  );
+}
+
+async function buildRequestContext(
+  context: Record<string, any> | null | undefined,
+  classIdOverride?: string | null,
+) {
+  const base = context ? { ...context } : {};
+  const admin = createAdminClient();
+  let resolvedClassId = resolveClassIdFromContext(base, classIdOverride);
+
+  if (!resolvedClassId && base.selectedSessionId) {
+    const { data: sessionData } = await admin
+      .from("course_sessions")
+      .select("class_id")
+      .eq("id", base.selectedSessionId)
+      .maybeSingle();
+    resolvedClassId = sessionData?.class_id || null;
+  }
+
+  let compressionContext = base.compressionContext || null;
+  if (!compressionContext && resolvedClassId) {
+    const { data } = await admin
+      .from("course_compression_context")
+      .select("*")
+      .eq("class_id", resolvedClassId)
+      .maybeSingle();
+    compressionContext = data || null;
+  }
+
+  return {
+    ...base,
+    selectedClassId: resolvedClassId || base.selectedClassId,
+    compressionContext,
   };
 }
 
@@ -430,7 +485,6 @@ export async function POST(
       });
     }
     let user = authenticatedUser;
-    let isDemoMode = false;
 
     // ✅ Confirmed tool execution shortcut: do not run LangGraph, execute tool directly
     if (context?.confirmToolCall?.id && context.confirmToolCall.toolName) {
@@ -441,47 +495,6 @@ export async function POST(
             error: { code: "UNAUTHORIZED", message: "用户未认证" },
           },
           { status: 401 },
-        );
-      }
-
-      // Enforce max tool executions (5) per conversation context.
-      const executedKeys = new Set<string>();
-      for (const m of context.conversationHistory || []) {
-        const meta = (m as any)?.metadata || null;
-        if (!meta?.confirmationExecuted) continue;
-        const id =
-          typeof meta.confirmedToolCallId === "string"
-            ? meta.confirmedToolCallId
-            : null;
-        const ts =
-          typeof meta.toolExecutionTimestamp === "string"
-            ? meta.toolExecutionTimestamp
-            : null;
-        const tool =
-          typeof meta.lastExecutedTool === "string"
-            ? meta.lastExecutedTool
-            : typeof meta.actionType === "string"
-              ? meta.actionType
-              : "tool";
-        const key = id || (ts ? `${tool}@${ts}` : null);
-        if (key) executedKeys.add(key);
-      }
-      const executedCount = executedKeys.size;
-      if (executedCount >= 5) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "TOOL_LIMIT_REACHED",
-              message:
-                "Tool call limit reached (5). Please simplify your request or start a new goal.",
-            },
-            metadata: {
-              timestamp: new Date().toISOString(),
-              requestId,
-            },
-          },
-          { status: 400 },
         );
       }
 
@@ -596,25 +609,20 @@ export async function POST(
       try {
         const conversationId =
           user?.id || ctx?.organizationId || crypto.randomUUID();
-        const userRole =
-          context?.userRole || (isDemoMode ? "teacher" : "student");
-        const userId = user?.id || "demo-user";
+        const userRole = context?.userRole || "student";
+        const userId = user.id;
 
+        const requestContext = await buildRequestContext(
+          ctx,
+          dbOperationResult?.classId || ctx?.selectedClassId || null,
+        );
         const followup = await chatbot.processMessage(
           continueMessage,
           conversationId,
           userRole,
           userId,
           historyWithToolResult,
-          {
-            courseId: ctx?.courseId,
-            classId: ctx?.classId,
-            organizationId: ctx?.organizationId,
-            selectedClassId: ctx?.selectedClassId,
-            selectedSessionId: ctx?.selectedSessionId,
-            selectedAssignmentId: ctx?.selectedAssignmentId,
-            selectedContexts: ctx?.selectedContexts,
-          },
+          requestContext,
         );
 
         // If the follow-up proposes another DB/tool action, mark it as pending.
@@ -712,23 +720,26 @@ export async function POST(
       }
     }
 
-    // 如果没有用户但有上下文，或者明确设置为演示模式
-    if (!user || (ctx?.userRole && !user)) {
-      isDemoMode = true;
-      // 演示模式下使用测试用户
-      user = {
-        id: "5e1ebe73-5f0e-4858-8376-499dc2b294cc",
-        email: "test_maxtokens_2024@example.com",
-      };
-      console.log("🎭 演示模式：使用测试用户进行数据库操作", user.id);
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: "UNAUTHORIZED", message: "用户未认证" },
+          metadata: {
+            timestamp: new Date().toISOString(),
+            requestId,
+          },
+        },
+        { status: 401 },
+      );
     }
 
     // 3. 使用LangGraph聊天机器人处理消息
     // 🔧 关键修复：不要使用全局“default-conversation”，否则不同用户共享上下文导致串话/幻觉
     const conversationId =
       user?.id || ctx?.organizationId || crypto.randomUUID();
-    const userRole = context?.userRole || (isDemoMode ? "teacher" : "student");
-    const userId = user?.id || "demo-user";
+    const userRole = context?.userRole || "student";
+    const userId = user.id;
 
     console.log("🤖 使用LangGraph处理聊天:", {
       requestId,
@@ -749,13 +760,13 @@ export async function POST(
         userId,
         context,
         startTime,
-        isDemoMode,
       );
     }
 
     // 5. 否则使用普通JSON响应
     let result: any;
     try {
+      const requestContext = await buildRequestContext(ctx);
       result = await withTimeout(
         chatbot.processMessage(
           message,
@@ -763,15 +774,7 @@ export async function POST(
           userRole,
           userId,
           context?.conversationHistory || [],
-          {
-            courseId: ctx?.courseId,
-            classId: ctx?.classId,
-            organizationId: ctx?.organizationId,
-            selectedClassId: ctx?.selectedClassId,
-            selectedSessionId: ctx?.selectedSessionId,
-            selectedAssignmentId: ctx?.selectedAssignmentId,
-            selectedContexts: ctx?.selectedContexts,
-          },
+          requestContext,
         ),
         30_000,
         "LangGraph processMessage",
@@ -802,7 +805,7 @@ export async function POST(
         metadata: {
           timestamp: new Date().toISOString(),
           requestId,
-          mode: isDemoMode ? "demo" : "production",
+          mode: "production",
           processingTime: Date.now() - startTime,
         },
       });
@@ -824,24 +827,6 @@ export async function POST(
       requiresDatabaseAction: result.data?.metadata?.requiresDatabaseAction,
       actionType: result.data?.metadata?.actionType,
     });
-
-    if ((result.data?.metadata?.toolsUsed || []).length > 5) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "TOOL_LIMIT_REACHED",
-            message: "Tool call limit reached (5). Please simplify your request.",
-          },
-          metadata: {
-            timestamp: new Date().toISOString(),
-            requestId,
-            processingTime,
-          },
-        },
-        { status: 400 },
-      );
-    }
 
     // 6.5 Any DB/tool action must be confirmed by the user (separate request).
     const actionType = result.data?.metadata?.actionType;
@@ -897,7 +882,7 @@ export async function POST(
         metadata: {
           timestamp: new Date().toISOString(),
           requestId,
-          mode: isDemoMode ? "demo" : "production",
+          mode: "production",
           processingTime,
         },
       });
@@ -1078,7 +1063,6 @@ async function handleStreamResponse(
   userId: string,
   context: any,
   startTime: number,
-  isDemoMode: boolean,
 ): Promise<Response> {
   const stream = new ReadableStream({
     async start(controller) {
@@ -1129,21 +1113,14 @@ async function handleStreamResponse(
 
         // 使用LangGraph处理消息
         console.log("🔄 开始LangGraph处理流程...");
+        const requestContext = await buildRequestContext(context);
         const result = await chatbot.processMessage(
           message,
           conversationId,
           userRole,
           userId,
           context?.conversationHistory || [],
-          {
-            courseId: context?.courseId,
-            classId: context?.classId,
-            organizationId: context?.organizationId,
-            selectedClassId: context?.selectedClassId,
-            selectedSessionId: context?.selectedSessionId,
-            selectedAssignmentId: context?.selectedAssignmentId,
-            selectedContexts: context?.selectedContexts,
-          },
+          requestContext,
         );
 
         if (!result.success) {
@@ -1269,7 +1246,7 @@ async function handleStreamResponse(
               metadata: {
                 timestamp: new Date().toISOString(),
                 requestId,
-                mode: isDemoMode ? "demo" : "production",
+                mode: "production",
                 processingTime: Date.now() - startTime,
               },
             })}\n\n`,
@@ -1419,6 +1396,24 @@ async function handleDatabaseOperation(
           if (Number.isNaN(d.getTime())) return null;
           return d.toISOString();
         };
+        const inferFrequencyDays = (value: any): number => {
+          const text = String(value || "").toLowerCase();
+          if (/(biweekly|fortnight|两周|隔周)/i.test(text)) return 14;
+          if (/(daily|every day|每天)/i.test(text)) return 1;
+          if (/(weekly|week|每周)/i.test(text)) return 7;
+          return 7;
+        };
+        const baseDateSource =
+          normalizeScheduledDate(
+            actionData?.startDate ||
+              actionData?.scheduleStart ||
+              actionData?.firstSessionDate ||
+              sessionInputs?.[0]?.scheduled_date ||
+              sessionInputs?.[0]?.scheduledDate ||
+              sessionInputs?.[0]?.date,
+          ) || new Date().toISOString();
+        const baseDate = new Date(baseDateSource);
+        const stepDays = inferFrequencyDays(actionData?.frequency);
 
         const sessionRows = sessionInputs.map((session: any, index: number) => {
           const sessionNumber =
@@ -1431,12 +1426,16 @@ async function handleDatabaseOperation(
             session.scheduledAt ||
             session.date ||
             null;
+          const normalizedScheduledDate = normalizeScheduledDate(scheduledDate);
+          const fallbackScheduledDate = new Date(
+            baseDate.getTime() + index * stepDays * 24 * 60 * 60 * 1000,
+          ).toISOString();
           return {
             class_id: classId,
             session_number: sessionNumber,
             title: session.title,
             description: session.description || null,
-            scheduled_date: normalizeScheduledDate(scheduledDate),
+            scheduled_date: normalizedScheduledDate || fallbackScheduledDate,
             start_time: session.start_time || session.startTime || null,
             end_time: session.end_time || session.endTime || null,
             duration_minutes:
@@ -1642,10 +1641,17 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
           if (Number.isNaN(d.getTime())) return null;
           return d.toISOString();
         };
+        const inferFrequencyDays = (value: any): number => {
+          const text = String(value || "").toLowerCase();
+          if (/(biweekly|fortnight|两周|隔周)/i.test(text)) return 14;
+          if (/(daily|every day|每天)/i.test(text)) return 1;
+          if (/(weekly|week|每周)/i.test(text)) return 7;
+          return 7;
+        };
 
         const { data: cls } = await dbClient
           .from("classes")
-          .select("id,name,created_by")
+          .select("id,name,created_by,description,organization_id")
           .eq("id", classId)
           .maybeSingle();
 
@@ -1677,18 +1683,64 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
 
         const startNumber = (lastSession?.session_number || 0) + 1;
         const capped = sessions.slice(0, 32);
+        const { data: scheduleContext } = await dbClient
+          .from("schedule_generation_context")
+          .select("session_details,frequency")
+          .eq("class_id", classId)
+          .maybeSingle();
+        const sessionDetails = Array.isArray(scheduleContext?.session_details)
+          ? scheduleContext?.session_details
+          : [];
+        const pickDetail = (idx: number, title?: string) => {
+          const sessionNumber = startNumber + idx;
+          return (
+            sessionDetails.find(
+              (detail: any, detailIdx: number) =>
+                detail?.session_number === sessionNumber ||
+                detail?.sessionNumber === sessionNumber ||
+                detail?.title === title ||
+                detail?.name === title ||
+                detailIdx === idx,
+            ) || null
+          );
+        };
+        const explicitBase =
+          normalizeScheduledDate(
+            capped?.[0]?.scheduledDate ??
+              capped?.[0]?.scheduled_date ??
+              capped?.[0]?.scheduledAt ??
+              capped?.[0]?.date,
+          ) ||
+          normalizeScheduledDate(
+            pickDetail(0, capped?.[0]?.title)?.scheduled_date ||
+              pickDetail(0, capped?.[0]?.title)?.scheduledDate ||
+              pickDetail(0, capped?.[0]?.title)?.date,
+          ) ||
+          new Date().toISOString();
+        const baseDate = new Date(explicitBase);
+        const stepDays = inferFrequencyDays(scheduleContext?.frequency);
         const rows = capped.map((session: any, idx: number) => ({
           class_id: classId,
           session_number: startNumber + idx,
           title: session.title,
           description: session.description || "",
-          scheduled_date:
-            normalizeScheduledDate(
+          scheduled_date: (() => {
+            const normalized = normalizeScheduledDate(
               session.scheduledDate ??
                 session.scheduled_date ??
                 session.scheduledAt ??
                 session.date,
-            ) ?? null,
+            );
+            if (normalized) return normalized;
+            const detail = pickDetail(idx, session.title);
+            const detailDate = normalizeScheduledDate(
+              detail?.scheduled_date || detail?.scheduledDate || detail?.date,
+            );
+            if (detailDate) return detailDate;
+            return new Date(
+              baseDate.getTime() + idx * stepDays * 24 * 60 * 60 * 1000,
+            ).toISOString();
+          })(),
           start_time: session.startTime || null,
           end_time: session.endTime || null,
           duration_minutes: session.durationMinutes || null,
@@ -1718,9 +1770,116 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
             `- #${s.session_number}: ${s.title} (ID: ${s.id})`,
         );
 
+        const organizationId =
+          cls.organization_id || metadata?.organizationId || null;
+        const courseInfo = actionData?.courseInfo || {};
+        const difficultyLevel = normalizeDifficultyLevel(
+          courseInfo?.difficultyLevel,
+        );
+        const summarySource =
+          actionData?.classDescription || cls.description || cls.name;
+        const objectives = Array.isArray(courseInfo?.learningObjectives)
+          ? courseInfo.learningObjectives
+          : courseInfo?.learningObjectives
+            ? [courseInfo.learningObjectives]
+            : [];
+        const sessionContexts = rows.map((row: any) => ({
+          session_number: row.session_number,
+          session_title: row.title,
+          title: row.title,
+          description: row.description || "",
+        }));
+
+        if (organizationId) {
+          const { data: existingContext } = await dbClient
+            .from("course_compression_context")
+            .select(
+              "id,compressed_summary,learning_objectives,teaching_method,target_audience,difficulty_level,session_contexts,version",
+            )
+            .eq("class_id", classId)
+            .eq("organization_id", organizationId)
+            .maybeSingle();
+
+          const mergeValue = (prev: any, next: any) => {
+            if (next === undefined || next === null) return prev;
+            if (typeof next === "string" && !next.trim()) return prev;
+            if (Array.isArray(next) && next.length === 0) return prev;
+            return next;
+          };
+
+          if (existingContext?.id) {
+            const existingSessions = Array.isArray(
+              existingContext.session_contexts,
+            )
+              ? existingContext.session_contexts
+              : [];
+            const mergedSessionContexts = [
+              ...existingSessions.filter(
+                (c: any) =>
+                  !sessionContexts.some(
+                    (n: any) => n.session_number === c.session_number,
+                  ),
+              ),
+              ...sessionContexts,
+            ].sort(
+              (a: any, b: any) =>
+                (a.session_number || 0) - (b.session_number || 0),
+            );
+
+            await dbClient
+              .from("course_compression_context")
+              .update({
+                compressed_summary: mergeValue(
+                  existingContext.compressed_summary,
+                  summarySource,
+                ),
+                learning_objectives: mergeValue(
+                  existingContext.learning_objectives,
+                  objectives,
+                ),
+                teaching_method: mergeValue(
+                  existingContext.teaching_method,
+                  courseInfo?.teachingMethod || null,
+                ),
+                target_audience: mergeValue(
+                  existingContext.target_audience,
+                  courseInfo?.targetAudience || null,
+                ),
+                difficulty_level: mergeValue(
+                  existingContext.difficulty_level,
+                  difficultyLevel,
+                ),
+                session_contexts: mergedSessionContexts,
+                last_updated: new Date().toISOString(),
+                version: existingContext.version
+                  ? existingContext.version + 1
+                  : 1,
+              })
+              .eq("id", existingContext.id);
+          } else {
+            await dbClient.from("course_compression_context").insert({
+              class_id: classId,
+              organization_id: organizationId,
+              created_by: user.id,
+              compressed_summary: summarySource,
+              key_concepts: [],
+              learning_objectives: objectives,
+              teaching_method: courseInfo?.teachingMethod || null,
+              target_audience: courseInfo?.targetAudience || null,
+              prerequisites: [],
+              difficulty_level: difficultyLevel,
+              total_duration_minutes: rows
+                .map((row: any) => row.duration_minutes)
+                .filter((v: any) => typeof v === "number")
+                .reduce((acc: number, v: number) => acc + v, 0),
+              session_contexts: sessionContexts,
+            });
+          }
+        }
+
         return {
           success: true,
-            message:
+          message:
             actionData?.language === "en"
               ? `Created ${ordered.length} sessions for class "${cls.name}":\n${lines.join("\n")}`
               : `✅ 已为班级「${cls.name}」创建 ${ordered.length} 节课次：\n${lines.join("\n")}`,
@@ -1789,13 +1948,13 @@ ${actionData.requirements?.join("\n") || "无特殊要求"}
         const systemPrompt = `You are an expert teacher. Generate a draft outline for each session of a class.
 
 Rules:
-- Output TOON only (no Markdown fences, no JSON).
+- Output JSON only (no Markdown fences, no extra prose).
 - Write the outline content in ${
           language === "en" ? "English" : "Chinese"
         }.
 - Do not assume hidden information. Use only the provided class and session titles/descriptions.
 
-Output keys (TOON):
+JSON keys:
 requirements: object
 chapters: array of objects, one per session, in session_number order:
   session_number: number
@@ -1840,7 +1999,7 @@ Course info library (if available):
           abortSignal: AbortSignal.timeout(30000),
         });
 
-        const outlineDraft = parseModelResponse<{
+        const outlineDraft = parseModelData<{
           requirements: Record<string, any>;
           chapters: Array<{
             session_number: number;

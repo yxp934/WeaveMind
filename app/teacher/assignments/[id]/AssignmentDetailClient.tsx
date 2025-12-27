@@ -260,6 +260,18 @@ export function AssignmentDetailClient({
             <SidebarChatbot
               userRole="teacher"
               classId={assignmentData.classId}
+              initialSelectedContexts={[
+                {
+                  id: assignmentData.classId,
+                  title: assignmentData.className,
+                  type: "class",
+                },
+                {
+                  id: assignmentData.id,
+                  title: assignmentData.title,
+                  type: "assignment",
+                },
+              ]}
               contexts={{
                 classes: [{ id: assignmentData.classId, title: assignmentData.className }],
                 sessions: [],

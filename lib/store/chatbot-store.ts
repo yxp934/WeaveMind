@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
 
+const CHAT_ENDPOINT =
+  process.env.NEXT_PUBLIC_CHAT_ENDPOINT || "/api/trigger/chat";
+
 function extractMessageFromToon(raw: string): string | null {
   if (!raw) return null;
   const begin = raw.indexOf("---BEGIN_TOON---");
@@ -533,17 +536,23 @@ export const useChatbotStore = create<ChatbotStore>()(
               stream: false,
             });
 
-            console.log('[CHATBOT] Making API request to /api/trigger/chat');
+            console.log(`[CHATBOT] Making API request to ${CHAT_ENDPOINT}`);
 
             // All requests must retry on disconnect/errors:
             // wait 5s, retry up to 5 attempts.
             const isToolExecution = Boolean(effectiveMetadata.confirmToolCall?.id);
+            const isA2ATool = Boolean(
+              effectiveMetadata.confirmToolCall?.toolName &&
+                String(effectiveMetadata.confirmToolCall.toolName)
+                  .toLowerCase()
+                  .includes("a2a"),
+            );
             const runFetch = async () => {
               const controller = new AbortController();
-              const timeoutMs = isToolExecution ? 30_000 : 60_000;
+              const timeoutMs = isA2ATool ? 120_000 : isToolExecution ? 30_000 : 60_000;
               const timer = setTimeout(() => controller.abort(), timeoutMs);
               try {
-                return await fetch("/api/trigger/chat", {
+                return await fetch(CHAT_ENDPOINT, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -730,7 +739,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               },
             });
 
-            const asyncResponse = await fetch("/api/trigger/chat", {
+            const asyncResponse = await fetch(CHAT_ENDPOINT, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -799,7 +808,7 @@ export const useChatbotStore = create<ChatbotStore>()(
               );
 
               const statusResponse = await fetch(
-                `/api/trigger/chat`,
+                CHAT_ENDPOINT,
               );
 
               if (!statusResponse.ok) {
@@ -1021,7 +1030,7 @@ export const useChatbotStore = create<ChatbotStore>()(
           let lastError: any = null;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              response = await fetch("/api/trigger/chat", {
+              response = await fetch(CHAT_ENDPOINT, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",

@@ -19,6 +19,11 @@ interface SidebarChatbotProps {
   userRole?: "teacher" | "student" | "self-learner";
   classId?: string;
   courseId?: string;
+  initialSelectedContexts?: {
+    id: string;
+    title: string;
+    type: "class" | "session" | "assignment";
+  }[];
   // 动态上下文数据：从TeacherDashboard传入真实的班级/课次/作业
   contexts?: {
     classes?: { id: string; title: string }[];
@@ -42,13 +47,6 @@ interface ToolCall {
   result?: any;
   error?: string;
 }
-
-const suggestions = [
-  "帮我创建一个神经科学的入门课",
-  "生成课程大纲",
-  "使用A2A优化内容",
-  "分析学生学习进度",
-];
 
 const getToolBadgeIcon = (toolName: string) => {
   const normalized = toolName.toLowerCase();
@@ -102,6 +100,7 @@ export default function SidebarChatbot({
   userRole = "teacher",
   classId,
   courseId,
+  initialSelectedContexts,
   contexts,
   onClose,
 }: SidebarChatbotProps) {
@@ -123,7 +122,17 @@ export default function SidebarChatbot({
   const [hoveredCategory, setHoveredCategory] = useState<
     "class" | "session" | "assignment" | null
   >(null);
-  const [selectedContexts, setSelectedContexts] = useState<ContextItem[]>([]);
+  const [selectedContexts, setSelectedContexts] = useState<ContextItem[]>(
+    () => initialSelectedContexts || [],
+  );
+
+  useEffect(() => {
+    if (initialSelectedContexts?.length) {
+      setSelectedContexts((prev) =>
+        prev.length > 0 ? prev : initialSelectedContexts,
+      );
+    }
+  }, [initialSelectedContexts]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const contextButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -256,10 +265,6 @@ export default function SidebarChatbot({
     } finally {
       setConfirmingToolCallId(null);
     }
-  };
-
-  const handleSuggestionClick = (suggestion: string) => {
-    setInput(suggestion);
   };
 
   const handleContextSelect = (item: ContextItem) => {
@@ -428,22 +433,21 @@ export default function SidebarChatbot({
               How can I help you?
             </p>
             <p className="text-[#6a7282] text-[14px] mb-6">
-              Suggestions on what to ask
+              Start by describing what you want to do.
             </p>
-            <div className="grid grid-cols-1 gap-3 w-full">
-              {suggestions.map((suggestion, index) => (
-                <motion.button
-                  key={index}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  className="bg-white/40 backdrop-blur-md border border-gray-200/80 rounded-[12px] px-4 py-3 text-left text-[#101828] text-[14px] hover:bg-white/60 hover:shadow-lg hover:border-gray-300 transition-all hover:-translate-y-0.5"
-                >
-                  {suggestion}
-                </motion.button>
-              ))}
-            </div>
+            {selectedContexts.length > 0 && (
+              <div className="w-full rounded-[12px] border border-gray-200/80 bg-white/40 px-4 py-3 text-left text-[#6a7282] text-[13px]">
+                <span className="font-medium text-[#101828]">
+                  Linked context:
+                </span>{" "}
+                {selectedContexts.map((contextItem, index) => (
+                  <span key={`${contextItem.type}-${contextItem.id}`}>
+                    {contextItem.title}
+                    {index < selectedContexts.length - 1 ? " · " : ""}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">

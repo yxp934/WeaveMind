@@ -320,6 +320,9 @@ export function ClassDetailClient({
             <SidebarChatbot
               userRole="teacher"
               classId={classData.id}
+              initialSelectedContexts={[
+                { id: classData.id, title: classData.title, type: "class" },
+              ]}
               contexts={{
                 classes: [{ id: classData.id, title: classData.title }],
                 sessions: sessions.map((s) => ({

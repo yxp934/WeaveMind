@@ -124,13 +124,14 @@ export function SessionDetailClient({
         return <p className="text-[#6a7282] text-[13px]">No text content provided.</p>;
       }
       return (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeSanitize]}
-          className="prose prose-sm max-w-none text-[#101828]"
-        >
-          {text}
-        </ReactMarkdown>
+        <div className="prose prose-sm max-w-none text-[#101828]">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeSanitize]}
+          >
+            {text}
+          </ReactMarkdown>
+        </div>
       );
     }
 
@@ -320,6 +321,14 @@ export function SessionDetailClient({
             <SidebarChatbot
               userRole="teacher"
               classId={sessionData.classId}
+              initialSelectedContexts={[
+                {
+                  id: sessionData.classId,
+                  title: sessionData.className,
+                  type: "class",
+                },
+                { id: sessionData.id, title: sessionData.title, type: "session" },
+              ]}
               contexts={{
                 classes: [{ id: sessionData.classId, title: sessionData.className }],
                 sessions: [{ id: sessionData.id, title: sessionData.title, className: sessionData.className }],

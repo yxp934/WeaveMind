@@ -6,6 +6,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://odowwkdgduh
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9kb3d3a2RnZHVoZWNybXVhdG54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMjY2NjksImV4cCI6MjA3OTYwMjY2OX0.u2VyB6JqOz1mcbcW9gpo1GISaBRXzxqBkrWRg8LsCvA'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+const chatEndpoint = process.env.NEXT_PUBLIC_CHAT_ENDPOINT || '/api/trigger/chat'
 
 // 讨论系统API (10个端点)
 export const discussionsAPI = {
@@ -398,7 +399,7 @@ export const selfLearnerAPI = {
 export const aiAPI = {
   // 统一AI对话
   async chat(message: string, context: any) {
-    const response = await fetch('/api/trigger/chat', {
+    const response = await fetch(chatEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, context })
