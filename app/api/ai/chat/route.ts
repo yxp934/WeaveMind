@@ -149,17 +149,37 @@ function normalizeA2AComponent(component: any): {
     component.md ??
     component.body ??
     "";
-  if (typeof rawContent === "object" && rawContent !== null && type !== "text") {
+  if (type === "text") {
+    if (typeof rawContent === "object" && rawContent !== null) {
+      const textValue =
+        typeof (rawContent as any).text === "string"
+          ? (rawContent as any).text
+          : JSON.stringify(rawContent ?? "");
+      return {
+        type,
+        content: {
+          text: String(textValue || "").trim(),
+        },
+      };
+    }
+    const textValue =
+      typeof rawContent === "string"
+        ? rawContent
+        : JSON.stringify(rawContent ?? "");
+    return {
+      type,
+      content: {
+        text: String(textValue || "").trim(),
+      },
+    };
+  }
+  if (typeof rawContent === "object" && rawContent !== null) {
     return { type, content: rawContent };
   }
-  const text =
-    typeof rawContent === "string"
-      ? rawContent
-      : JSON.stringify(rawContent ?? "");
   return {
     type,
     content: {
-      text: String(text || "").trim(),
+      text: String(rawContent || "").trim(),
     },
   };
 }
