@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { parseModelResponse } from "@/lib/ai/langgraph/utils/model-response";
 
 const CHAT_ENDPOINT =
-  process.env.NEXT_PUBLIC_CHAT_ENDPOINT || "/api/trigger/chat";
+  process.env.NEXT_PUBLIC_CHAT_ENDPOINT || "/api/ai/chat";
 
 function extractMessageFromToon(raw: string): string | null {
   if (!raw) return null;
